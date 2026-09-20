@@ -29,7 +29,7 @@ def create_app() -> FastAPI:
         # dropped instead of reaching the exporter.
         trace.get_tracer_provider().shutdown()  # type: ignore[union-attr]
 
-    app = FastAPI(title="Intelligent Document Platform", version="0.2.0", lifespan=lifespan)
+    app = FastAPI(title="Veritium", version="0.2.0", lifespan=lifespan)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_allowed_origins,

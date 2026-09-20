@@ -1,4 +1,6 @@
-# Intelligent Document Platform
+# Veritium
+
+`veritium-document-intelligence`
 
 Plataforma de inteligencia documental agentica: clasifica, extrae y valida
 datos de documentos empresariales (Fase 0: boletas de pago y declaraciones

@@ -35,7 +35,7 @@ export function Sidebar() {
           <FileStack className="size-5" />
         </div>
         <div>
-          <div className="text-sm font-semibold leading-tight">IDP</div>
+          <div className="text-sm font-semibold leading-tight">Veritium</div>
           <div className="text-xs text-muted-foreground leading-tight">Plataforma Documental</div>
         </div>
       </div>

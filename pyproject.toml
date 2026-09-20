@@ -1,7 +1,7 @@
 [project]
 name = "idp"
 version = "0.2.0"
-description = "Plataforma de inteligencia documental agentica — clasificacion, extraccion y validacion de documentos empresariales"
+description = "Veritium — plataforma de inteligencia documental agentica — clasificacion, extraccion y validacion de documentos empresariales"
 readme = "README.md"
 authors = [
     { name = "Victor Espiritu", email = "espiritusantiagovictor@gmail.com" }
