@@ -1,15 +1,16 @@
 # Veritium
 
-`veritium-document-intelligence`
+**`veritium-document-intelligence`** — plataforma agentica de inteligencia documental.
 
-Plataforma de inteligencia documental agentica: clasifica, extrae y valida
-datos de documentos empresariales (Fase 0: boletas de pago y declaraciones
-de seguro de desgravamen), con validacion determinista, matching difuso de
-identidad, extraccion agentic acotada y trazabilidad completa (OTEL +
-auditoria de correcciones humanas).
+Veritium clasifica, extrae y **valida** datos de documentos empresariales.
+La diferencia no esta en leer campos de un PDF, sino en contrastarlos: cada
+dato extraido viaja con su evidencia (pagina, bounding box y texto fuente) y
+pasa por un motor de validacion de 6 categorias con reglas configurables en
+CEL. Incluye matching difuso de identidad, extraccion agentic acotada y
+trazabilidad completa (OTEL + auditoria de correcciones humanas).
 
-Ver el plan completo de arquitectura y roadmap en
-`~/.claude/plans/estoy-buscando-hacer-proyecto-iterative-island.md`.
+El estado de cada feature esta en [`roadmap.md`](roadmap.md); el detalle de
+cada item, en [`docs/roadmap.md`](docs/roadmap.md).
 
 ## Requisitos
 
