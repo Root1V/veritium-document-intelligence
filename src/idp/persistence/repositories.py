@@ -19,6 +19,7 @@ from idp.domain.semantic_seed import seed_catalog
 from idp.persistence.models import (
     AuditLogEntry,
     Case,
+    CaseCondition,
     CaseRun,
     Document,
     DocumentTypeSuggestion,
@@ -394,6 +395,15 @@ class ReviewRepository:
     async def has_pending_for_document(self, document_id: uuid.UUID) -> bool:
         stmt = select(func.count()).select_from(ReviewItem).where(ReviewItem.document_id == document_id, ReviewItem.status == "pending")
         return bool(await self._session.scalar(stmt))
+
+    async def pending_document_ids_for_case(self, case_id: uuid.UUID) -> set[uuid.UUID]:
+        stmt = (
+            select(ReviewItem.document_id)
+            .join(Document, Document.id == ReviewItem.document_id)
+            .where(Document.case_id == case_id, ReviewItem.status == "pending")
+            .distinct()
+        )
+        return set((await self._session.scalars(stmt)).all())
 
     async def list_pending(self) -> list[ReviewItem]:
         stmt = select(ReviewItem).where(ReviewItem.status == "pending")
@@ -818,4 +828,39 @@ class ProcessProfileRepository:
         await self._session.commit()
         await self._session.refresh(row)
         return row
+
+
+class CaseConditionRepository:
+    """Missing documents/evidence of a case (VRT-27). See
+    persistence/models.py::CaseCondition."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def list_for_case(self, case_id: uuid.UUID) -> list[CaseCondition]:
+        stmt = select(CaseCondition).where(CaseCondition.case_id == case_id).order_by(CaseCondition.opened_at)
+        return list((await self._session.scalars(stmt)).all())
+
+    async def get(self, condition_id: uuid.UUID) -> CaseCondition | None:
+        return await self._session.get(CaseCondition, condition_id)
+
+    async def latest_by_key(self, case_id: uuid.UUID) -> dict[str, CaseCondition]:
+        """The most recent condition per checklist key: the one a run
+        updates instead of opening a duplicate."""
+        latest: dict[str, CaseCondition] = {}
+        for condition in await self.list_for_case(case_id):
+            latest[condition.key] = condition
+        return latest
+
+    async def add(self, condition: CaseCondition) -> CaseCondition:
+        self._session.add(condition)
+        await self._session.flush()
+        return condition
+
+    async def resolve(self, condition: CaseCondition, *, run_id: uuid.UUID | None, document_id: uuid.UUID | None, note: str) -> None:
+        condition.status, condition.resolved_in_run_id, condition.resolved_by_document_id = "resolved", run_id, document_id
+        condition.note, condition.resolved_at = note, datetime.now(UTC)
+
+    async def waive(self, condition: CaseCondition, *, by: str, reason: str) -> None:
+        condition.status, condition.waived_by, condition.waived_reason, condition.resolved_at = "waived", by, reason, datetime.now(UTC)
 

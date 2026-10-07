@@ -27,6 +27,7 @@ from idp.domain.envelope import Extracted
 from idp.domain.request_payload import RequestInputPayload
 from idp.domain.schemas import schema_for
 from idp.domain.schemas.generic import GenericSchema
+from idp.domain.process_profile import ProcessProfileDefinition
 from idp.domain.semantic import SemanticCatalog
 from idp.domain.semantic_resolution import ConsolidatedView, DocumentExtraction, resolve_case
 from idp.extraction.agentic.loop import ExtractionIncomplete
@@ -47,6 +48,7 @@ from idp.persistence.repositories import (
     ValidationRuleRepository,
 )
 from idp.parsing.normalize import ParsedDocument, slice_by_pages
+from idp.pipeline.case_evaluation import apply_binding, profile_definition, refresh_conditions, refresh_verdict, rules_for_profile
 from idp.pipeline.provenance import build_provenance
 from idp.pipeline.stages import classify_document, extract_document, parse_document, segment_document, suggest_type
 from idp.review.queue import enqueue_review_items
@@ -398,8 +400,9 @@ async def process_case_run(
     if case is None or run is None:
         raise ValueError(f"case run not found: case={case_id} run={run_id}")
 
-    rules = await build_default_rules(settings, session)
     profile_version = case.profile_version
+    definition = profile_definition(case)
+    rules = rules_for_profile(await build_default_rules(settings, session), definition)
     provenance = build_provenance(settings, profile_version=profile_version, rules=rules)
     await run_repo.mark_running(run, provenance=provenance)
     await case_repo.set_status(case_id, "processing")
@@ -452,6 +455,7 @@ async def process_case_run(
                 case_id=case_id,
                 run_id=run.id,
                 rules=rules,
+                definition=definition,
                 request_payload=request_payload,
                 reference_data=reference_data,
                 external_system=external_system,
@@ -461,6 +465,8 @@ async def process_case_run(
                 review_repo=review_repo,
             )
 
+        await refresh_conditions(session, case, run, semantic_view, definition)
+        await refresh_verdict(session, case_id, run=run)
         await case_repo.set_status(case_id, "completed")
         await run_repo.mark_finished(run, status="completed")
         await session.commit()
@@ -497,6 +503,7 @@ async def _validate_document(
     case_id: uuid.UUID,
     run_id: uuid.UUID,
     rules: list[ValidationRule],
+    definition: ProcessProfileDefinition | None,
     request_payload: RequestInputPayload,
     reference_data: ReferenceDataPort,
     external_system: ExternalSystemPort,
@@ -518,7 +525,7 @@ async def _validate_document(
     )
     try:
         with traced_stage("validate", case_id=str(case_id), document_id=str(current.document_id)):
-            results = await run_validation(rules, context)
+            results = [apply_binding(r, definition) for r in await run_validation(rules, context)]
 
         for result in results:
             if not result.passed:
@@ -543,7 +550,8 @@ async def _validate_document(
         document = await document_repo.get(current.document_id)
         if document is not None and document.extraction is not None:
             schema_instance = schema_for(current.document_type).model_validate(document.extraction.payload)
-            candidates = find_review_candidates(schema_instance, results, confidence_threshold=settings.review_confidence_threshold)
+            threshold = definition.thresholds.field_confidence_min if definition and definition.thresholds.field_confidence_min is not None else settings.review_confidence_threshold
+            candidates = find_review_candidates(schema_instance, results, confidence_threshold=threshold)
             # A re-evaluation must not ask a human twice about the same field.
             new_candidates = [c for c in candidates if not await review_repo.has_item_for_field(current.document_id, c.field_path)]
             if new_candidates:

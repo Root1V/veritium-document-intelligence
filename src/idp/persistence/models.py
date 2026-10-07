@@ -100,6 +100,9 @@ class CaseRun(Base):
     provenance: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     execution_ref: Mapped[str | None] = mapped_column(String(256), nullable=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # The verdict this run produced — the case keeps only the current one.
+    verdict: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    verdict_reasons: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -376,3 +379,31 @@ class ProcessProfileVersion(Base):
     retired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     profile: Mapped["ProcessProfile"] = relationship(back_populates="versions")
+
+
+class CaseCondition(Base):
+    """A required document or evidence the case is missing (VRT-27). Opened
+    by a run when a profile requirement applies and is not satisfied;
+    closes itself when a later run finds it satisfied (or no longer
+    applicable). An operator can waive it with a reason. Snapshots the
+    requirement's label so the condition reads on its own. Never deleted."""
+
+    __tablename__ = "case_conditions"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    case_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("cases.id", ondelete="CASCADE"), nullable=False)
+    key: Mapped[str] = mapped_column(String(64), nullable=False)  # the checklist item key
+    label: Mapped[str] = mapped_column(Text, nullable=False)
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)  # missing_document | missing_evidence
+    document_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    attributes: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    role: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    status: Mapped[str] = mapped_column(String(16), default="open", server_default="open", nullable=False)  # open | resolved | waived
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    opened_in_run_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("case_runs.id", ondelete="SET NULL"), nullable=True)
+    resolved_in_run_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("case_runs.id", ondelete="SET NULL"), nullable=True)
+    resolved_by_document_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("documents.id", ondelete="SET NULL"), nullable=True)
+    waived_by: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    waived_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    opened_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

@@ -18,16 +18,18 @@ from datetime import datetime
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Header, HTTPException, Response, UploadFile, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from idp.api.case_contract import CaseResultV1, ProfileRef, build_case_result, latest_run, profile_ref
+from idp.api.case_contract import CaseResultV1, ConditionResult, ProfileRef, Verdict, build_case_result, condition_result, latest_run, profile_ref
 from idp.api.case_service import open_run, read_uploads, request_fingerprint, resolve_profile_version, store_uploads
 from idp.api.deps import get_app_settings, get_current_user, get_db_session, get_object_store, require_role
 from idp.config import Settings
-from idp.persistence.models import Case
-from idp.persistence.repositories import CaseRepository, CaseRunRepository
+from idp.domain.verdict import VerdictReason
+from idp.persistence.models import Case, User
+from idp.persistence.repositories import CaseConditionRepository, CaseRepository, CaseRunRepository
+from idp.pipeline.case_evaluation import refresh_verdict
 from idp.storage.object_store import S3ObjectStore
 from idp.worker.tasks import run_case
 
@@ -258,3 +260,42 @@ async def get_case(case_id: uuid.UUID, response: Response, session: AsyncSession
 @router.get("/{case_id}/result", response_model=CaseResultV1)
 async def get_case_result(case_id: uuid.UUID, session: AsyncSession = Depends(get_db_session)) -> CaseResultV1:
     return await build_case_result(session, await _case_or_404(session, case_id))
+
+
+class WaiveRequest(BaseModel):
+    reason: str = Field(min_length=3, description="Por qué se dispensa el requisito; queda auditado.")
+
+
+class WaiveResponse(BaseModel):
+    condition: ConditionResult
+    verdict: Verdict
+
+
+@router.post(
+    "/{case_id}/conditions/{condition_id}/waive",
+    response_model=WaiveResponse,
+)
+async def waive_condition(
+    case_id: uuid.UUID,
+    condition_id: uuid.UUID,
+    body: WaiveRequest,
+    session: AsyncSession = Depends(get_db_session),
+    user: User = Depends(require_role("operador", "admin")),
+) -> WaiveResponse:
+    """Dispense an open requirement (e.g. the client already proved it by
+    other means). Recomputes the verdict immediately, without a new run."""
+    repo = CaseConditionRepository(session)
+    condition = await repo.get(condition_id)
+    if condition is None or condition.case_id != case_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="condition not found")
+    if condition.status != "open":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"la condición ya está {condition.status}")
+    await repo.waive(condition, by=user.email, reason=body.reason)
+    verdict = await refresh_verdict(session, case_id)
+    await session.commit()
+    case = await _case_or_404(session, case_id)
+    return WaiveResponse(
+        condition=condition_result(condition),
+        verdict=Verdict(decision=verdict.decision, reasons=[VerdictReason.model_validate(r.model_dump()) for r in verdict.reasons], decided_at=case.verdict_at),
+    )
+

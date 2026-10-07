@@ -140,7 +140,8 @@ Veritium pasa de "subir documentos sueltos" a ser una **capacidad de decisión d
 **Scope:**
 - `case_conditions` (`missing_document` / `missing_evidence`), que se cierran solas al llegar la evidencia.
 - `domain/verdict.py` puro, con precedencia `return_to_client` > `human_review` > `continue` y todos los motivos.
-- Solo corren las reglas vinculadas al perfil.
+- Solo corren las reglas vinculadas al perfil, con la severidad del vínculo; el umbral de confianza del perfil decide la revisión humana.
+- Una condición abierta se puede dispensar con motivo auditado (`POST /v1/cases/{id}/conditions/{cid}/waive`); dispensar o resolver una revisión recalculan el veredicto sin una corrida nueva. Cada corrida guarda su veredicto (historia).
 
 ## VRT-28 — Outbox + webhooks firmados
 **Why:** el sistema llamador debe enterarse del veredicto sin consultar en bucle, y sin perder ni duplicar notificaciones ([ADR-0005](adr/0005-contrato-resultado-outbox-webhooks.md)).

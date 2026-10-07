@@ -13,8 +13,9 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from idp.domain.semantic_resolution import ResolvedAttribute
-from idp.persistence.models import Case, CaseRun
-from idp.persistence.repositories import DocumentRepository, ValidationRepository
+from idp.domain.verdict import VerdictReason
+from idp.persistence.models import Case, CaseCondition, CaseRun
+from idp.persistence.repositories import CaseConditionRepository, DocumentRepository, ValidationRepository
 from idp.pipeline.orchestrator import case_document_fields, resolve_semantic_view
 
 
@@ -35,11 +36,50 @@ class CaseInfo(BaseModel):
 
 
 class Verdict(BaseModel):
-    """Filled from VRT-27 on; null decision until then."""
+    """What the calling process should do next (VRT-27). Null decision only
+    for a case whose first run has not finished."""
 
     decision: Literal["continue", "human_review", "return_to_client"] | None
-    reasons: list[Any]
+    reasons: list[VerdictReason]
     decided_at: datetime | None
+
+
+class ConditionResult(BaseModel):
+    """A required document or evidence the case is (or was) missing."""
+
+    id: uuid.UUID
+    key: str
+    label: str
+    kind: str
+    document_type: str | None
+    attributes: list[str] | None
+    role: str | None
+    status: Literal["open", "resolved", "waived"]
+    note: str | None
+    resolved_by_document_id: uuid.UUID | None
+    waived_by: str | None
+    waived_reason: str | None
+    opened_at: datetime
+    resolved_at: datetime | None
+
+
+def condition_result(c: CaseCondition) -> ConditionResult:
+    return ConditionResult(
+        id=c.id,
+        key=c.key,
+        label=c.label,
+        kind=c.kind,
+        document_type=c.document_type,
+        attributes=c.attributes,
+        role=c.role,
+        status=c.status,  # type: ignore[arg-type]
+        note=c.note,
+        resolved_by_document_id=c.resolved_by_document_id,
+        waived_by=c.waived_by,
+        waived_reason=c.waived_reason,
+        opened_at=c.opened_at,
+        resolved_at=c.resolved_at,
+    )
 
 
 class DocumentResult(BaseModel):
@@ -85,7 +125,7 @@ class CaseResultV1(BaseModel):
     contract_version: Literal["1"] = "1"
     case: CaseInfo
     verdict: Verdict
-    conditions: list[Any]  # VRT-27
+    conditions: list[ConditionResult]
     semantic_catalog_version: int | None
     entities: dict[str, dict[str, dict[str, ResolvedAttribute]]]
     documents: list[DocumentResult]
@@ -115,8 +155,8 @@ async def build_case_result(session: AsyncSession, case: Case) -> CaseResultV1:
         case=CaseInfo(
             id=case.id, external_ref=case.external_ref, channel=case.channel, status=case.status, profile=profile_ref(case), created_at=case.created_at
         ),
-        verdict=Verdict(decision=case.verdict, reasons=case.verdict_reasons or [], decided_at=case.verdict_at),  # type: ignore[arg-type]
-        conditions=[],
+        verdict=Verdict(decision=case.verdict, reasons=[VerdictReason.model_validate(r) for r in case.verdict_reasons or []], decided_at=case.verdict_at),  # type: ignore[arg-type]
+        conditions=[condition_result(c) for c in await CaseConditionRepository(session).list_for_case(case.id)],
         semantic_catalog_version=view.catalog_version if view else None,
         entities=view.nested() if view else {},
         documents=[
