@@ -35,7 +35,7 @@ Estados: `done` · `todo` · `blocked` (espera a otro equipo) · `superseded` (a
 | ID | Feature | Estado | Descripción |
 |---|---|---|---|
 | VRT-23 | Capa semántica (núcleo) | done | Entidades, atributos, roles y mapeos campo→atributo; vista consolidada por expediente. |
-| VRT-24 | Perfiles de proceso versionados | todo | Checklist por tipo o por atributo, reglas vinculadas con su severidad, umbrales; inmutables al publicarse. |
+| VRT-24 | Perfiles de proceso versionados | done | Checklist por tipo o por atributo, reglas vinculadas con su severidad, umbrales; inmutables al publicarse. |
 | VRT-25 | Expediente como agregado + API `/v1/cases` | todo | `Batch` → `Case`, idempotencia, agregar documentos, corridas con procedencia, contrato de resultado v1. |
 | VRT-26 | Ejecución durable sobre aeon | todo | `CaseExecutionPort`: grafo por expediente en aeon con pasos en el worker de Veritium; ejecutor interino. |
 | VRT-27 | Completitud y veredicto | todo | Condiciones de documento o evidencia faltante; veredicto continuar / revisión humana / devolver al cliente. |
