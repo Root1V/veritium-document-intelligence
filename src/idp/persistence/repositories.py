@@ -12,6 +12,8 @@ from sqlalchemy import cast as sa_cast
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from idp.domain.process_profile import ProcessProfileDefinition
+from idp.domain.process_profile_seed import SEED_PROFILES
 from idp.domain.semantic import SemanticCatalog
 from idp.domain.semantic_seed import seed_catalog
 from idp.persistence.models import (
@@ -20,6 +22,8 @@ from idp.persistence.models import (
     Document,
     DocumentTypeSuggestion,
     Extraction,
+    ProcessProfile,
+    ProcessProfileVersion,
     ReferenceEmployee,
     ReviewItem,
     SemanticCatalogVersion,
@@ -639,6 +643,85 @@ class SemanticCatalogRepository:
         row.status = "published"
         row.published_by = published_by
         row.published_at = datetime.now(UTC)
+        await self._session.commit()
+        await self._session.refresh(row)
+        return row
+
+
+class ProcessProfileRepository:
+    """Backs api/routes/profiles.py and, from VRT-25 on, case creation. See
+    persistence/models.py::ProcessProfile / ProcessProfileVersion."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def ensure_seed(self) -> None:
+        """Publish the seed profiles as version 1 if there are none —
+        idempotent, called at API startup after the semantic catalog seed."""
+        if await self._session.scalar(select(func.count()).select_from(ProcessProfile)):
+            return
+        now = datetime.now(UTC)
+        for key, name, description, build in SEED_PROFILES:
+            definition = build()
+            profile = ProcessProfile(key=key, name=name, description=description)
+            profile.versions.append(
+                ProcessProfileVersion(
+                    version=1,
+                    status="published",
+                    definition=definition.model_dump(mode="json"),
+                    content_hash=definition.content_hash(),
+                    semantic_catalog_version=definition.semantic_catalog_version,
+                    created_by="seed",
+                    published_by="seed",
+                    published_at=now,
+                )
+            )
+            self._session.add(profile)
+        await self._session.commit()
+
+    async def list_profiles(self) -> list[ProcessProfile]:
+        stmt = select(ProcessProfile).options(selectinload(ProcessProfile.versions)).order_by(ProcessProfile.key)
+        return list((await self._session.scalars(stmt)).all())
+
+    async def get_by_key(self, key: str) -> ProcessProfile | None:
+        stmt = select(ProcessProfile).where(ProcessProfile.key == key).options(selectinload(ProcessProfile.versions))
+        return await self._session.scalar(stmt)
+
+    async def create_profile(self, *, key: str, name: str, description: str | None) -> ProcessProfile:
+        profile = ProcessProfile(key=key, name=name, description=description)
+        self._session.add(profile)
+        await self._session.commit()
+        return await self.get_by_key(key)  # type: ignore[return-value]
+
+    async def get_version(self, profile: ProcessProfile, version: int) -> ProcessProfileVersion | None:
+        return next((v for v in profile.versions if v.version == version), None)
+
+    @staticmethod
+    def latest_published(profile: ProcessProfile) -> ProcessProfileVersion | None:
+        published = [v for v in profile.versions if v.status == "published"]
+        return max(published, key=lambda v: v.version) if published else None
+
+    async def create_draft(self, profile: ProcessProfile, definition: ProcessProfileDefinition, *, created_by: str) -> ProcessProfileVersion:
+        row = ProcessProfileVersion(
+            profile_id=profile.id,
+            version=max((v.version for v in profile.versions), default=0) + 1,
+            status="draft",
+            definition=definition.model_dump(mode="json"),
+            content_hash=definition.content_hash(),
+            semantic_catalog_version=definition.semantic_catalog_version,
+            created_by=created_by,
+        )
+        self._session.add(row)
+        await self._session.commit()
+        await self._session.refresh(row)
+        return row
+
+    async def set_status(self, row: ProcessProfileVersion, *, status: str, actor: str) -> ProcessProfileVersion:
+        row.status = status
+        if status == "published":
+            row.published_by, row.published_at = actor, datetime.now(UTC)
+        elif status == "retired":
+            row.retired_at = datetime.now(UTC)
         await self._session.commit()
         await self._session.refresh(row)
         return row

@@ -12,7 +12,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, func
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -276,3 +276,46 @@ class SemanticCatalogVersion(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     published_by: Mapped[str | None] = mapped_column(String(256), nullable=True)
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class ProcessProfile(Base):
+    """A business process that uses Veritium (VRT-24) — e.g. 'convenios'.
+    Its behaviour lives in its versions; the key is the stable handle
+    callers pass when creating a case."""
+
+    __tablename__ = "process_profiles"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    key: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(256), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    versions: Mapped[list["ProcessProfileVersion"]] = relationship(
+        back_populates="profile", cascade="all, delete-orphan", order_by="ProcessProfileVersion.version"
+    )
+
+
+class ProcessProfileVersion(Base):
+    """One version of a process profile: the JSON of
+    ``domain.process_profile.ProcessProfileDefinition``. Lifecycle:
+    draft -> published -> retired. Immutable once published — a change is a
+    new version. Never hard-deleted."""
+
+    __tablename__ = "process_profile_versions"
+    __table_args__ = (UniqueConstraint("profile_id", "version"),)
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    profile_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("process_profiles.id", ondelete="CASCADE"), nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String(16), default="draft", server_default="draft", nullable=False)  # draft | published | retired
+    definition: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    semantic_catalog_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_by: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    published_by: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    retired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    profile: Mapped["ProcessProfile"] = relationship(back_populates="versions")

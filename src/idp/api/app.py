@@ -10,11 +10,11 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from opentelemetry import trace
 
-from idp.api.routes import audit, auth, batches, document_types, documents, review, semantic_catalog, type_suggestions, users, validation, validation_rules
+from idp.api.routes import audit, auth, batches, document_types, documents, profiles, review, semantic_catalog, type_suggestions, users, validation, validation_rules
 from idp.config import get_settings
 from idp.observability.otel import setup_tracing
 from idp.persistence.db import get_session_factory
-from idp.persistence.repositories import SemanticCatalogRepository
+from idp.persistence.repositories import ProcessProfileRepository, SemanticCatalogRepository
 from idp.storage.object_store import S3ObjectStore
 
 
@@ -27,6 +27,7 @@ def create_app() -> FastAPI:
         S3ObjectStore(settings).ensure_bucket()
         async with get_session_factory(settings)() as session:
             await SemanticCatalogRepository(session).ensure_seed()
+            await ProcessProfileRepository(session).ensure_seed()
         yield
         # BatchSpanProcessor buffers spans and exports on a timer — without
         # this, spans from requests near process shutdown can be silently
@@ -52,6 +53,7 @@ def create_app() -> FastAPI:
     app.include_router(validation.router)
     app.include_router(validation_rules.router)
     app.include_router(semantic_catalog.router)
+    app.include_router(profiles.router)
 
     @app.get("/health")
     async def health() -> dict:
