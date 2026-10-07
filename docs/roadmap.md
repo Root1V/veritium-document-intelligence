@@ -131,6 +131,7 @@ Veritium pasa de "subir documentos sueltos" a ser una **capacidad de decisión d
 - `CaseExecutionPort` con `AeonExecutor`: grafo `start_run → parallel[process_document × N] → evaluate_case → finish_run` en aeon.
 - Worker propio (`python -m idp.worker`) con task queues por carril: `veritium-online`, `veritium-backoffice`, `veritium-bulk`. Actividades idempotentes con estado en la BD de Veritium.
 - `InProcessExecutor` interino, con paralelismo acotado y **no durable**.
+- Instancia propia de aeon, bundle de Cedar con guardas `ExternalActivity` y heartbeat en las actividades largas ([ADR-0003](adr/0003-ejecucion-sobre-aeon.md)).
 - Se cierra cuando A-1 está entregado (`VRT-AEON-001`) y el crash-resume está probado.
 
 ## VRT-27 — Completitud y veredicto
@@ -158,7 +159,7 @@ Veritium pasa de "subir documentos sueltos" a ser una **capacidad de decisión d
 **Why:** los agentes de Veritium se construyen con el framework del ecosistema, no con un loop propio.
 **Scope:**
 - El loop de `extraction/agentic/` pasa a `synaptum.Agent`: tools de lectura como `@tool`, el VLM dentro de la tool vía `InferencePort.vision`, `submit_extraction` validado y `Limits`.
-- Requiere S-1 (`VRT-SYN-001`). S-2 y S-3 tienen mitigación temporal.
+- Requiere synaptum `1.0.0rc3` (S-1 y S-3 ya entregadas). Sin wrappers tolerantes: los errores de binding vuelven al modelo. S-2 (*submit tool*) está pendiente en synaptum; mientras tanto, el submit es una tool común que valida.
 
 ## VRT-31 — Observabilidad con argus
 **Why:** con varios procesos, workers y la ruta aeon de por medio, sin una traza de punta a punta no se puede diagnosticar ni atribuir el costo por expediente.

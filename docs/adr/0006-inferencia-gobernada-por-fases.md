@@ -17,4 +17,6 @@
 
 ## Consecuencias
 - No se pasa a producción sin la ruta gobernada.
+- **Precisión de aeon (`VRT-AEON-003`):** el transporte aeon-modelgw → Axonium-Go → prometheus **ya está entregado**. Faltan A-2 (fidelidad del adaptador) y A-3 (presupuestos e idempotencia en `/v1/chat/completions`, con las cabeceras `X-Aeon-Run-Id` / `X-Aeon-Agent-Manifest-Ref` / `Idempotency-Key`), más S-4…S-8 de synaptum.
+- **Credenciales en producción:** Veritium solo tiene su bearer de aeon (`AEON_CALLER_TOKEN_FILE`); las credenciales de prometheus viven únicamente en modelgw.
 - El cambio de ruta es por configuración: el dominio no se toca.

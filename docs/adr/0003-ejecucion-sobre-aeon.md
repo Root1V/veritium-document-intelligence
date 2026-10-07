@@ -19,3 +19,10 @@
 ## Consecuencias
 - VRT-26 no cierra hasta que A-1 esté entregado; mientras tanto puede pasar a `blocked`.
 - La frontera de determinismo sigue el ADR-0001 de aeon: toda la E/S va en actividades.
+
+## Acordado con aeon (canal `VRT-AEON-001` / `VRT-AEON-002`, 2026-10-07)
+- **Instancia propia de aeon para Veritium.** En un despliegue compartido, el ledger de costos, la deduplicación y los checkpoints no se aíslan por tenant; un namespace de Temporal aparte no lo resuelve.
+- **El bundle de Cedar lo escribe Veritium,** con guardas `resource is ExternalActivity`; ningún permit se expresa solo por nombre.
+- **Heartbeat:** es obligación de nuestras actividades, con un intervalo menor que el `heartbeat_seconds` del nodo.
+- **Los args estáticos son regla, no limitación,** porque mantienen computables antes del dispatch el recurso Cedar y el hash de aprobación (que incluye la task queue).
+- **Se retira el plan B** (Modo B): perdería paralelismo y reanudación por paso.
