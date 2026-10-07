@@ -21,7 +21,8 @@
 - La frontera de determinismo sigue el ADR-0001 de aeon: toda la E/S va en actividades.
 
 ## Acordado con aeon (canal `VRT-AEON-001` / `VRT-AEON-002`, 2026-10-07)
-- **Instancia propia de aeon para Veritium.** En un despliegue compartido, el ledger de costos, la deduplicación y los checkpoints no se aíslan por tenant; un namespace de Temporal aparte no lo resuelve.
+- **Despliegue: compartido y multi-tenant (preferido).** Hoy aeon no aísla datos por tenant: ledger de costos, deduplicación, checkpoints, registros y bundle de Cedar son compartidos, y un namespace de Temporal aparte no lo resuelve. Veritium cumple el criterio de entrada de `GOV-001` y pidió la multi-tenencia como capacidad genérica, con sus requisitos de aislamiento (`VRT-AEON-005`).
+- **Interino:** si `VRT-AEON-001` llega antes que `VRT-AEON-005`, se despliega **otra instancia del mismo código** de aeon (versión fijada, solo configuración propia: callers, bundle Cedar, manifiestos, puertos). **Nunca un fork.** El paso al despliegue compartido es un cambio de configuración: para Veritium, aeon es una URL y un token.
 - **El bundle de Cedar lo escribe Veritium,** con guardas `resource is ExternalActivity`; ningún permit se expresa solo por nombre.
 - **Heartbeat:** es obligación de nuestras actividades, con un intervalo menor que el `heartbeat_seconds` del nodo.
 - **Los args estáticos son regla, no limitación,** porque mantienen computables antes del dispatch el recurso Cedar y el hash de aprobación (que incluye la task queue).
