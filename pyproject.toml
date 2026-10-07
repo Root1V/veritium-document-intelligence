@@ -1,6 +1,6 @@
 [project]
 name = "idp"
-version = "0.2.0"
+version = "0.3.0"
 description = "Veritium — plataforma de inteligencia documental agentica — clasificacion, extraccion y validacion de documentos empresariales"
 readme = "README.md"
 authors = [
