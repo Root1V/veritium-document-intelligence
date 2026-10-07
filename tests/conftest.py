@@ -48,7 +48,7 @@ def make_context(
     reference_employees: dict[str, str] | None = None,
 ) -> ValidationContext:
     return ValidationContext(
-        batch_id=uuid.uuid4(),
+        case_id=uuid.uuid4(),
         current_document=current,
         sibling_documents=siblings or [],
         request_payload=RequestInputPayload(data=request_payload or {}),

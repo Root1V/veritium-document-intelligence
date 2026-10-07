@@ -1,12 +1,14 @@
-"""Batch orchestrator: runs every document in a batch through
-parse -> classify -> extract -> persist, then a single unified validation
-pass (all 6 rule categories, since cross-document/conditional rules need
-every sibling's fields already extracted), then per-field review routing.
+"""Case run orchestrator (VRT-25): one evaluation of a case. Extracts the
+documents added since the previous run (parse -> segment -> classify ->
+extract -> persist), then re-validates the whole case in a single unified
+pass (all 6 rule categories plus the semantic consistency check, since
+cross-document rules need every document's fields), then per-field review
+routing.
 
-Deliberately NOT Temporal/Prefect in Phase 0 (see plan) — a plain async
-function invoked from FastAPI ``BackgroundTasks``. Each stage is still
-OTEL-traced and structured so promoting this to a durable workflow engine
-later is mechanical, not a rewrite.
+Still a plain async function invoked from FastAPI ``BackgroundTasks`` — the
+durable, parallel executor on aeon replaces this entrypoint in VRT-26
+(ADR-0003). Each stage is OTEL-traced and the state lives in the DB, so that
+promotion is mechanical, not a rewrite.
 """
 
 from __future__ import annotations
@@ -25,6 +27,7 @@ from idp.domain.envelope import Extracted
 from idp.domain.request_payload import RequestInputPayload
 from idp.domain.schemas import schema_for
 from idp.domain.schemas.generic import GenericSchema
+from idp.domain.semantic import SemanticCatalog
 from idp.domain.semantic_resolution import ConsolidatedView, DocumentExtraction, resolve_case
 from idp.extraction.agentic.loop import ExtractionIncomplete
 from idp.observability.otel import traced_stage
@@ -33,7 +36,8 @@ from idp.parsing.docling_backend import DoclingBackend
 from idp.parsing.paddleocr_backend import PaddleOCRBackend
 from idp.persistence.models import ValidationIssue as ValidationIssueModel
 from idp.persistence.repositories import (
-    BatchRepository,
+    CaseRepository,
+    CaseRunRepository,
     DocumentRepository,
     ExtractionRepository,
     ReviewRepository,
@@ -43,6 +47,7 @@ from idp.persistence.repositories import (
     ValidationRuleRepository,
 )
 from idp.parsing.normalize import ParsedDocument, slice_by_pages
+from idp.pipeline.provenance import build_provenance
 from idp.pipeline.stages import classify_document, extract_document, parse_document, segment_document, suggest_type
 from idp.review.queue import enqueue_review_items
 from idp.review.routing import find_review_candidates
@@ -142,14 +147,24 @@ async def build_default_rules(settings: Settings, session: AsyncSession) -> list
     return hardcoded + data_driven
 
 
-async def resolve_semantic_view(session: AsyncSession, documents: list[DocumentFields]) -> ConsolidatedView | None:
+async def resolve_semantic_view(
+    session: AsyncSession, documents: list[DocumentFields], *, catalog_version: int | None = None
+) -> ConsolidatedView | None:
     """The case's consolidated semantic view (VRT-23) over every document
-    that reached extraction, resolved against the latest published catalog.
-    None when no catalog is published."""
-    active = await SemanticCatalogRepository(session).load_active()
-    if active is None:
-        return None
-    catalog, version = active
+    that reached extraction — against ``catalog_version`` when the case's
+    profile pins one, else the latest published catalog. None when there is
+    no catalog to resolve against."""
+    repo = SemanticCatalogRepository(session)
+    if catalog_version is not None:
+        row = await repo.get_version(catalog_version)
+        if row is None:
+            return None
+        catalog, version = SemanticCatalog.model_validate(row.definition), row.version
+    else:
+        active = await repo.load_active()
+        if active is None:
+            return None
+        catalog, version = active
     extractions = [
         DocumentExtraction(document_id=d.document_id, document_type=d.document_type, payload=d.payload)
         for d in documents
@@ -177,7 +192,7 @@ async def _classify_and_extract(
     session: AsyncSession,
     parsed: ParsedDocument,
     document_id: uuid.UUID,
-    batch_id: uuid.UUID,
+    case_id: uuid.UUID,
     parser_backend_name: str,
     document_repo: DocumentRepository,
     extraction_repo: ExtractionRepository,
@@ -225,7 +240,7 @@ async def _classify_and_extract(
             settings,
             outcome.schema_instance,
             document_id=document_id,
-            batch_id=batch_id,
+            case_id=case_id,
             type_suggestion_repo=type_suggestion_repo,
         )
 
@@ -242,7 +257,7 @@ async def _suggest_type_if_promising(
     generic_result: GenericSchema,
     *,
     document_id: uuid.UUID,
-    batch_id: uuid.UUID,
+    case_id: uuid.UUID,
     type_suggestion_repo: TypeSuggestionRepository,
 ) -> None:
     """Best-effort: a document that fell into 'generic' gets one more LLM
@@ -260,7 +275,7 @@ async def _suggest_type_if_promising(
         return
     await type_suggestion_repo.create(
         document_id=document_id,
-        batch_id=batch_id,
+        case_id=case_id,
         suggested_type_name=proposal.suggested_type_name,
         suggested_display_name=proposal.suggested_display_name or proposal.suggested_type_name,
         rationale=proposal.rationale,
@@ -273,7 +288,7 @@ async def _process_uploaded_file(
     settings: Settings,
     session: AsyncSession,
     backend: ParserBackend,
-    batch_id: uuid.UUID,
+    case_id: uuid.UUID,
     document_id: uuid.UUID,
     storage_key: str,
     filename: str,
@@ -296,7 +311,7 @@ async def _process_uploaded_file(
     row (same storage_key — it's the same physical file, no re-upload) and
     are classified/extracted independently, with per-segment failure
     isolation matching the existing per-document isolation in
-    ``process_batch``."""
+    ``process_case_run``."""
     await document_repo.set_status(document_id, "parsing")
     await session.commit()
     file_bytes = await asyncio.to_thread(object_store.get, storage_key)
@@ -309,7 +324,7 @@ async def _process_uploaded_file(
             session=session,
             parsed=parsed,
             document_id=document_id,
-            batch_id=batch_id,
+            case_id=case_id,
             parser_backend_name=backend.name,
             document_repo=document_repo,
             extraction_repo=extraction_repo,
@@ -323,7 +338,7 @@ async def _process_uploaded_file(
     for segment in segments:
         sliced = slice_by_pages(parsed, segment.start_page, segment.end_page)
         child = await document_repo.create_child(
-            batch_id=batch_id,
+            case_id=case_id,
             parent_document_id=document_id,
             storage_key=storage_key,
             original_filename=f"{filename}#p{segment.start_page}-{segment.end_page}",
@@ -337,7 +352,7 @@ async def _process_uploaded_file(
                 session=session,
                 parsed=sliced,
                 document_id=child.id,
-                batch_id=batch_id,
+                case_id=case_id,
                 parser_backend_name=backend.name,
                 document_repo=document_repo,
                 extraction_repo=extraction_repo,
@@ -355,118 +370,191 @@ async def _process_uploaded_file(
     return all_fields
 
 
-async def process_batch(
+async def process_case_run(
     *,
     settings: Settings,
     session: AsyncSession,
-    batch_id: uuid.UUID,
+    case_id: uuid.UUID,
+    run_id: uuid.UUID,
     object_store: ObjectStore,
     reference_data: ReferenceDataPort,
     external_system: ExternalSystemPort,
 ) -> None:
-    batch_repo = BatchRepository(session)
+    """One evaluation of a case. Only documents still ``uploaded`` (added
+    since the previous run) go through extraction; validation then covers
+    every document of the case that has an extraction, so cross-document
+    and semantic checks see the case as it is now. The previous run's
+    issues are superseded, never deleted."""
+    case_repo = CaseRepository(session)
+    run_repo = CaseRunRepository(session)
     document_repo = DocumentRepository(session)
     extraction_repo = ExtractionRepository(session)
     validation_repo = ValidationRepository(session)
     review_repo = ReviewRepository(session)
     type_suggestion_repo = TypeSuggestionRepository(session)
 
-    batch = await batch_repo.get(batch_id)
-    if batch is None:
-        raise ValueError(f"batch not found: {batch_id}")
-
-    await batch_repo.set_status(batch_id, "processing")
-    await session.commit()
-    backend = make_parser_backend(settings)
-    request_payload = RequestInputPayload(data=batch.request_input_payload or {})
-
-    all_fields: list[DocumentFields] = []
-    for document in batch.documents:
-        with traced_stage("process_document", batch_id=str(batch_id), document_id=str(document.id)):
-            try:
-                fields = await _process_uploaded_file(
-                    settings=settings,
-                    session=session,
-                    backend=backend,
-                    batch_id=batch_id,
-                    document_id=document.id,
-                    storage_key=document.storage_key,
-                    filename=document.original_filename,
-                    object_store=object_store,
-                    document_repo=document_repo,
-                    extraction_repo=extraction_repo,
-                    type_suggestion_repo=type_suggestion_repo,
-                )
-            except ExtractionIncomplete:
-                await document_repo.mark_needs_review(document.id)
-                await document_repo.set_status(document.id, "needs_review")
-                fields = []
-            except Exception:
-                # A single document's failure (e.g. the configured LLM/VLM
-                # endpoint being unreachable) must not leave the whole batch
-                # stuck in "processing" with nothing committed — mark this
-                # document failed and keep going with the rest of the batch.
-                # The OTEL span above already records the exception.
-                await document_repo.set_status(document.id, "failed")
-                fields = []
-        await session.commit()
-        all_fields.extend(fields)
+    case = await case_repo.get(case_id)
+    run = await run_repo.get(run_id)
+    if case is None or run is None:
+        raise ValueError(f"case run not found: case={case_id} run={run_id}")
 
     rules = await build_default_rules(settings, session)
-    semantic_view = await resolve_semantic_view(session, all_fields)
-    for current in all_fields:
-        await document_repo.set_status(current.document_id, "validating")
-        await session.commit()
-        siblings = [f for f in all_fields if f.document_id != current.document_id]
-        context = ValidationContext(
-            batch_id=batch_id,
-            current_document=current,
-            sibling_documents=siblings,
-            request_payload=request_payload,
-            reference_data=reference_data,
-            external_system=external_system,
-            semantic_view=semantic_view,
-        )
-        try:
-            with traced_stage("validate", batch_id=str(batch_id), document_id=str(current.document_id)):
-                results = await run_validation(rules, context)
+    profile_version = case.profile_version
+    provenance = build_provenance(settings, profile_version=profile_version, rules=rules)
+    await run_repo.mark_running(run, provenance=provenance)
+    await case_repo.set_status(case_id, "processing")
+    await session.commit()
 
-            for result in results:
-                if not result.passed:
-                    await validation_repo.save_issue(
-                        ValidationIssueModel(
-                            document_id=current.document_id,
-                            batch_id=batch_id,
-                            rule_id=result.rule_id,
-                            category=result.category.value,
-                            field_path=result.field_path,
-                            severity=result.severity.value if result.severity else "warning",
-                            message=result.message,
-                            expected=_jsonable(result.expected),
-                            actual=_jsonable(result.actual),
-                            confidence=result.confidence,
-                            confidence_method=result.confidence_method.value,
-                            explanation=result.explanation,
-                        )
+    try:
+        backend = make_parser_backend(settings)
+        request_payload = RequestInputPayload(data=case.request_input_payload or {})
+
+        for document in [d for d in case.documents if d.status == "uploaded"]:
+            with traced_stage("process_document", case_id=str(case_id), document_id=str(document.id)):
+                try:
+                    await _process_uploaded_file(
+                        settings=settings,
+                        session=session,
+                        backend=backend,
+                        case_id=case_id,
+                        document_id=document.id,
+                        storage_key=document.storage_key,
+                        filename=document.original_filename,
+                        object_store=object_store,
+                        document_repo=document_repo,
+                        extraction_repo=extraction_repo,
+                        type_suggestion_repo=type_suggestion_repo,
                     )
+                except ExtractionIncomplete:
+                    await document_repo.mark_needs_review(document.id)
+                    await document_repo.set_status(document.id, "needs_review")
+                except Exception:
+                    # A single document's failure (e.g. the configured
+                    # LLM/VLM endpoint being unreachable) must not leave the
+                    # whole case stuck in "processing" — mark this document
+                    # failed and keep going. The OTEL span records the error.
+                    await document_repo.set_status(document.id, "failed")
+            await session.commit()
 
-            document = await document_repo.get(current.document_id)
-            if document is not None and document.extraction is not None:
-                schema_cls = schema_for(current.document_type)
-                schema_instance = schema_cls.model_validate(document.extraction.payload)
-                candidates = find_review_candidates(schema_instance, results, confidence_threshold=settings.review_confidence_threshold)
-                if candidates:
-                    await enqueue_review_items(review_repo, document_id=current.document_id, candidates=candidates)
-                    await document_repo.mark_needs_review(current.document_id)
-                await document_repo.set_status(current.document_id, "needs_review" if candidates else "completed")
-        except Exception:
-            # Same principle as the extraction loop: one document's
-            # validation blowing up (e.g. a reference-data/external-system
-            # port erroring) must not lose the rest of the batch's progress.
-            await document_repo.set_status(current.document_id, "failed")
+        all_fields = await case_document_fields(document_repo, case_id)
+        catalog_version = profile_version.semantic_catalog_version if profile_version is not None else None
+        semantic_view = await resolve_semantic_view(session, all_fields, catalog_version=catalog_version)
+        run.provenance = {**provenance, "semantic_catalog_version": semantic_view.catalog_version if semantic_view else None}
+        await validation_repo.supersede_active(case_id)
         await session.commit()
 
-    await batch_repo.set_status(batch_id, "completed")
+        for current in all_fields:
+            await _validate_document(
+                settings=settings,
+                session=session,
+                current=current,
+                siblings=[f for f in all_fields if f.document_id != current.document_id],
+                case_id=case_id,
+                run_id=run.id,
+                rules=rules,
+                request_payload=request_payload,
+                reference_data=reference_data,
+                external_system=external_system,
+                semantic_view=semantic_view,
+                document_repo=document_repo,
+                validation_repo=validation_repo,
+                review_repo=review_repo,
+            )
+
+        await case_repo.set_status(case_id, "completed")
+        await run_repo.mark_finished(run, status="completed")
+        await session.commit()
+    except Exception as exc:
+        await session.rollback()
+        run = await run_repo.get(run_id)
+        if run is not None:
+            await run_repo.mark_finished(run, status="failed", error=f"{type(exc).__name__}: {exc}")
+        await case_repo.set_status(case_id, "failed")
+        await session.commit()
+        raise
+
+
+async def case_document_fields(document_repo: DocumentRepository, case_id: uuid.UUID) -> list[DocumentFields]:
+    """Every document of the case that has an extraction, rebuilt from the
+    stored payload — the same shape extraction returns, whether the
+    document was extracted in this run or an earlier one."""
+    out: list[DocumentFields] = []
+    for document in await document_repo.list_for_case(case_id):
+        if document.extraction is None or document.document_type is None:
+            continue
+        payload = document.extraction.payload
+        fields = {name: env["value"] for name, env in payload.items() if isinstance(env, dict) and "value" in env}
+        out.append(DocumentFields(document_id=document.id, document_type=document.document_type, fields=fields, payload=payload))
+    return out
+
+
+async def _validate_document(
+    *,
+    settings: Settings,
+    session: AsyncSession,
+    current: DocumentFields,
+    siblings: list[DocumentFields],
+    case_id: uuid.UUID,
+    run_id: uuid.UUID,
+    rules: list[ValidationRule],
+    request_payload: RequestInputPayload,
+    reference_data: ReferenceDataPort,
+    external_system: ExternalSystemPort,
+    semantic_view: ConsolidatedView | None,
+    document_repo: DocumentRepository,
+    validation_repo: ValidationRepository,
+    review_repo: ReviewRepository,
+) -> None:
+    await document_repo.set_status(current.document_id, "validating")
+    await session.commit()
+    context = ValidationContext(
+        case_id=case_id,
+        current_document=current,
+        sibling_documents=siblings,
+        request_payload=request_payload,
+        reference_data=reference_data,
+        external_system=external_system,
+        semantic_view=semantic_view,
+    )
+    try:
+        with traced_stage("validate", case_id=str(case_id), document_id=str(current.document_id)):
+            results = await run_validation(rules, context)
+
+        for result in results:
+            if not result.passed:
+                await validation_repo.save_issue(
+                    ValidationIssueModel(
+                        document_id=current.document_id,
+                        case_id=case_id,
+                        case_run_id=run_id,
+                        rule_id=result.rule_id,
+                        category=result.category.value,
+                        field_path=result.field_path,
+                        severity=result.severity.value if result.severity else "warning",
+                        message=result.message,
+                        expected=_jsonable(result.expected),
+                        actual=_jsonable(result.actual),
+                        confidence=result.confidence,
+                        confidence_method=result.confidence_method.value,
+                        explanation=result.explanation,
+                    )
+                )
+
+        document = await document_repo.get(current.document_id)
+        if document is not None and document.extraction is not None:
+            schema_instance = schema_for(current.document_type).model_validate(document.extraction.payload)
+            candidates = find_review_candidates(schema_instance, results, confidence_threshold=settings.review_confidence_threshold)
+            # A re-evaluation must not ask a human twice about the same field.
+            new_candidates = [c for c in candidates if not await review_repo.has_item_for_field(current.document_id, c.field_path)]
+            if new_candidates:
+                await enqueue_review_items(review_repo, document_id=current.document_id, candidates=new_candidates)
+                await document_repo.mark_needs_review(current.document_id)
+            pending = new_candidates or await review_repo.has_pending_for_document(current.document_id)
+            await document_repo.set_status(current.document_id, "needs_review" if pending else "completed")
+    except Exception:
+        # One document's validation blowing up (e.g. a reference-data or
+        # external-system port erroring) must not lose the rest of the case.
+        await document_repo.set_status(current.document_id, "failed")
     await session.commit()
 
 

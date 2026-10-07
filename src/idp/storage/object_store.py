@@ -19,7 +19,7 @@ class ObjectStore(Protocol):
 
     def get(self, key: str) -> bytes: ...
 
-    def key_for(self, *, tenant: str, batch_id: str, document_id: str, filename: str) -> str: ...
+    def key_for(self, *, tenant: str, case_id: str, document_id: str, filename: str) -> str: ...
 
 
 class S3ObjectStore:
@@ -49,7 +49,7 @@ class S3ObjectStore:
         resp = self._client.get_object(Bucket=self._bucket, Key=key)
         return resp["Body"].read()
 
-    def key_for(self, *, tenant: str, batch_id: str, document_id: str, filename: str) -> str:
+    def key_for(self, *, tenant: str, case_id: str, document_id: str, filename: str) -> str:
         # `tenant` costs nothing to include now and avoids a storage-key
         # migration when multi-tenancy lands (roadmap Fase 1+ item 5).
-        return f"{tenant}/{batch_id}/{document_id}/{filename}"
+        return f"{tenant}/{case_id}/{document_id}/{filename}"

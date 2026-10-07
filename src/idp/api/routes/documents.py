@@ -67,7 +67,7 @@ async def list_documents(
         documents=[
             DocumentSummary(
                 id=doc.id,
-                batch_id=doc.batch_id,
+                batch_id=doc.case_id,
                 status=doc.status,
                 document_type=doc.document_type,
                 classification_confidence=doc.classification_confidence,
@@ -126,6 +126,6 @@ async def get_document(document_id: uuid.UUID, session: AsyncSession = Depends(g
                 confidence_method=issue.confidence_method,
                 explanation=issue.explanation,
             )
-            for issue in document.validation_issues
+            for issue in document.active_validation_issues
         ],
     )

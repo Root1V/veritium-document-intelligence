@@ -46,14 +46,14 @@ def get_tracer(name: str = "idp") -> trace.Tracer:
 
 
 @contextmanager
-def traced_stage(stage_name: str, *, document_id: str | None = None, batch_id: str | None = None, **attrs: Any) -> Iterator[Span]:
+def traced_stage(stage_name: str, *, document_id: str | None = None, case_id: str | None = None, **attrs: Any) -> Iterator[Span]:
     """One span per pipeline stage (parse/classify/extract/validate/review)."""
     tracer = get_tracer()
     with tracer.start_as_current_span(f"pipeline.stage.{stage_name}") as span:
         if document_id:
             span.set_attribute("idp.document_id", document_id)
-        if batch_id:
-            span.set_attribute("idp.batch_id", batch_id)
+        if case_id:
+            span.set_attribute("idp.case_id", case_id)
         for k, v in attrs.items():
             span.set_attribute(f"idp.{k}", v)
         try:

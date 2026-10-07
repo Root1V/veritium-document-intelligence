@@ -20,8 +20,8 @@ import json
 import pytest
 
 from idp.persistence.db import get_session_factory
-from idp.persistence.repositories import BatchRepository, DocumentRepository, ReferenceDataRepository
-from idp.pipeline.orchestrator import process_batch
+from idp.persistence.repositories import CaseRepository, CaseRunRepository, DocumentRepository, ReferenceDataRepository
+from idp.pipeline.orchestrator import process_case_run
 from idp.storage.object_store import S3ObjectStore
 from idp.validation.ports import StubExternalSystemPort
 from tests.conftest import FIXTURES_DIR, GOLDEN_DIR, normalize_extracted_string
@@ -37,20 +37,21 @@ async def _run_fixture(live_settings, filename: str):
     object_store.ensure_bucket()
 
     async with factory() as session:
-        batch_repo = BatchRepository(session)
         document_repo = DocumentRepository(session)
-        batch = await batch_repo.create()
+        case = await CaseRepository(session).create()
 
-        document = await document_repo.create(batch_id=batch.id, storage_key="", original_filename=filename)
-        storage_key = object_store.key_for(tenant="default", batch_id=str(batch.id), document_id=str(document.id), filename=filename)
+        document = await document_repo.create(case_id=case.id, storage_key="", original_filename=filename)
+        storage_key = object_store.key_for(tenant="default", case_id=str(case.id), document_id=str(document.id), filename=filename)
         document.storage_key = storage_key
         object_store.put(storage_key, (FIXTURES_DIR / filename).read_bytes(), content_type="image/png")
+        run = await CaseRunRepository(session).create_next(case, trigger="submit")
         await session.commit()
 
-        await process_batch(
+        await process_case_run(
             settings=live_settings,
             session=session,
-            batch_id=batch.id,
+            case_id=case.id,
+            run_id=run.id,
             object_store=object_store,
             reference_data=ReferenceDataRepository(session),
             external_system=StubExternalSystemPort(),

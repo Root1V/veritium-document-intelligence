@@ -124,6 +124,7 @@ Veritium pasa de "subir documentos sueltos" a ser una **capacidad de decisión d
 - `case_runs` con la procedencia completa (versiones de código, perfil, catálogo, reglas, modelos, prompts y OCR).
 - `POST /v1/cases` (202 + `Idempotency-Key`), `POST /v1/cases/{id}/documents`, `GET /v1/cases/{id}` y `GET /v1/cases/{id}/result` (contrato v1, [ADR-0005](adr/0005-contrato-resultado-outbox-webhooks.md)). Rol `integracion`.
 - `/batches` se mantiene como alias con el perfil `ad-hoc`; el frontend no cambia en F1.
+- Re-evaluación al agregar documentos: solo se extraen los nuevos y se re-valida todo el expediente; los hallazgos previos quedan `superseded` (no se borran) y un campo ya enviado a revisión no se vuelve a encolar.
 
 ## VRT-26 — Ejecución durable sobre aeon
 **Why:** hoy un expediente corre en secuencia dentro de `BackgroundTasks`; si el proceso cae, se pierde ([ADR-0003](adr/0003-ejecucion-sobre-aeon.md)).
@@ -184,7 +185,7 @@ Veritium pasa de "subir documentos sueltos" a ser una **capacidad de decisión d
 
 ## F3 — Expediente y revisión
 ## VRT-38 — Vista E2E del expediente
-**Why:** el ejecutivo necesita ver el resultado completo y su evidencia en un solo lugar. **Scope:** veredicto, condiciones, entidades consolidadas y visor con página y bbox correctos. Absorbe VRT-17, VRT-18 y VRT-20.
+**Why:** el ejecutivo necesita ver el resultado completo y su evidencia en un solo lugar. **Scope:** veredicto, condiciones, entidades consolidadas y visor con página y bbox correctos; miniaturas que soporten imágenes (hoy el visor de PDF falla con PNG/JPG). Absorbe VRT-17, VRT-18 y VRT-20.
 ## VRT-39 — Corrección con motivo y sustento
 **Why:** sin un motivo codificado no se puede medir por qué se corrige. **Scope:** código de motivo obligatorio + sustento libre, auditados.
 ## VRT-40 — Reproceso selectivo

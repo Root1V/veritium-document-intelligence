@@ -63,7 +63,7 @@ async def list_validation_issues(
                 document_id=row.document_id,
                 document_filename=row.document.original_filename if row.document else None,
                 document_type=row.document.document_type if row.document else None,
-                batch_id=row.batch_id,
+                batch_id=row.case_id,
                 rule_id=row.rule_id,
                 category=row.category,
                 field_path=row.field_path,

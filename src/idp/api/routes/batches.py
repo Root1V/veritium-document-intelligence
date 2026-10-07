@@ -1,7 +1,9 @@
-"""POST /batches (upload), GET /batches/{id} (status + documents) and
-GET /batches/{id}/stream (the same payload, pushed over SSE as it changes —
-see the stream_batch docstring for why this polls the DB server-side
-instead of the client polling the REST endpoint every 2s)."""
+"""Legacy v0 API, kept for the current web UI (ADR-0002): POST /batches
+(upload), GET /batches/{id} (status + documents), GET /batches/{id}/stream
+(the same payload over SSE — see stream_batch for why it polls the DB
+server-side) and GET /batches/{id}/entities. A "batch" is a case (VRT-25)
+under the built-in ``ad-hoc`` profile; the JSON keeps its v0 field names.
+Integrations use /v1/cases."""
 
 from __future__ import annotations
 
@@ -20,16 +22,19 @@ from idp.api.deps import get_app_settings, get_current_user, get_db_session, get
 from idp.api.schemas import DocumentSummary
 from idp.config import Settings
 from idp.persistence.db import get_session_factory
-from idp.persistence.models import Batch
-from idp.domain.semantic_resolution import ConsolidatedView, DocumentExtraction, resolve_case
-from idp.persistence.repositories import BatchRepository, DocumentRepository, SemanticCatalogRepository
+from idp.persistence.models import Case
+from idp.api.case_service import open_run, read_uploads, resolve_profile_version, store_uploads
+from idp.domain.process_profile_seed import AD_HOC_KEY
+from idp.domain.semantic_resolution import ConsolidatedView
+from idp.persistence.repositories import CaseRepository, DocumentRepository
+from idp.pipeline.orchestrator import case_document_fields, resolve_semantic_view
 from idp.storage.object_store import S3ObjectStore
-from idp.worker.tasks import run_batch
+from idp.worker.tasks import run_case
 
 router = APIRouter(prefix="/batches", tags=["batches"], dependencies=[Depends(get_current_user)])
 
 _STREAM_POLL_SECONDS = 1.0
-_TERMINAL_BATCH_STATUSES = {"completed"}
+_TERMINAL_BATCH_STATUSES = {"completed", "failed"}
 
 
 class BatchStatusResponse(BaseModel):
@@ -42,14 +47,14 @@ class BatchCreateResponse(BaseModel):
     batch_id: uuid.UUID
 
 
-def _to_response(batch: Batch) -> BatchStatusResponse:
+def _to_response(case: Case) -> BatchStatusResponse:
     return BatchStatusResponse(
-        id=batch.id,
-        status=batch.status,
+        id=case.id,
+        status=case.status,
         documents=[
             DocumentSummary(
                 id=doc.id,
-                batch_id=doc.batch_id,
+                batch_id=doc.case_id,
                 status=doc.status,
                 document_type=doc.document_type,
                 classification_confidence=doc.classification_confidence,
@@ -59,7 +64,7 @@ def _to_response(batch: Batch) -> BatchStatusResponse:
                 page_start=doc.page_start,
                 page_end=doc.page_end,
             )
-            for doc in batch.documents
+            for doc in case.documents
         ],
     )
 
@@ -74,33 +79,24 @@ async def create_batch(
     object_store: S3ObjectStore = Depends(get_object_store),
 ) -> BatchCreateResponse:
     payload_dict = json.loads(request_input_payload) if request_input_payload else None
-
-    batch_repo = BatchRepository(session)
-    document_repo = DocumentRepository(session)
-
-    batch = await batch_repo.create(request_input_payload=payload_dict)
-
-    for upload in files:
-        content = await upload.read()
-        document = await document_repo.create(batch_id=batch.id, storage_key="", original_filename=upload.filename or "unnamed")
-        storage_key = object_store.key_for(tenant="default", batch_id=str(batch.id), document_id=str(document.id), filename=upload.filename or "original")
-        document.storage_key = storage_key
-        object_store.put(storage_key, content, content_type=upload.content_type or "application/octet-stream")
-
+    uploads = await read_uploads(files)
+    ad_hoc = await resolve_profile_version(session, AD_HOC_KEY, None)
+    case = await CaseRepository(session).create(request_input_payload=payload_dict, profile_version_id=ad_hoc.id)
+    await store_uploads(session, object_store, case, uploads)
+    run = await open_run(session, case, trigger="submit")
     await session.commit()
 
-    background_tasks.add_task(run_batch, settings, batch.id)
+    background_tasks.add_task(run_case, settings, case.id, run.id)
 
-    return BatchCreateResponse(batch_id=batch.id)
+    return BatchCreateResponse(batch_id=case.id)
 
 
 @router.get("/{batch_id}", response_model=BatchStatusResponse)
 async def get_batch(batch_id: uuid.UUID, session: AsyncSession = Depends(get_db_session)) -> BatchStatusResponse:
-    batch_repo = BatchRepository(session)
-    batch = await batch_repo.get(batch_id)
-    if batch is None:
+    case = await CaseRepository(session).get(batch_id)
+    if case is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="batch not found")
-    return _to_response(batch)
+    return _to_response(case)
 
 
 @router.get("/{batch_id}/stream")
@@ -134,11 +130,11 @@ async def stream_batch(
             if await request.is_disconnected():
                 return
             async with factory() as session:
-                batch = await BatchRepository(session).get(batch_id)
-            if batch is None:
+                case = await CaseRepository(session).get(batch_id)
+            if case is None:
                 return
-            payload = _to_response(batch).model_dump_json()
-            is_terminal = batch.status in _TERMINAL_BATCH_STATUSES
+            payload = _to_response(case).model_dump_json()
+            is_terminal = case.status in _TERMINAL_BATCH_STATUSES
             if payload != last_payload:
                 yield f"data: {payload}\n\n"
                 last_payload = payload
@@ -155,17 +151,12 @@ async def get_batch_entities(batch_id: uuid.UUID, session: AsyncSession = Depend
     attribute, the resolved value, whether the documents agree, and the
     evidence per source. Becomes the `entities` section of the case result
     contract in VRT-25."""
-    if await BatchRepository(session).get(batch_id) is None:
+    case = await CaseRepository(session).get(batch_id)
+    if case is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="batch not found")
-    active = await SemanticCatalogRepository(session).load_active()
-    if active is None:
+    catalog_version = case.profile_version.semantic_catalog_version if case.profile_version is not None else None
+    view = await resolve_semantic_view(session, await case_document_fields(DocumentRepository(session), batch_id), catalog_version=catalog_version)
+    if view is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="no published semantic catalog")
-    catalog, version = active
-    documents = await DocumentRepository(session).list_for_batch(batch_id)
-    extractions = [
-        DocumentExtraction(document_id=d.id, document_type=d.document_type, payload=d.extraction.payload)
-        for d in documents
-        if d.extraction is not None and d.document_type is not None
-    ]
-    return resolve_case(catalog, extractions, catalog_version=version)
+    return view
 

@@ -30,6 +30,13 @@ class DataDrivenRule(ValidationRule):
         self._condition_program = compile_expression(row.condition_cel)
         self._applies_when_program = compile_expression(row.applies_when_cel) if row.applies_when_cel else None
 
+    @property
+    def definition_version(self) -> str:
+        """Identifies the exact rule definition that ran (for provenance):
+        an active CEL rule is immutable, so its last update stamps it."""
+        updated = self._row.updated_at or self._row.created_at
+        return updated.isoformat() if updated else "unknown"
+
     def applies_when(self, context: ValidationContext) -> bool:
         # applies_when() is synchronous in the ABC (validation/base.py) —
         # that's why this gate never has access to reference_data.*

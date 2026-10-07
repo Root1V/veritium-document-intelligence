@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from opentelemetry import trace
 
-from idp.api.routes import audit, auth, batches, document_types, documents, profiles, review, semantic_catalog, type_suggestions, users, validation, validation_rules
+from idp.api.routes import audit, auth, batches, cases, document_types, documents, profiles, review, semantic_catalog, type_suggestions, users, validation, validation_rules
 from idp.config import get_settings
 from idp.observability.otel import setup_tracing
 from idp.persistence.db import get_session_factory
@@ -44,6 +44,7 @@ def create_app() -> FastAPI:
     )
     app.include_router(auth.router)
     app.include_router(batches.router)
+    app.include_router(cases.router)
     app.include_router(documents.router)
     app.include_router(document_types.router)
     app.include_router(review.router)

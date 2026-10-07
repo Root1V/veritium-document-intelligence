@@ -31,7 +31,7 @@ class DocumentFields:
 
 @dataclass
 class ValidationContext:
-    batch_id: uuid.UUID
+    case_id: uuid.UUID
     current_document: DocumentFields
     sibling_documents: list[DocumentFields]
     request_payload: RequestInputPayload

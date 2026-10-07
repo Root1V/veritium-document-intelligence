@@ -7,7 +7,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import Text, func, or_, select
+from sqlalchemy import Text, func, or_, select, update
 from sqlalchemy import cast as sa_cast
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -18,7 +18,8 @@ from idp.domain.semantic import SemanticCatalog
 from idp.domain.semantic_seed import seed_catalog
 from idp.persistence.models import (
     AuditLogEntry,
-    Batch,
+    Case,
+    CaseRun,
     Document,
     DocumentTypeSuggestion,
     Extraction,
@@ -56,57 +57,116 @@ class UserRepository:
         return list(result.scalars().all())
 
 
-class BatchRepository:
+class CaseRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    async def create(self, *, tenant: str = "default", request_input_payload: dict | None = None) -> Batch:
-        batch = Batch(tenant=tenant, request_input_payload=request_input_payload)
-        self._session.add(batch)
+    async def create(
+        self,
+        *,
+        tenant: str = "default",
+        request_input_payload: dict | None = None,
+        profile_version_id: uuid.UUID | None = None,
+        external_ref: str | None = None,
+        channel: str = "backoffice",
+        idempotency_key: str | None = None,
+        idempotency_fingerprint: str | None = None,
+    ) -> Case:
+        case = Case(
+            tenant=tenant,
+            request_input_payload=request_input_payload,
+            profile_version_id=profile_version_id,
+            external_ref=external_ref,
+            channel=channel,
+            idempotency_key=idempotency_key,
+            idempotency_fingerprint=idempotency_fingerprint,
+        )
+        self._session.add(case)
         await self._session.flush()
-        return batch
+        return case
 
-    async def get(self, batch_id: uuid.UUID) -> Batch | None:
+    async def get(self, case_id: uuid.UUID) -> Case | None:
         # populate_existing=True — see DocumentRepository.get() for why this
         # is required, not optional: without it, polling GET /batches/{id}
         # within the same session as an in-flight pipeline run can return
         # stale (pre-extraction) document/relationship state.
         stmt = (
-            select(Batch)
-            .where(Batch.id == batch_id)
+            select(Case)
+            .where(Case.id == case_id)
             .options(
-                selectinload(Batch.documents).selectinload(Document.extraction),
-                selectinload(Batch.documents).selectinload(Document.validation_issues),
+                selectinload(Case.documents).selectinload(Document.extraction),
+                selectinload(Case.documents).selectinload(Document.active_validation_issues),
+                selectinload(Case.runs),
+                selectinload(Case.profile_version).selectinload(ProcessProfileVersion.profile),
             )
             .execution_options(populate_existing=True)
         )
         result = await self._session.execute(stmt)
         return result.scalar_one_or_none()
 
-    async def set_status(self, batch_id: uuid.UUID, status: str) -> None:
-        batch = await self._session.get(Batch, batch_id)
-        if batch is not None:
-            batch.status = status
+    async def get_by_idempotency_key(self, *, tenant: str, idempotency_key: str) -> Case | None:
+        stmt = select(Case.id).where(Case.tenant == tenant, Case.idempotency_key == idempotency_key)
+        case_id = await self._session.scalar(stmt)
+        return await self.get(case_id) if case_id is not None else None
+
+    async def list(self, *, external_ref: str | None = None, limit: int = 50, offset: int = 0) -> list[Case]:
+        stmt = select(Case).options(selectinload(Case.profile_version).selectinload(ProcessProfileVersion.profile))
+        if external_ref is not None:
+            stmt = stmt.where(Case.external_ref == external_ref)
+        stmt = stmt.order_by(Case.created_at.desc()).limit(limit).offset(offset)
+        return list((await self._session.scalars(stmt)).all())
+
+    async def set_status(self, case_id: uuid.UUID, status: str) -> None:
+        case = await self._session.get(Case, case_id)
+        if case is not None:
+            case.status = status
+
+
+class CaseRunRepository:
+    """Each evaluation of a case (VRT-25). See persistence/models.py::CaseRun."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def create_next(self, case: Case, *, trigger: str) -> CaseRun:
+        current_max = await self._session.scalar(select(func.max(CaseRun.run_number)).where(CaseRun.case_id == case.id))
+        run = CaseRun(case_id=case.id, run_number=(current_max or 0) + 1, trigger=trigger, profile_version_id=case.profile_version_id)
+        self._session.add(run)
+        await self._session.flush()
+        return run
+
+    async def get(self, run_id: uuid.UUID) -> CaseRun | None:
+        return await self._session.get(CaseRun, run_id)
+
+    async def has_active_run(self, case_id: uuid.UUID) -> bool:
+        stmt = select(func.count()).select_from(CaseRun).where(CaseRun.case_id == case_id, CaseRun.status.in_(("pending", "running")))
+        return bool(await self._session.scalar(stmt))
+
+    async def mark_running(self, run: CaseRun, *, provenance: dict) -> None:
+        run.status, run.provenance, run.started_at = "running", provenance, datetime.now(UTC)
+
+    async def mark_finished(self, run: CaseRun, *, status: str, error: str | None = None) -> None:
+        run.status, run.error, run.finished_at = status, error, datetime.now(UTC)
 
 
 class DocumentRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    async def create(self, *, batch_id: uuid.UUID, storage_key: str, original_filename: str) -> Document:
-        doc = Document(batch_id=batch_id, storage_key=storage_key, original_filename=original_filename)
+    async def create(self, *, case_id: uuid.UUID, storage_key: str, original_filename: str) -> Document:
+        doc = Document(case_id=case_id, storage_key=storage_key, original_filename=original_filename)
         self._session.add(doc)
         await self._session.flush()
         return doc
 
     async def create_child(
-        self, *, batch_id: uuid.UUID, parent_document_id: uuid.UUID, storage_key: str, original_filename: str, page_start: int, page_end: int
+        self, *, case_id: uuid.UUID, parent_document_id: uuid.UUID, storage_key: str, original_filename: str, page_start: int, page_end: int
     ) -> Document:
         """One logical document spawned by segmentation from a physical
         upload that bundled more than one — same storage_key as the parent
         (no re-upload needed, it's the same file), scoped to its page range."""
         doc = Document(
-            batch_id=batch_id,
+            case_id=case_id,
             storage_key=storage_key,
             original_filename=original_filename,
             parent_document_id=parent_document_id,
@@ -129,7 +189,7 @@ class DocumentRepository:
             .where(Document.id == document_id)
             .options(
                 selectinload(Document.extraction),
-                selectinload(Document.validation_issues),
+                selectinload(Document.active_validation_issues),
                 selectinload(Document.review_items),
             )
             .execution_options(populate_existing=True)
@@ -137,8 +197,17 @@ class DocumentRepository:
         result = await self._session.execute(stmt)
         return result.scalar_one_or_none()
 
-    async def list_for_batch(self, batch_id: uuid.UUID) -> list[Document]:
-        stmt = select(Document).where(Document.batch_id == batch_id).options(selectinload(Document.extraction))
+    async def list_for_case(self, case_id: uuid.UUID) -> list[Document]:
+        # populate_existing=True: within a case run, these Document objects
+        # are already in the session's identity map from before extraction
+        # (extraction=None); without it the freshly saved extractions are
+        # not seen and validation silently skips every document.
+        stmt = (
+            select(Document)
+            .where(Document.case_id == case_id)
+            .options(selectinload(Document.extraction))
+            .execution_options(populate_existing=True)
+        )
         result = await self._session.execute(stmt)
         return list(result.scalars().all())
 
@@ -237,13 +306,25 @@ class ValidationRepository:
         await self._session.flush()
         return issue
 
-    async def list_for_batch(self, batch_id: uuid.UUID) -> list[ValidationIssue]:
-        stmt = select(ValidationIssue).where(ValidationIssue.batch_id == batch_id)
+    async def list_for_case(self, case_id: uuid.UUID) -> list[ValidationIssue]:
+        """The case's current issues — those of its latest evaluation."""
+        stmt = select(ValidationIssue).where(ValidationIssue.case_id == case_id, ValidationIssue.superseded_at.is_(None))
         result = await self._session.execute(stmt)
         return list(result.scalars().all())
 
+    async def supersede_active(self, case_id: uuid.UUID) -> int:
+        """A new run re-evaluates the whole case: the previous run's issues
+        stay for audit but stop counting as current."""
+        result = await self._session.execute(
+            update(ValidationIssue)
+            .where(ValidationIssue.case_id == case_id, ValidationIssue.superseded_at.is_(None))
+            .values(superseded_at=datetime.now(UTC))
+        )
+        return result.rowcount or 0  # type: ignore[attr-defined]
+
     @staticmethod
     def _filtered(stmt, *, category: str | None, severity: str | None, rule_id: str | None, document_type: str | None):
+        stmt = stmt.where(ValidationIssue.superseded_at.is_(None))
         if category is not None:
             stmt = stmt.where(ValidationIssue.category == category)
         if severity is not None:
@@ -252,7 +333,7 @@ class ValidationRepository:
             stmt = stmt.where(ValidationIssue.rule_id == rule_id)
         if document_type is not None:
             # Only ValidationIssue rows tied to a real document can match a
-            # document_type filter — no rows here are batch-only today, but
+            # document_type filter — no rows here are case-only today, but
             # the FK is nullable (see the model), so an inner join is
             # correct: it's fine for this filter to exclude those.
             stmt = stmt.join(Document, Document.id == ValidationIssue.document_id).where(Document.document_type == document_type)
@@ -301,6 +382,18 @@ class ReviewRepository:
         self._session.add(item)
         await self._session.flush()
         return item
+
+    async def has_item_for_field(self, document_id: uuid.UUID, field_path: str) -> bool:
+        """True if this field was already sent to review (pending or
+        resolved). A re-evaluation of the case must not ask a human twice
+        about the same field — applying a correction and re-validating is
+        VRT-40."""
+        stmt = select(func.count()).select_from(ReviewItem).where(ReviewItem.document_id == document_id, ReviewItem.field_path == field_path)
+        return bool(await self._session.scalar(stmt))
+
+    async def has_pending_for_document(self, document_id: uuid.UUID) -> bool:
+        stmt = select(func.count()).select_from(ReviewItem).where(ReviewItem.document_id == document_id, ReviewItem.status == "pending")
+        return bool(await self._session.scalar(stmt))
 
     async def list_pending(self) -> list[ReviewItem]:
         stmt = select(ReviewItem).where(ReviewItem.status == "pending")
@@ -359,7 +452,7 @@ class TypeSuggestionRepository:
         self,
         *,
         document_id: uuid.UUID,
-        batch_id: uuid.UUID,
+        case_id: uuid.UUID,
         suggested_type_name: str,
         suggested_display_name: str,
         rationale: str,
@@ -367,7 +460,7 @@ class TypeSuggestionRepository:
     ) -> DocumentTypeSuggestion:
         row = DocumentTypeSuggestion(
             document_id=document_id,
-            batch_id=batch_id,
+            case_id=case_id,
             suggested_type_name=suggested_type_name,
             suggested_display_name=suggested_display_name,
             rationale=rationale,

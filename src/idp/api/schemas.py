@@ -10,7 +10,7 @@ from pydantic import BaseModel
 
 class DocumentSummary(BaseModel):
     id: uuid.UUID
-    batch_id: uuid.UUID
+    batch_id: uuid.UUID  # legacy name in the v0 API; it is the case id
     status: str
     document_type: str | None
     classification_confidence: float | None

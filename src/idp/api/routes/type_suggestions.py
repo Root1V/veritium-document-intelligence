@@ -86,7 +86,7 @@ def _to_response(row: DocumentTypeSuggestion) -> TypeSuggestionResponse:
     return TypeSuggestionResponse(
         id=row.id,
         document_id=row.document_id,
-        batch_id=row.batch_id,
+        batch_id=row.case_id,
         suggested_type_name=row.suggested_type_name,
         suggested_display_name=row.suggested_display_name,
         rationale=row.rationale,

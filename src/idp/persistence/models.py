@@ -44,19 +44,67 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
-class Batch(Base):
-    """Aggregate root: a 'solicitud' grouping one or more documents plus an
-    optional externally-supplied input payload."""
+class Case(Base):
+    """Aggregate root (VRT-25, ADR-0002): a client's case file ("expediente")
+    — the unit of work a business process hands to Veritium. It accumulates
+    documents over time (each addition triggers a new ``CaseRun``), pins the
+    process profile version it is evaluated under, and carries the verdict.
+    Formerly ``Batch`` (table ``batches``); the legacy ``/batches`` API keeps
+    working on top of it with the built-in ``ad-hoc`` profile.
 
-    __tablename__ = "batches"
+    ``request_input_payload`` is the caller's process data (form fields,
+    metadata) — what ``request_input`` rules and CEL's ``request`` read."""
+
+    __tablename__ = "cases"
+    __table_args__ = (UniqueConstraint("tenant", "idempotency_key", name="uq_cases_tenant_idempotency_key"),)
 
     id: Mapped[uuid.UUID] = _uuid_pk()
     tenant: Mapped[str] = mapped_column(String(64), default="default", nullable=False)
     status: Mapped[str] = mapped_column(String(32), default="uploaded", nullable=False)
     request_input_payload: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    # Null only for cases created before VRT-25.
+    profile_version_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("process_profile_versions.id"), nullable=True)
+    external_ref: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    channel: Mapped[str] = mapped_column(String(16), default="backoffice", server_default="backoffice", nullable=False)  # online|backoffice|bulk
+    idempotency_key: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    # sha256 of the original request; a replay with the same key but a
+    # different request is rejected instead of silently returning this case.
+    idempotency_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    verdict: Mapped[str | None] = mapped_column(String(32), nullable=True)  # continue|human_review|return_to_client (VRT-27)
+    verdict_reasons: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    verdict_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
-    documents: Mapped[list["Document"]] = relationship(back_populates="batch", cascade="all, delete-orphan")
+    documents: Mapped[list["Document"]] = relationship(back_populates="case", cascade="all, delete-orphan")
+    runs: Mapped[list["CaseRun"]] = relationship(back_populates="case", cascade="all, delete-orphan", order_by="CaseRun.run_number")
+    profile_version: Mapped["ProcessProfileVersion | None"] = relationship()
+
+
+class CaseRun(Base):
+    """One evaluation of a case: the initial submission, or each later
+    addition of documents. ``provenance`` records everything that produced
+    the result (code version, profile and catalog versions, models, OCR
+    backend, rule set) so a past result can be explained and reproduced.
+    ``execution_ref`` is the executor's handle (an aeon run id from
+    VRT-26 on)."""
+
+    __tablename__ = "case_runs"
+    __table_args__ = (UniqueConstraint("case_id", "run_number"),)
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    case_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("cases.id", ondelete="CASCADE"), nullable=False)
+    run_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    trigger: Mapped[str] = mapped_column(String(32), nullable=False)  # submit | documents_added
+    status: Mapped[str] = mapped_column(String(16), default="pending", server_default="pending", nullable=False)  # pending|running|completed|failed
+    profile_version_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("process_profile_versions.id"), nullable=True)
+    provenance: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    execution_ref: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    case: Mapped["Case"] = relationship(back_populates="runs")
 
 
 class Document(Base):
@@ -66,7 +114,7 @@ class Document(Base):
     __tablename__ = "documents"
 
     id: Mapped[uuid.UUID] = _uuid_pk()
-    batch_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("batches.id", ondelete="CASCADE"), nullable=False)
+    case_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("cases.id", ondelete="CASCADE"), nullable=False)
     status: Mapped[str] = mapped_column(String(32), default="uploaded", nullable=False)
     document_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
     classification_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
@@ -87,9 +135,15 @@ class Document(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
-    batch: Mapped["Batch"] = relationship(back_populates="documents")
+    case: Mapped["Case"] = relationship(back_populates="documents")
     extraction: Mapped["Extraction | None"] = relationship(back_populates="document", uselist=False, cascade="all, delete-orphan")
     validation_issues: Mapped[list["ValidationIssue"]] = relationship(back_populates="document", cascade="all, delete-orphan")
+    # The issues of the latest evaluation only — a new run supersedes the
+    # previous run's issues instead of deleting them (audit).
+    active_validation_issues: Mapped[list["ValidationIssue"]] = relationship(
+        primaryjoin="and_(Document.id == ValidationIssue.document_id, ValidationIssue.superseded_at.is_(None))",
+        viewonly=True,
+    )
     review_items: Mapped[list["ReviewItem"]] = relationship(back_populates="document", cascade="all, delete-orphan")
 
 
@@ -119,7 +173,8 @@ class ValidationIssue(Base):
 
     id: Mapped[uuid.UUID] = _uuid_pk()
     document_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("documents.id", ondelete="CASCADE"), nullable=True)
-    batch_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("batches.id", ondelete="CASCADE"), nullable=False)
+    case_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("cases.id", ondelete="CASCADE"), nullable=False)
+    case_run_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("case_runs.id", ondelete="SET NULL"), nullable=True)
     rule_id: Mapped[str] = mapped_column(String(128), nullable=False)
     category: Mapped[str] = mapped_column(String(32), nullable=False)
     field_path: Mapped[str | None] = mapped_column(String(256), nullable=True)
@@ -131,6 +186,8 @@ class ValidationIssue(Base):
     confidence_method: Mapped[str] = mapped_column(String(32), nullable=False)
     explanation: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    # Set when a later run of the same case re-evaluates it (VRT-25).
+    superseded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     document: Mapped["Document | None"] = relationship(back_populates="validation_issues")
 
@@ -187,7 +244,7 @@ class DocumentTypeSuggestion(Base):
 
     id: Mapped[uuid.UUID] = _uuid_pk()
     document_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("documents.id", ondelete="CASCADE"), nullable=False)
-    batch_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("batches.id", ondelete="CASCADE"), nullable=False)
+    case_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("cases.id", ondelete="CASCADE"), nullable=False)
     suggested_type_name: Mapped[str] = mapped_column(String(128), nullable=False)
     suggested_display_name: Mapped[str] = mapped_column(String(256), nullable=False)
     rationale: Mapped[str] = mapped_column(Text, nullable=False)
