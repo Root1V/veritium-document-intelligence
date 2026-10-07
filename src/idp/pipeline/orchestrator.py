@@ -25,6 +25,7 @@ from idp.domain.envelope import Extracted
 from idp.domain.request_payload import RequestInputPayload
 from idp.domain.schemas import schema_for
 from idp.domain.schemas.generic import GenericSchema
+from idp.domain.semantic_resolution import ConsolidatedView, DocumentExtraction, resolve_case
 from idp.extraction.agentic.loop import ExtractionIncomplete
 from idp.observability.otel import traced_stage
 from idp.parsing.base import ParserBackend
@@ -36,6 +37,7 @@ from idp.persistence.repositories import (
     DocumentRepository,
     ExtractionRepository,
     ReviewRepository,
+    SemanticCatalogRepository,
     TypeSuggestionRepository,
     ValidationRepository,
     ValidationRuleRepository,
@@ -55,6 +57,7 @@ from idp.validation.rules.generic import DataDrivenRule
 from idp.validation.rules.reference_data_rules import EmployeeCodeExistsInReferenceData, EmployeeNameExistsInReferenceData
 from idp.validation.rules.request_input_rules import ExpectedEmployeeCodeMatches
 from idp.validation.rules.self_rules import DniFormatValid, PayslipArithmeticConsistency
+from idp.validation.rules.semantic_rules import SemanticAttributeConsistency
 
 
 def make_parser_backend(settings: Settings) -> ParserBackend:
@@ -86,6 +89,7 @@ def _hardcoded_rules(settings: Settings) -> list[ValidationRule]:
         EmployeeCodeExistsInReferenceData(),
         EmployeeNameExistsInReferenceData(settings),
         InsurancePolicyVerifiedExternally(),
+        SemanticAttributeConsistency(),
     ]
 
 
@@ -105,6 +109,7 @@ HARDCODED_RULE_DESCRIPTIONS: dict[str, str] = {
     "batch.employee_name_matches_insured_name": "Compara el nombre del empleado en la boleta contra el nombre del asegurado en la declaracion de seguro de la misma solicitud (tolera variaciones de formato; escala a un LLM en casos ambiguos).",
     "reference_data.employee_code_exists": "Verifica que el codigo de empleado extraido exista en la tabla interna de empleados de referencia.",
     "reference_data.employee_name_matches_reference": "Cuando no hay codigo de empleado, busca el nombre extraido contra la tabla de empleados de referencia por similitud (tolera variaciones; escala a un LLM en casos ambiguos).",
+    "semantic.attribute_consistency": "Compara entre documentos del expediente cada atributo del catalogo semantico que comparten (DNI, nombre, ingresos, empleador, montos), segun el tipo de comparacion del atributo.",
     "external_system.insurance_policy_verified": "Verifica el numero de poliza contra un sistema externo de la aseguradora — hoy es un stub sin integracion real, ver /document-types u otra documentacion sobre 'sistema externo'.",
 }
 
@@ -135,6 +140,22 @@ async def build_default_rules(settings: Settings, session: AsyncSession) -> list
             continue
 
     return hardcoded + data_driven
+
+
+async def resolve_semantic_view(session: AsyncSession, documents: list[DocumentFields]) -> ConsolidatedView | None:
+    """The case's consolidated semantic view (VRT-23) over every document
+    that reached extraction, resolved against the latest published catalog.
+    None when no catalog is published."""
+    active = await SemanticCatalogRepository(session).load_active()
+    if active is None:
+        return None
+    catalog, version = active
+    extractions = [
+        DocumentExtraction(document_id=d.document_id, document_type=d.document_type, payload=d.payload)
+        for d in documents
+        if d.payload is not None
+    ]
+    return resolve_case(catalog, extractions, catalog_version=version)
 
 
 def flatten_top_level_fields(instance: BaseModel) -> dict[str, Any]:
@@ -212,6 +233,7 @@ async def _classify_and_extract(
         document_id=document_id,
         document_type=classification.document_type.value,
         fields=flatten_top_level_fields(outcome.schema_instance),
+        payload=outcome.schema_instance.model_dump(mode="json"),
     )
 
 
@@ -391,6 +413,7 @@ async def process_batch(
         all_fields.extend(fields)
 
     rules = await build_default_rules(settings, session)
+    semantic_view = await resolve_semantic_view(session, all_fields)
     for current in all_fields:
         await document_repo.set_status(current.document_id, "validating")
         await session.commit()
@@ -402,6 +425,7 @@ async def process_batch(
             request_payload=request_payload,
             reference_data=reference_data,
             external_system=external_system,
+            semantic_view=semantic_view,
         )
         try:
             with traced_stage("validate", batch_id=str(batch_id), document_id=str(current.document_id)):

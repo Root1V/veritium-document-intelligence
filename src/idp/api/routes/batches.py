@@ -21,7 +21,8 @@ from idp.api.schemas import DocumentSummary
 from idp.config import Settings
 from idp.persistence.db import get_session_factory
 from idp.persistence.models import Batch
-from idp.persistence.repositories import BatchRepository, DocumentRepository
+from idp.domain.semantic_resolution import ConsolidatedView, DocumentExtraction, resolve_case
+from idp.persistence.repositories import BatchRepository, DocumentRepository, SemanticCatalogRepository
 from idp.storage.object_store import S3ObjectStore
 from idp.worker.tasks import run_batch
 
@@ -146,3 +147,25 @@ async def stream_batch(
             await asyncio.sleep(_STREAM_POLL_SECONDS)
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
+@router.get("/{batch_id}/entities", response_model=ConsolidatedView)
+async def get_batch_entities(batch_id: uuid.UUID, session: AsyncSession = Depends(get_db_session)) -> ConsolidatedView:
+    """The batch's consolidated semantic view (VRT-23): for each role and
+    attribute, the resolved value, whether the documents agree, and the
+    evidence per source. Becomes the `entities` section of the case result
+    contract in VRT-25."""
+    if await BatchRepository(session).get(batch_id) is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="batch not found")
+    active = await SemanticCatalogRepository(session).load_active()
+    if active is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="no published semantic catalog")
+    catalog, version = active
+    documents = await DocumentRepository(session).list_for_batch(batch_id)
+    extractions = [
+        DocumentExtraction(document_id=d.id, document_type=d.document_type, payload=d.extraction.payload)
+        for d in documents
+        if d.extraction is not None and d.document_type is not None
+    ]
+    return resolve_case(catalog, extractions, catalog_version=version)
+

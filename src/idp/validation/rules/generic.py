@@ -42,14 +42,14 @@ class DataDrivenRule(ValidationRule):
         try:
             result = evaluate(
                 self._applies_when_program,
-                {"doc": context.current_document.fields, "request": context.request_payload.data},
+                _cel_env(context),
             )
         except CelEvaluationError:
             return False  # a gate that can't evaluate fails closed
         return bool(result)
 
     async def evaluate(self, context: ValidationContext) -> ValidationResult:
-        env: dict[str, Any] = {"doc": context.current_document.fields, "request": context.request_payload.data}
+        env: dict[str, Any] = _cel_env(context)
 
         if self.category == RuleCategory.REFERENCE_DATA:
             # The only I/O a data-driven rule can trigger: the same exact
@@ -91,3 +91,14 @@ class DataDrivenRule(ValidationRule):
             confidence_method=ConfidenceMethod.DETERMINISTIC,
             explanation=f"Regla data-driven (CEL): {self._row.condition_cel!r} -> {passed}.",
         )
+
+
+def _cel_env(context: ValidationContext) -> dict[str, Any]:
+    """Variables visible to a rule's CEL: `doc` (this document's fields),
+    `request` (the caller's process data) and `case` (the case's semantic
+    view, e.g. `case.titular.persona.dni`; empty when there is none)."""
+    return {
+        "doc": context.current_document.fields,
+        "request": context.request_payload.data,
+        "case": context.semantic_view.as_cel() if context.semantic_view is not None else {},
+    }

@@ -12,6 +12,8 @@ from sqlalchemy import cast as sa_cast
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from idp.domain.semantic import SemanticCatalog
+from idp.domain.semantic_seed import seed_catalog
 from idp.persistence.models import (
     AuditLogEntry,
     Batch,
@@ -20,6 +22,7 @@ from idp.persistence.models import (
     Extraction,
     ReferenceEmployee,
     ReviewItem,
+    SemanticCatalogVersion,
     User,
     ValidationIssue,
     ValidationRuleDefinition,
@@ -567,3 +570,76 @@ class ReferenceDataRepository:
         stmt = select(ReferenceEmployee).where(ReferenceEmployee.active.is_(True))
         result = await self._session.execute(stmt)
         return [(e.employee_code, e.full_name) for e in result.scalars().all()]
+
+
+class SemanticCatalogRepository:
+    """Backs api/routes/semantic_catalog.py and the pipeline's per-case
+    semantic resolution. See persistence/models.py::SemanticCatalogVersion."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def ensure_seed(self) -> None:
+        """Publish the in-code seed as version 1 if the table is empty —
+        idempotent, called at API startup."""
+        existing = await self._session.scalar(select(func.count()).select_from(SemanticCatalogVersion))
+        if existing:
+            return
+        catalog = seed_catalog()
+        self._session.add(
+            SemanticCatalogVersion(
+                version=1,
+                status="published",
+                definition=catalog.model_dump(mode="json"),
+                content_hash=catalog.content_hash(),
+                created_by="seed",
+                published_by="seed",
+                published_at=datetime.now(UTC),
+            )
+        )
+        await self._session.commit()
+
+    async def latest_published(self) -> SemanticCatalogVersion | None:
+        stmt = (
+            select(SemanticCatalogVersion)
+            .where(SemanticCatalogVersion.status == "published")
+            .order_by(SemanticCatalogVersion.version.desc())
+            .limit(1)
+        )
+        return await self._session.scalar(stmt)
+
+    async def load_active(self) -> tuple[SemanticCatalog, int] | None:
+        row = await self.latest_published()
+        if row is None:
+            return None
+        return SemanticCatalog.model_validate(row.definition), row.version
+
+    async def get_version(self, version: int) -> SemanticCatalogVersion | None:
+        return await self._session.scalar(select(SemanticCatalogVersion).where(SemanticCatalogVersion.version == version))
+
+    async def list_versions(self) -> list[SemanticCatalogVersion]:
+        result = await self._session.scalars(select(SemanticCatalogVersion).order_by(SemanticCatalogVersion.version.desc()))
+        return list(result)
+
+    async def create_draft(self, catalog: SemanticCatalog, *, created_by: str) -> SemanticCatalogVersion:
+        current_max = await self._session.scalar(select(func.max(SemanticCatalogVersion.version)))
+        row = SemanticCatalogVersion(
+            version=(current_max or 0) + 1,
+            status="draft",
+            definition=catalog.model_dump(mode="json"),
+            content_hash=catalog.content_hash(),
+            created_by=created_by,
+        )
+        self._session.add(row)
+        await self._session.commit()
+        await self._session.refresh(row)
+        return row
+
+    async def publish(self, row: SemanticCatalogVersion, *, published_by: str) -> SemanticCatalogVersion:
+        row.status = "published"
+        row.published_by = published_by
+        row.published_at = datetime.now(UTC)
+        await self._session.commit()
+        await self._session.refresh(row)
+        return row
+
