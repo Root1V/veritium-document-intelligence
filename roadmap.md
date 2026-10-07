@@ -1,28 +1,106 @@
 # Roadmap
 
-Índice. Detalle de cada item en [docs/roadmap.md](docs/roadmap.md).
+Índice por fase. El detalle de cada item está en [docs/roadmap.md](docs/roadmap.md) y las decisiones de arquitectura en [docs/adr/](docs/adr/).
+Estados: `done` · `todo` · `blocked` (espera a otro equipo) · `superseded` (absorbido por otro item).
+
+## F0 — Base v0.3.0
 
 | ID | Feature | Estado | Descripción |
 |---|---|---|---|
-| RM-01 | Pipeline agéntico de documentos | done | Ingesta → parsing → clasificación → extracción con grounding citado → validación (6 categorías) → revisión humana. |
-| RM-02 | Segmentación + tipos de documento | done | Divide un PDF bundle en documentos lógicos; 12 `DocumentType` tipados + `generic`. |
-| RM-03 | Descubrimiento automático de tipos | done | El LLM propone tipos nuevos cuando un documento cae en `generic`; un humano decide, nunca se auto-registra. |
-| RM-04 | Módulo web (frontend) | done | Login JWT, dashboard, `/upload`, `/batches/:id`, `/documents/:id` (visor + bounding boxes), `/review`, `/document-types`. |
-| RM-05 | Vista de auditoría | done | `/audit` — historial de correcciones. |
-| RM-06 | Browser de documentos | done | `/documents` con filtros combinados (estado, tipo, revisión). |
-| RM-07 | Métrica de tiempo ahorrado | done | Tarjeta en el dashboard, con supuesto de min/documento configurable. |
-| RM-08 | Roles de usuario | done | admin / operador / visor, con enforcement en cada endpoint. |
-| RM-09 | Pipeline visual en tiempo real | done | Barra de progreso por documento en `/batches/:id`. |
-| RM-10 | Server-Sent Events | done | Reemplaza el polling de 2s por push del servidor. |
-| RM-11 | Búsqueda de texto libre | done | En `/documents`, busca nombre de archivo y contenido extraído. |
-| RM-12 | Editor de sugerencias de tipo | done | Editar el borrador del LLM antes de aceptar/rechazar un tipo nuevo. |
-| RM-13 | Vista de auditoría de validación | done | `/validation` — observaciones de validación cruzando documentos. |
-| RM-14 | Motor de reglas configurables (CEL) | done | `/validation-rules` — crear/editar/activar/desactivar reglas sin tocar código. |
-| RM-15 | UI de Integraciones | blocked | Falta elegir un sistema externo real — hoy `ExternalSystemPort` es un stub. |
-| RM-16 | Corregir layout del visor de documento | done | En `/documents/:id`, el PDF se superpone al panel de resumen/campos extraídos. |
-| RM-17 | Corregir bounding box resaltado | todo | Al seleccionar un campo, el cuadro resaltado sobre el PDF aparece desubicado. |
-| RM-18 | Columna de página + salto automático | todo | Tabla de campos: columna con la página de cada uno; clic navega el visor a esa página. |
-| RM-19 | Persistir nombre/descripción de tipo de documento | todo | Guardar en BD nombre visible y resumen por tipo (hoy solo viven en código); rediseñar `/document-types`. |
-| RM-20 | Mejorar columna "Documento" en /audit y /validation | todo | Mostrar nombre del documento + archivo físico como subtítulo tenue, con link al detalle. |
-| RM-21 | Resumen del documento en /documents/:id | done | El LLM genera un resumen breve por documento extraído, mostrado antes de la tabla de campos. |
-| RM-22 | Renombrar el proyecto a Veritium | done | Repo, README, título de la API y sidebar pasan de "IDP / Intelligent Document Platform" a Veritium. |
+| VRT-01 | Pipeline agéntico de documentos | done | Ingesta → parsing → clasificación → extracción con grounding citado → validación (6 categorías) → revisión humana. |
+| VRT-02 | Segmentación + tipos de documento | done | Divide un PDF bundle en documentos lógicos; 12 `DocumentType` tipados + `generic`. |
+| VRT-03 | Descubrimiento automático de tipos | done | El LLM propone tipos nuevos cuando un documento cae en `generic`; un humano decide. |
+| VRT-04 | Módulo web (frontend) | done | Login JWT, dashboard, carga, lotes, visor con bounding boxes, revisión, tipos. |
+| VRT-05 | Vista de auditoría | done | `/audit` — historial de correcciones. |
+| VRT-06 | Browser de documentos | done | `/documents` con filtros combinados. |
+| VRT-07 | Métrica de tiempo ahorrado | done | Tarjeta en el dashboard, con supuesto configurable. |
+| VRT-08 | Roles de usuario | done | admin / operador / visor, con enforcement en cada endpoint. |
+| VRT-09 | Pipeline visual en tiempo real | done | Progreso por etapa y documento en `/batches/:id`. |
+| VRT-10 | Server-Sent Events | done | Reemplaza el polling de 2 s por push del servidor. |
+| VRT-11 | Búsqueda de texto libre | done | En `/documents`, sobre el nombre de archivo y el contenido extraído. |
+| VRT-12 | Editor de sugerencias de tipo | done | Editar el borrador del LLM antes de aceptar o rechazar un tipo nuevo. |
+| VRT-13 | Vista de auditoría de validación | done | `/validation` — observaciones de validación cruzando documentos. |
+| VRT-14 | Motor de reglas configurables (CEL) | done | `/validation-rules` — crear, editar, activar y desactivar reglas sin tocar código. |
+| VRT-15 | UI de Integraciones | superseded | Absorbido por VRT-60. |
+| VRT-16 | Corregir layout del visor de documento | done | El PDF ya no se superpone al panel de campos extraídos. |
+| VRT-17 | Corregir bounding box resaltado | superseded | Absorbido por VRT-38. |
+| VRT-18 | Columna de página + salto automático | superseded | Absorbido por VRT-38. |
+| VRT-19 | Persistir nombre/descripción de tipo de documento | superseded | Absorbido por VRT-32. |
+| VRT-20 | Mejorar columna "Documento" en /audit y /validation | superseded | Absorbido por VRT-38. |
+| VRT-21 | Resumen del documento | done | Resumen breve generado por el LLM, antes de la tabla de campos. |
+| VRT-22 | Renombrar el proyecto a Veritium | done | Repo, README, API y sidebar pasan a Veritium. |
+
+## F1 — Columna vertebral
+
+| ID | Feature | Estado | Descripción |
+|---|---|---|---|
+| VRT-23 | Capa semántica (núcleo) | todo | Entidades, atributos, roles y mapeos campo→atributo; vista consolidada por expediente. |
+| VRT-24 | Perfiles de proceso versionados | todo | Checklist por tipo o por atributo, reglas vinculadas con su severidad, umbrales; inmutables al publicarse. |
+| VRT-25 | Expediente como agregado + API `/v1/cases` | todo | `Batch` → `Case`, idempotencia, agregar documentos, corridas con procedencia, contrato de resultado v1. |
+| VRT-26 | Ejecución durable sobre aeon | todo | `CaseExecutionPort`: grafo por expediente en aeon con pasos en el worker de Veritium; ejecutor interino. |
+| VRT-27 | Completitud y veredicto | todo | Condiciones de documento o evidencia faltante; veredicto continuar / revisión humana / devolver al cliente. |
+| VRT-28 | Outbox + webhooks firmados | todo | Eventos transaccionales y entrega Standard Webhooks con reintentos. |
+| VRT-29 | Inferencia vía axonium | todo | `InferencePort` sobre axonium → prometheus; reemplaza `openai` + `instructor`. |
+| VRT-30 | Extracción agéntica sobre synaptum | todo | El loop de extracción acotado se porta a `synaptum.Agent`. |
+| VRT-31 | Observabilidad con argus | todo | OTLP hacia argus, una traza de punta a punta, costo por expediente. |
+
+## F2 — Diseñador y catálogo
+
+| ID | Feature | Estado | Descripción |
+|---|---|---|---|
+| VRT-32 | Catálogo de tipos documentales en BD | todo | Nombre, descripción y esquema por tipo, versionados en la BD en vez de en el código. |
+| VRT-33 | Nuevo tipo desde un documento de ejemplo | todo | Subir un ejemplo → propuesta de esquema y de mapeo a atributos existentes → revisar y publicar. |
+| VRT-34 | UI del catálogo semántico | todo | Gestionar entidades, atributos, roles y mapeos desde la web. |
+| VRT-35 | Validadores intrínsecos por atributo | todo | Formato y validación definidos una sola vez por atributo, no por tipo de documento. |
+| VRT-36 | Biblioteca de reglas sobre atributos | todo | Lenguaje natural → CEL o procedimiento, con resultado `AMBIGUA` y casos de prueba. |
+| VRT-37 | Diseñador de perfiles | todo | Armar procesos desde la biblioteca, con sugerencias de reutilización. |
+
+## F3 — Expediente y revisión
+
+| ID | Feature | Estado | Descripción |
+|---|---|---|---|
+| VRT-38 | Vista E2E del expediente | todo | Resultado visual, entidades consolidadas y visor de evidencia (página y bbox). |
+| VRT-39 | Corrección con motivo y sustento | todo | Código de motivo obligatorio + sustento libre en cada corrección. |
+| VRT-40 | Reproceso selectivo | todo | Reprocesar un atributo, documento, regla o el expediente, según el grafo de dependencias. |
+| VRT-41 | Exportes | todo | PDF / JSON / YAML / Markdown desde el resultado canónico. |
+
+## F4 — Calidad y comprensión
+
+| ID | Feature | Estado | Descripción |
+|---|---|---|---|
+| VRT-42 | Suites de evaluación | todo | Casos desde CSV/Excel y golden sets armados con las correcciones humanas. |
+| VRT-43 | Exactitud por campo y calibración | todo | Métricas por campo y confianza calibrada que decide automático vs. humano. |
+| VRT-44 | Simulación *what-if* y modo sombra | todo | Medir un cambio de perfil, regla o modelo contra expedientes históricos antes de publicarlo. |
+| VRT-45 | Lentes de Riesgos y Legal | todo | Resúmenes y análisis de cláusulas contra un playbook, con evidencia citada. |
+| VRT-46 | Prompts versionados y grounding semántico | todo | Prompts versionados en synaptum; medir el efecto de inyectar las definiciones semánticas. |
+
+## F5 — Canales
+
+| ID | Feature | Estado | Descripción |
+|---|---|---|---|
+| VRT-47 | Sesión de carga + verificación rápida | todo | Carga directa desde el front-end y verificación síncrona en segundos. |
+| VRT-48 | *Bulk jobs* | todo | Lotes masivos de expedientes de varios procesos, con resultado por expediente. |
+| VRT-49 | Eventos CloudEvents | todo | Entrada y salida por eventos (claim-check para los archivos). |
+| VRT-50 | Salida renderizable (A2UI) | todo | Capa de presentación declarativa sobre el resultado canónico. |
+
+## F6 — Agéntico
+
+| ID | Feature | Estado | Descripción |
+|---|---|---|---|
+| VRT-51 | Servidor MCP | todo | Spec 2026-07-28 + extensión Tasks para operaciones largas. |
+| VRT-52 | Servidor A2A | todo | A2A v1.0; `input_required` = falta evidencia. |
+| VRT-53 | Catálogo de tools | todo | Tools tipadas (OCR, LLM, VLM, APIs, BD, CEL, imagen, firma) para validar y comprender. |
+| VRT-54 | Asistente del usuario | todo | Asistente sobre synaptum que usa las mismas tools MCP. |
+| VRT-55 | Permisos de tools con Cedar | todo | Gobierno de qué agente usa qué tool, vía aeon. |
+
+## F7 — Hardening y producción
+
+| ID | Feature | Estado | Descripción |
+|---|---|---|---|
+| VRT-56 | Ruta de inferencia gobernada | todo | synaptum → aeon-modelgw → prometheus, con presupuestos y costo por corrida. |
+| VRT-57 | SSO OIDC y multi-tenant | todo | Identidad corporativa y aislamiento por tenant. |
+| VRT-58 | PII y retención | todo | Enmascaramiento según la clase PII semántica; políticas de retención y borrado. |
+| VRT-59 | Búsqueda híbrida | todo | BM25 + vectorial en Postgres, con halfvec. |
+| VRT-60 | Conectores RENIEC / SUNAT / SBS | todo | Validación contra fuentes oficiales como tools. |
+| VRT-61 | Antifraude forense | todo | Detección de documentos alterados o generados con IA. |
+| VRT-62 | Auditoría inmutable y cumplimiento | todo | Hash encadenado y requisitos del DS 115-2025-PCM. |

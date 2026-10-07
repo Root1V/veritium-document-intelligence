@@ -1,87 +1,242 @@
 # Roadmap — detalle
 
-Una sección por item de [roadmap.md](../roadmap.md). Sin bitácora de cambios — eso vive en los commits.
+Una sección por item de [roadmap.md](../roadmap.md). Sin bitácora de cambios: eso vive en los commits.
+Hasta v0.3.0 los IDs usaban el prefijo `RM-`; el número es el mismo (`feat(RM-21)` = VRT-21).
+Las dependencias con otros equipos se referencian por su ID en el canal compartido (p. ej. `VRT-AEON-001`).
 
-## RM-01 — Pipeline agéntico de documentos
+## VRT-01 — Pipeline agéntico de documentos
 Done. Commit `b0d98c3`.
 
-## RM-02 — Segmentación + tipos de documento
+## VRT-02 — Segmentación + tipos de documento
 Done. Commits `af76c32`, `9797a2f`, `f6f71fb`.
 
-## RM-03 — Descubrimiento automático de tipos
+## VRT-03 — Descubrimiento automático de tipos
 Done. Commit `ea42c4b`.
 
-## RM-04 — Módulo web (frontend)
+## VRT-04 — Módulo web (frontend)
 Done. Commits `0bda1ab`, `d4cdc8f`.
 
-## RM-05 — Vista de auditoría
-**Why:** `audit_log` ya se llenaba en cada corrección desde RM-01; faltaba una ruta que lo expusiera.
+## VRT-05 — Vista de auditoría
+**Why:** `audit_log` ya se llenaba en cada corrección desde VRT-01; faltaba una ruta que lo expusiera.
 **Scope:** solo lectura, sin filtros. Commit `f7d33a3`.
 
-## RM-06 — Browser de documentos
+## VRT-06 — Browser de documentos
 **Why:** el dashboard solo mostraba unos pocos documentos recientes, sin forma de filtrar el corpus completo.
-**Scope:** filtros por estado/tipo/revisión, combinables. Sin búsqueda de texto (eso es RM-11). Commit `18d5ccd`.
+**Scope:** filtros por estado/tipo/revisión, combinables. Sin búsqueda de texto (eso es VRT-11). Commit `18d5ccd`.
 
-## RM-07 — Métrica de tiempo ahorrado
+## VRT-07 — Métrica de tiempo ahorrado
 **Why:** pedido explícito, con la condición de que el supuesto (min/documento) fuera configurable y visible, no un número inventado.
 **Scope:** una tarjeta en el dashboard, cálculo simple sobre documentos completados. Commit `7a6529c`.
 
-## RM-08 — Roles de usuario
+## VRT-08 — Roles de usuario
 **Why:** hasta este punto cualquier usuario autenticado podía hacer cualquier acción; se necesitaba distinguir quién puede ejecutar vs. solo ver.
 **Scope:** tres roles (admin/operador/visor), enforcement en cada endpoint mutante, no solo en la UI. No incluye permisos granulares por recurso. Commit `e265f55`.
 
-## RM-09 — Pipeline visual en tiempo real
+## VRT-09 — Pipeline visual en tiempo real
 **Why:** `/batches/:id` solo mostraba "procesando" sin detalle de en qué etapa estaba cada documento.
 **Scope:** barra de progreso con las etapas reales del pipeline (parsing/clasificando/extrayendo/validando). Commit `4d0f397`.
 
-## RM-10 — Server-Sent Events
+## VRT-10 — Server-Sent Events
 **Why:** el polling de 2s generaba una petición nueva por cliente cada 2s; SSE deja que el servidor empuje solo cuando hay cambio real.
 **Scope:** reemplaza el polling en `/batches/:id`. No se extendió a otras vistas. Commit `4734018`.
 
-## RM-11 — Búsqueda de texto libre
-**Why:** los filtros de RM-06 no cubrían "encontrar un documento por su contenido".
+## VRT-11 — Búsqueda de texto libre
+**Why:** los filtros de VRT-06 no cubrían "encontrar un documento por su contenido".
 **Scope:** busca nombre de archivo y valores extraídos, combinable con los filtros existentes. Commit `0e126c5`.
 
-## RM-12 — Editor de sugerencias de tipo
+## VRT-12 — Editor de sugerencias de tipo
 **Why:** antes solo se podía aceptar/rechazar una sugerencia del LLM tal cual — sin forma de corregir un campo mal nombrado sin rechazar toda la propuesta.
 **Scope:** edita el borrador (campos, nombre) mientras sigue pendiente. Nunca genera código ni registra el tipo — eso sigue siendo un cambio de código deliberado. Commit `c2675b4`.
 
-## RM-13 — Vista de auditoría de validación
+## VRT-13 — Vista de auditoría de validación
 **Why:** los `validation_issues` ya se persistían por cada regla que no pasaba, sin ninguna vista que los cruzara entre documentos.
 **Scope:** lista filtrable por categoría/severidad/tipo. Solo lectura. Commit `988b5aa`.
 
-## RM-14 — Motor de reglas configurables (CEL)
+## VRT-14 — Motor de reglas configurables (CEL)
 **Why:** se pidió poder agregar/modificar/desactivar reglas de validación sin depender de un desarrollador. Generar Python real desde la web se descartó por riesgo de seguridad (ejecución de código no revisado); CEL (lenguaje sandboxed de Google, sin efectos secundarios) permite que una regla activada se ejecute de inmediato sin ese riesgo.
 **Scope:** cubre categorías `self`/`request_input`/`reference_data` (comparaciones puras de campos). `cross_document` (fuzzy-matching + LLM) y `external_system` (red) siguen siendo código — CEL no puede expresar esa lógica de forma segura. Incluye activar/desactivar cualquier regla, incluidas las hardcodeadas. Commits `ea77e56`, `d5693a6`.
 
-## RM-15 — UI de Integraciones
+## VRT-15 — UI de Integraciones
+**Superseded** por VRT-60 (rediseño enterprise, [ADR-0001](adr/0001-servicio-de-decision-documental.md)).
 **Why:** el dashboard de referencia original incluía una sección de integraciones; no se construyó porque no hay ningún sistema externo real conectado detrás.
 **Scope:** bloqueado hasta elegir un sistema real (`ExternalSystemPort` en `src/idp/validation/ports.py` es hoy un stub que siempre responde "no verificado"). Requiere: elegir el sistema, construir el adaptador real, y solo entonces la UI tiene algo que mostrar.
 
-## RM-16 — Corregir layout del visor de documento
+## VRT-16 — Corregir layout del visor de documento
 **Why:** reportado por el usuario probando `/documents/:id` — react-pdf renderizaba a un ancho fijo en px, y un CSS Grid item no se encoge por debajo del ancho intrínseco de su contenido salvo que se le indique, así que en ventanas angostas el PDF desbordaba su columna.
 **Scope:** `PdfViewer` mide su contenedor con `ResizeObserver` y renderiza al ancho real disponible; `min-w-0` en ambas columnas del grid como defensa adicional. Commit `df53ced`.
 
-## RM-17 — Corregir bounding box resaltado
+## VRT-17 — Corregir bounding box resaltado
+**Superseded** por VRT-38 (rediseño enterprise, [ADR-0001](adr/0001-servicio-de-decision-documental.md)).
 **Why:** reportado por el usuario — al hacer clic en un campo (o varios) para ver dónde se extrajo, el cuadro que se dibuja sobre el PDF aparece desubicado y no coincide con el valor real extraído.
 **Scope:** corregir el cálculo de posición del overlay (probablemente un desfase en cómo se escala el bbox normalizado contra el tamaño renderizado de la página).
 
-## RM-18 — Columna de página + salto automático
+## VRT-18 — Columna de página + salto automático
+**Superseded** por VRT-38 (rediseño enterprise, [ADR-0001](adr/0001-servicio-de-decision-documental.md)).
 **Why:** la tabla de campos extraídos no indica en qué página del PDF está cada campo; seleccionar un campo de otra página no mueve el visor hacia ella.
-**Scope:** agregar una columna "Página" al inicio de la tabla. Al hacer clic en un campo de otra página, el visor debe navegar a esa página y resaltar el campo — depende de que RM-17 esté resuelto para que el resaltado sea correcto.
+**Scope:** agregar una columna "Página" al inicio de la tabla. Al hacer clic en un campo de otra página, el visor debe navegar a esa página y resaltar el campo — depende de que VRT-17 esté resuelto para que el resaltado sea correcto.
 
-## RM-19 — Persistir nombre/descripción de tipo de documento
+## VRT-19 — Persistir nombre/descripción de tipo de documento
+**Superseded** por VRT-32 (rediseño enterprise, [ADR-0001](adr/0001-servicio-de-decision-documental.md)).
 **Why:** hoy el catálogo de tipos (`/document-types`, "Plantillas") se arma leyendo constantes de código (`TYPE_DESCRIPTIONS`, `SCHEMA_BY_DOCUMENT_TYPE`); el usuario quiere que el nombre visible y la descripción de cada tipo (ej. `loan_payment_schedule` → "Cronograma de Pagos") vivan en la base de datos, no solo en código.
-**Scope:** agregar almacenamiento en BD para nombre/descripción por tipo de documento; mejorar el diseño del listado en `/document-types`. Definir al implementar: tabla nueva de tipos vs. otra estructura, y si el "nombre del documento" que pide RM-20 sale de aquí.
+**Scope:** agregar almacenamiento en BD para nombre/descripción por tipo de documento; mejorar el diseño del listado en `/document-types`. Definir al implementar: tabla nueva de tipos vs. otra estructura, y si el "nombre del documento" que pide VRT-20 sale de aquí.
 
-## RM-20 — Mejorar columna "Documento" en /audit y /validation
-**Why:** hoy esas tablas muestran un link genérico o el nombre físico del PDF, sin un nombre legible del documento. Depende de RM-19 para tener de dónde sacar ese nombre.
+## VRT-20 — Mejorar columna "Documento" en /audit y /validation
+**Superseded** por VRT-38 (rediseño enterprise, [ADR-0001](adr/0001-servicio-de-decision-documental.md)).
+**Why:** hoy esas tablas muestran un link genérico o el nombre físico del PDF, sin un nombre legible del documento. Depende de VRT-19 para tener de dónde sacar ese nombre.
 **Scope:** mostrar el nombre del documento, con el nombre físico del PDF debajo en texto tenue como subtítulo; el nombre enlaza al detalle del documento. Mismo patrón en ambas páginas — candidato a un componente compartido.
 
-## RM-21 — Resumen del documento en /documents/:id
-**Why:** pedido por el usuario validando RM-16 — antes de la tabla de campos extraídos quería un resumen breve de qué trata el documento. Se evaluaron dos opciones (descripción genérica del tipo, ya disponible hoy, vs. un resumen real por documento) y el usuario eligió la segunda pese al mayor esfuerzo. `GenericSchema` ya tenía un campo `summary` — solo faltaba replicarlo en los 12 esquemas tipados.
+## VRT-21 — Resumen del documento en /documents/:id
+**Why:** pedido por el usuario validando VRT-16 — antes de la tabla de campos extraídos quería un resumen breve de qué trata el documento. Se evaluaron dos opciones (descripción genérica del tipo, ya disponible hoy, vs. un resumen real por documento) y el usuario eligió la segunda pese al mayor esfuerzo. `GenericSchema` ya tenía un campo `summary` — solo faltaba replicarlo en los 12 esquemas tipados.
 **Scope:** agrega `summary: Extracted[str] | None` a 11 de los 12 esquemas (`email_correspondence` ya tenía `body_summary` con el mismo propósito — no se duplicó); `GenericSchema` ya lo tenía. La extracción agéntica es 100% schema-driven, no hizo falta tocar los extractores. Frontend: extrae `summary`/`body_summary` de la grilla de campos y lo muestra como bloque de texto aparte, arriba de la tabla. Documentos ya extraídos antes de este cambio no tienen resumen (sin backfill). Commit `e4ea81e`.
 
-## RM-22 — Renombrar el proyecto a Veritium
+## VRT-22 — Renombrar el proyecto a Veritium
 **Why:** el repo era el único de los proyectos recientes del autor que no seguía su propio patrón de nombres (`<codename clásico>-<dominio>-<tipo>`, como `argus-observability-platform` o `aerarium-agentic-banking`); `agentic-doc-intelligence-platform` era puramente descriptivo y se solapaba con `mercatus-agentic-payments`. *Veritium* (de *veritas*) reclama el diferenciador real: la plataforma no solo extrae campos, los contrasta y deja traza verificable de cada dato.
 **Scope:** repo GitHub → `veritium-document-intelligence` (con su remote); branding visible en `README.md`, el `title` de FastAPI, el `<title>` del frontend y el logo del sidebar. Fuera de alcance por diseño: el paquete Python sigue siendo `idp` (renombrarlo tocaría todo el backend sin beneficio visible), y `docker-compose.yml` conserva usuario/BD/volúmenes `idp` — renombrarlos obligaría a recrear los volúmenes y se perdería la base local.
+
+---
+# Rediseño enterprise (F1–F7)
+
+Veritium pasa de "subir documentos sueltos" a ser una **capacidad de decisión documental agnóstica al proceso** ([ADR-0001](adr/0001-servicio-de-decision-documental.md)), construida sobre el ecosistema propio sin acoplarse a él ([ADR-0004](adr/0004-capacidades-transversales-sin-acoplamiento.md)).
+
+## F1 — Columna vertebral
+
+## VRT-23 — Capa semántica (núcleo)
+**Why:** sin un significado compartido, cada proceso reescribe sus reglas y su validación cruzada por tipo de documento, y los consumidores quedan atados a los esquemas de cada documento ([ADR-0007](adr/0007-capa-semantica-ligera.md)).
+**Scope:**
+- Catálogo versionado `semantic_catalog_versions` con entidades, atributos (definición, tipo, formato, unidad, cardinalidad, clase PII), roles (titular, cónyuge, asesor…) y mapeos campo→atributo+rol. El seed se deriva de los 12 esquemas actuales.
+- Resolución por expediente en una vista consolidada `consistent` / `conflict` / `single_source`, con la evidencia de cada fuente. Regla genérica `semantic.attribute_consistency`.
+- La variable CEL `case` expone esa vista. API admin `/v1/semantic-catalog`.
+- Fuera de alcance: la UI (VRT-34), los validadores por atributo (VRT-35) y la inyección en los prompts (VRT-46).
+
+## VRT-24 — Perfiles de proceso versionados
+**Why:** el mismo motor tiene que servir a "Convenios", "Contratación de tarjetas" o Riesgos con requisitos distintos, y eso se configura como dato, no como código.
+**Scope:**
+- `process_profiles` y `process_profile_versions`, inmutables al publicarse. Cada versión fija una versión del catálogo semántico.
+- Checklist por tipo **o por atributo** (con documentos alternativos), `required_when_cel` y `min_count`.
+- `rule_bindings` con `severity`, `blocking` y `on_fail` **en el vínculo, no en la regla**. Umbrales.
+- Perfil integrado `ad-hoc` (el comportamiento de v0.3.0) y seed `convenios`. API admin `/v1/profiles`.
+- Fuera de alcance: el diseñador web (VRT-37).
+
+## VRT-25 — Expediente como agregado + API `/v1/cases`
+**Why:** la unidad de trabajo de un proceso es el expediente de un cliente, que se completa con el tiempo, no un documento suelto ([ADR-0002](adr/0002-strangler-batch-a-case.md)).
+**Scope:**
+- Migración `batches` → `cases`, con `profile_version_id`, `external_ref`, `idempotency_key`, `channel` y veredicto.
+- `case_runs` con la procedencia completa (versiones de código, perfil, catálogo, reglas, modelos, prompts y OCR).
+- `POST /v1/cases` (202 + `Idempotency-Key`), `POST /v1/cases/{id}/documents`, `GET /v1/cases/{id}` y `GET /v1/cases/{id}/result` (contrato v1, [ADR-0005](adr/0005-contrato-resultado-outbox-webhooks.md)). Rol `integracion`.
+- `/batches` se mantiene como alias con el perfil `ad-hoc`; el frontend no cambia en F1.
+
+## VRT-26 — Ejecución durable sobre aeon
+**Why:** hoy un expediente corre en secuencia dentro de `BackgroundTasks`; si el proceso cae, se pierde ([ADR-0003](adr/0003-ejecucion-sobre-aeon.md)).
+**Scope:**
+- `CaseExecutionPort` con `AeonExecutor`: grafo `start_run → parallel[process_document × N] → evaluate_case → finish_run` en aeon.
+- Worker propio (`python -m idp.worker`) con task queues por carril: `veritium-online`, `veritium-backoffice`, `veritium-bulk`. Actividades idempotentes con estado en la BD de Veritium.
+- `InProcessExecutor` interino, con paralelismo acotado y **no durable**.
+- Se cierra cuando A-1 está entregado (`VRT-AEON-001`) y el crash-resume está probado.
+
+## VRT-27 — Completitud y veredicto
+**Why:** el proceso que invoca no quiere una lista de campos, sino saber qué hacer después y por qué.
+**Scope:**
+- `case_conditions` (`missing_document` / `missing_evidence`), que se cierran solas al llegar la evidencia.
+- `domain/verdict.py` puro, con precedencia `return_to_client` > `human_review` > `continue` y todos los motivos.
+- Solo corren las reglas vinculadas al perfil.
+
+## VRT-28 — Outbox + webhooks firmados
+**Why:** el sistema llamador debe enterarse del veredicto sin consultar en bucle, y sin perder ni duplicar notificaciones ([ADR-0005](adr/0005-contrato-resultado-outbox-webhooks.md)).
+**Scope:**
+- `outbox_events` en la misma transacción que el veredicto.
+- `webhook_endpoints` (secreto cifrado) y `webhook_deliveries`.
+- Despachador con firma Standard Webhooks, backoff con jitter hasta ~3 días e idempotencia por `webhook-id`. Sink de prueba `scripts/webhook_sink.py`.
+
+## VRT-29 — Inferencia vía axonium
+**Why:** axonium es el SDK obligatorio hacia prometheus, y la ruta de inferencia tiene que poder pasar de autónoma a gobernada sin tocar el dominio ([ADR-0006](adr/0006-inferencia-gobernada-por-fases.md)).
+**Scope:**
+- `InferencePort` (`structured`, `vision`), con un adaptador autónomo sobre `AsyncAxonium`: `response_format` + Pydantic + re-pregunta con el error.
+- Migran a async los 6 llamadores. Credenciales por carril.
+- Depende de las respuestas a `VRT-AXO-001` y `VRT-PRM-001`.
+
+## VRT-30 — Extracción agéntica sobre synaptum
+**Why:** los agentes de Veritium se construyen con el framework del ecosistema, no con un loop propio.
+**Scope:**
+- El loop de `extraction/agentic/` pasa a `synaptum.Agent`: tools de lectura como `@tool`, el VLM dentro de la tool vía `InferencePort.vision`, `submit_extraction` validado y `Limits`.
+- Requiere S-1 (`VRT-SYN-001`). S-2 y S-3 tienen mitigación temporal.
+
+## VRT-31 — Observabilidad con argus
+**Why:** con varios procesos, workers y la ruta aeon de por medio, sin una traza de punta a punta no se puede diagnosticar ni atribuir el costo por expediente.
+**Scope:**
+- OTLP/HTTP al collector de argus con sus atributos de recurso, más el interceptor OTel de `temporalio`.
+- Convenciones `gen_ai.provider.name` / `gen_ai.operation.name` y `case_id` en los spans.
+- Incorporación vía `VRT-ARG-001`.
+
+## F2 — Diseñador y catálogo
+## VRT-32 — Catálogo de tipos documentales en BD
+**Why:** hoy los tipos viven en código, así que crear o ajustar un tipo requiere un desarrollador. **Scope:** tipos versionados en la BD con nombre, descripción, esquema y mapeos semánticos. Absorbe VRT-19.
+## VRT-33 — Nuevo tipo desde un documento de ejemplo
+**Why:** es el diferenciador frente a las plataformas *schema-first*; evoluciona VRT-03. **Scope:** ejemplo → propuesta de esquema y de mapeo a atributos existentes → revisión humana → publicación.
+## VRT-34 — UI del catálogo semántico
+**Why:** la capa semántica la mantienen usuarios de negocio, no desarrolladores. **Scope:** CRUD versionado de entidades, atributos, roles y mapeos.
+## VRT-35 — Validadores intrínsecos por atributo
+**Why:** el formato de un DNI no depende del documento en el que aparece. **Scope:** validadores por atributo que reemplazan reglas parametrizadas por tipo (p. ej. `DniFormatValid`).
+## VRT-36 — Biblioteca de reglas sobre atributos
+**Why:** las reglas en lenguaje humano tienen que poder usar tools y no solo comparar campos, sin abrir la puerta a código arbitrario. **Scope:** lenguaje natural → CEL o procedimiento acotado; resultado `AMBIGUA` explícito; casos de prueba por regla; aprobación humana.
+## VRT-37 — Diseñador de perfiles
+**Why:** configurar un proceso nuevo debe ser reutilizar, no partir de cero. **Scope:** armar perfiles desde la biblioteca, con sugerencias de tipos, atributos y reglas ya usados en otros procesos.
+
+## F3 — Expediente y revisión
+## VRT-38 — Vista E2E del expediente
+**Why:** el ejecutivo necesita ver el resultado completo y su evidencia en un solo lugar. **Scope:** veredicto, condiciones, entidades consolidadas y visor con página y bbox correctos. Absorbe VRT-17, VRT-18 y VRT-20.
+## VRT-39 — Corrección con motivo y sustento
+**Why:** sin un motivo codificado no se puede medir por qué se corrige. **Scope:** código de motivo obligatorio + sustento libre, auditados.
+## VRT-40 — Reproceso selectivo
+**Why:** corregir un campo no debe obligar a reprocesar todo el expediente. **Scope:** grafo campo → regla → veredicto; reproceso por atributo, documento, regla o expediente, cada uno como una corrida nueva e inmutable.
+## VRT-41 — Exportes
+**Why:** el resultado se comparte fuera de la plataforma. **Scope:** PDF / JSON / YAML / Markdown derivados del resultado canónico, también vía `Accept`.
+
+## F4 — Calidad y comprensión
+## VRT-42 — Suites de evaluación
+**Why:** sin evaluación no se puede cambiar un modelo, prompt o regla con seguridad. **Scope:** casos desde CSV/Excel y golden sets armados con las correcciones.
+## VRT-43 — Exactitud por campo y calibración
+**Why:** una confianza mal calibrada deja pasar errores con confianza alta. **Scope:** métricas por campo y calibración que alimenta los umbrales del perfil.
+## VRT-44 — Simulación *what-if* y modo sombra
+**Why:** medir el impacto de un cambio antes de publicarlo. **Scope:** reejecución contra expedientes históricos y comparación en sombra.
+## VRT-45 — Lentes de Riesgos y Legal
+**Why:** las áreas aguas abajo necesitan comprender documentos, no solo validarlos. **Scope:** resúmenes y cláusulas contra un playbook, con evidencia citada.
+## VRT-46 — Prompts versionados y grounding semántico
+**Why:** reproducibilidad y calidad de extracción medible. **Scope:** prompts versionados (synaptum, S-8) y la medición de inyectar definiciones semánticas.
+
+## F5 — Canales
+## VRT-47 — Sesión de carga + verificación rápida
+**Why:** el canal en línea no puede esperar el pipeline completo. **Scope:** token efímero / URL prefirmada y verificación síncrona en segundos (calidad, tipo, legibilidad).
+## VRT-48 — *Bulk jobs*
+**Why:** el backoffice procesa en masa sin afectar al canal en línea. **Scope:** lotes multi-expediente en el carril `bulk`, con resultado por expediente.
+## VRT-49 — Eventos CloudEvents
+**Why:** integración por eventos con sistemas que ya hablan por bus. **Scope:** consumidor y publicador CloudEvents, con claim-check para los archivos.
+## VRT-50 — Salida renderizable (A2UI)
+**Why:** que otros front-ends muestren el resultado sin conocer el dominio. **Scope:** capa A2UI v0.9 sobre el contrato canónico.
+
+## F6 — Agéntico
+## VRT-51 — Servidor MCP
+**Why:** otros agentes deben poder usar Veritium como tool. **Scope:** spec 2026-07-28 + Tasks; tools y recursos sobre el mismo núcleo.
+## VRT-52 — Servidor A2A
+**Why:** delegación entre agentes con un ciclo de vida estándar. **Scope:** A2A v1.0, con Agent Card firmada e `input_required` = falta evidencia.
+## VRT-53 — Catálogo de tools
+**Why:** las validaciones y los agentes necesitan herramientas tipadas y gobernadas. **Scope:** registro de tools deterministas o probabilísticas, con permisos y costo.
+## VRT-54 — Asistente del usuario
+**Why:** ayudar a operar, buscar y diagnosticar sin conocer la plataforma por dentro. **Scope:** agente synaptum que consume las mismas tools MCP.
+## VRT-55 — Permisos de tools con Cedar
+**Why:** gobernar qué agente usa qué tool. **Scope:** políticas Cedar de aeon sobre el catálogo de tools.
+
+## F7 — Hardening y producción
+## VRT-56 — Ruta de inferencia gobernada
+**Why:** en producción todo el tráfico de modelo debe tener presupuestos, atribución y gobierno ([ADR-0006](adr/0006-inferencia-gobernada-por-fases.md)). **Scope:** adaptador gobernado del `InferencePort` y del `AgentRuntime`. Depende de `VRT-AEON-003` y `VRT-SYN-003`.
+## VRT-57 — SSO OIDC y multi-tenant
+**Why:** identidad corporativa y varias unidades de negocio. **Scope:** OIDC y aislamiento de datos y configuración por tenant.
+## VRT-58 — PII y retención
+**Why:** Ley 29733 y datos sensibles hacia el LLM. **Scope:** enmascaramiento derivado de la clase PII semántica; retención y borrado.
+## VRT-59 — Búsqueda híbrida
+**Why:** el `ILIKE` de VRT-11 no escala. **Scope:** BM25 + vectorial en Postgres con halfvec, filtrado por tenant y proceso.
+## VRT-60 — Conectores RENIEC / SUNAT / SBS
+**Why:** validar contra fuentes oficiales; desbloquea lo que VRT-15 no pudo. **Scope:** conectores como tools del catálogo. Absorbe VRT-15.
+## VRT-61 — Antifraude forense
+**Why:** los documentos financieros falsificados con IA crecieron ~4x (2025–2026); validar la coherencia no los detecta. **Scope:** forense del archivo (metadatos, fuentes, píxeles, estructura).
+## VRT-62 — Auditoría inmutable y cumplimiento
+**Why:** el DS 115-2025-PCM clasifica la evaluación crediticia como de alto riesgo. **Scope:** auditoría con hash encadenado y requisitos de transparencia (confirmar el alcance con Legal).
