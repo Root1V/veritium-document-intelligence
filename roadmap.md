@@ -39,7 +39,7 @@ Estados: `done` · `todo` · `blocked` (espera a otro equipo) · `superseded` (a
 | VRT-25 | Expediente como agregado + API `/v1/cases` | done | `Batch` → `Case`, idempotencia, agregar documentos, corridas con procedencia, contrato de resultado v1. |
 | VRT-26 | Ejecución durable sobre aeon | todo | `CaseExecutionPort`: grafo por expediente en aeon con pasos en el worker de Veritium; ejecutor interino. |
 | VRT-27 | Completitud y veredicto | done | Condiciones de documento o evidencia faltante; veredicto continuar / revisión humana / devolver al cliente. |
-| VRT-28 | Outbox + webhooks firmados | todo | Eventos transaccionales y entrega Standard Webhooks con reintentos. |
+| VRT-28 | Outbox + webhooks firmados | done | Eventos transaccionales y entrega Standard Webhooks con reintentos. |
 | VRT-29 | Inferencia vía axonium | todo | `InferencePort` sobre axonium → prometheus; reemplaza `openai` + `instructor`. |
 | VRT-30 | Extracción agéntica sobre synaptum | todo | El loop de extracción acotado se porta a `synaptum.Agent`. |
 | VRT-31 | Observabilidad con argus | todo | OTLP hacia argus, una traza de punta a punta, costo por expediente. |
