@@ -144,6 +144,7 @@ export interface DocumentTypeInfo {
 
 export interface PendingTypeInfo {
   suggestion_id: string
+  document_id: string
   suggested_type_name: string
   suggested_display_name: string
   rationale: string
@@ -282,3 +283,51 @@ export interface CreateUserRequest {
   password: string
   role: UserRole
 }
+
+// --- Document type catalog: new type from an example (VRT-33) -------------
+
+export type FieldSpecType = 'str' | 'int' | 'float' | 'bool' | 'enum' | 'list'
+
+export interface FieldSpec {
+  name: string
+  type: FieldSpecType
+  required: boolean
+  description: string | null
+  enum_values?: string[] | null
+  grounded?: boolean
+  item_name?: string | null
+  item_description?: string | null
+  items?: FieldSpec[] | null
+}
+
+export interface DocumentTypeDefinition {
+  key: string
+  display_name: string
+  description: string
+  extraction_hint: string
+  schema_title: string
+  schema_description?: string | null
+  fields: FieldSpec[]
+}
+
+export interface SemanticMappingDraft {
+  field_path: string
+  attribute: string
+  role: string
+}
+
+export interface TypeProposal {
+  definition: DocumentTypeDefinition
+  mappings: SemanticMappingDraft[]
+  dropped_mappings: string[]
+  similar_existing_type: string | null
+  key_taken: boolean
+  rationale: string
+}
+
+export interface RegisterDocumentTypeRequest {
+  definition: DocumentTypeDefinition
+  mappings: SemanticMappingDraft[]
+  suggestion_id?: string | null
+}
+

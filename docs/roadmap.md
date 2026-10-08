@@ -185,7 +185,13 @@ Veritium pasa de "subir documentos sueltos" a ser una **capacidad de decisión d
 - Fuera: UI de edición (VRT-33/34); las reglas codificadas por tipo siguen igual (VRT-35/36). Absorbe VRT-19.
 
 ## VRT-33 — Nuevo tipo desde un documento de ejemplo
-**Why:** es el diferenciador frente a las plataformas *schema-first*; evoluciona VRT-03. **Scope:** ejemplo → propuesta de esquema y de mapeo a atributos existentes → revisión humana → publicación.
+**Why:** es el diferenciador frente a las plataformas *schema-first*; evoluciona VRT-03.
+**Scope:**
+- `POST /v1/document-types/proposals`: un ejemplo (archivo o documento ya cargado) → borrador completo (`DocumentTypeDefinition` + mapeos a atributos del catálogo semántico verificados + aviso si se parece a un tipo existente). No guarda nada.
+- `POST /v1/document-types/registrations`: publica el tipo revisado como v1 y sus mapeos como versión nueva del catálogo semántico; valida todo antes de escribir; resuelve la sugerencia de origen (`registered`).
+- Página "Nuevo tipo desde un ejemplo" (admin): revisar y editar campos, textos y mapeos. Desde Plantillas, y desde cada sugerencia aceptada con su documento.
+- Fuera: editar una versión nueva de un tipo existente desde la web (VRT-34).
+
 ## VRT-34 — UI del catálogo semántico
 **Why:** la capa semántica la mantienen usuarios de negocio, no desarrolladores. **Scope:** CRUD versionado de entidades, atributos, roles y mapeos.
 ## VRT-35 — Validadores intrínsecos por atributo
@@ -241,7 +247,7 @@ Veritium pasa de "subir documentos sueltos" a ser una **capacidad de decisión d
 
 ## F7 — Hardening y producción
 ## VRT-56 — Ruta de inferencia gobernada
-**Why:** en producción todo el tráfico de modelo debe tener presupuestos, atribución y gobierno ([ADR-0006](adr/0006-inferencia-gobernada-por-fases.md)). **Scope:** adaptador gobernado del `InferencePort` y del `AgentRuntime`. Depende de `VRT-AEON-003` y `VRT-SYN-003`.
+**Why:** en producción todo el tráfico de modelo debe tener presupuestos, atribución y gobierno ([ADR-0006](adr/0006-inferencia-gobernada-por-fases.md)). **Scope:** adaptador gobernado del `InferencePort` y del `AgentRuntime`. `VRT-AEON-003` (A-2/A-3) entregada el 2026-10-08; falta S-4/S-5 (`VRT-SYN-003`) y, para un despliegue compartido, el tenant del run en la política y el techo (`VRT-AEON-005`).
 ## VRT-57 — SSO OIDC y multi-tenant
 **Why:** identidad corporativa y varias unidades de negocio. **Scope:** OIDC y aislamiento de datos y configuración por tenant.
 ## VRT-58 — PII y retención

@@ -13,6 +13,8 @@ import type {
   DocumentDetailResponse,
   DocumentListResponse,
   DocumentTypeCatalogResponse,
+  RegisterDocumentTypeRequest,
+  TypeProposal,
   DraftRuleRequest,
   LoginRequest,
   LoginResponse,
@@ -239,6 +241,33 @@ export function useDocumentTypeCatalog() {
     queryFn: async () => {
       const { data } = await apiClient.get<DocumentTypeCatalogResponse>('/document-types')
       return data
+    },
+  })
+}
+
+export function useProposeDocumentType() {
+  return useMutation({
+    mutationFn: async (input: { file?: File; documentId?: string; nameHint?: string }) => {
+      const form = new FormData()
+      if (input.file) form.append('file', input.file)
+      if (input.documentId) form.append('document_id', input.documentId)
+      if (input.nameHint) form.append('name_hint', input.nameHint)
+      // OCR + one model call: tens of seconds, well past the client's default.
+      const { data } = await apiClient.post<TypeProposal>('/v1/document-types/proposals', form, { timeout: 300_000 })
+      return data
+    },
+  })
+}
+
+export function useRegisterDocumentType() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (body: RegisterDocumentTypeRequest) => {
+      const { data } = await apiClient.post('/v1/document-types/registrations', body)
+      return data
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['document-types'] })
     },
   })
 }

@@ -9,6 +9,7 @@ import { DocumentDetailPage } from '@/pages/DocumentDetail'
 import { ReviewQueuePage } from '@/pages/ReviewQueue'
 import { TypeSuggestionsPage } from '@/pages/TypeSuggestions'
 import { DocumentTypesPage } from '@/pages/DocumentTypes'
+import { NewDocumentTypePage } from '@/pages/NewDocumentType'
 import { AuditPage } from '@/pages/Audit'
 import { DocumentsPage } from '@/pages/Documents'
 import { UsersPage } from '@/pages/Users'
@@ -82,6 +83,16 @@ export default function App() {
         element={
           <ProtectedRoute>
             <DocumentTypesPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/document-types/new"
+        element={
+          <ProtectedRoute>
+            <RequireRole roles={['admin']}>
+              <NewDocumentTypePage />
+            </RequireRole>
           </ProtectedRoute>
         }
       />

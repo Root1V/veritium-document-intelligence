@@ -1,5 +1,8 @@
-import { Loader2 } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { Loader2, Plus } from 'lucide-react'
 import { useDocumentTypeCatalog } from '@/lib/queries'
+import { isAdmin } from '@/lib/auth'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { humanizeFieldName } from '@/lib/extraction'
@@ -9,12 +12,22 @@ export function DocumentTypesPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Plantillas</h1>
-        <p className="text-muted-foreground">
-          Catálogo de tipos de documento que la plataforma reconoce y sus campos, con la versión publicada de cada uno.
-          Los tipos se versionan en la base de datos (por ahora vía API <code>/v1/document-types</code>).
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Plantillas</h1>
+          <p className="text-muted-foreground">
+            Catálogo de tipos de documento que la plataforma reconoce y sus campos, con la versión publicada de cada uno.
+            Un tipo nuevo se registra desde un documento de ejemplo; una versión nueva de un tipo existente, por ahora vía API
+            (<code>/v1/document-types</code>).
+          </p>
+        </div>
+        {isAdmin() && (
+          <Button asChild>
+            <Link to="/document-types/new">
+              <Plus className="size-4" /> Nuevo tipo desde un ejemplo
+            </Link>
+          </Button>
+        )}
       </div>
 
       {isLoading ? (
@@ -37,6 +50,15 @@ export function DocumentTypesPage() {
                         <Badge variant="outline">pendiente de registrar</Badge>
                       </div>
                       <CardDescription>{type.rationale}</CardDescription>
+                      {isAdmin() && (
+                        <Button asChild variant="outline" size="sm" className="mt-2 self-start">
+                          <Link
+                            to={`/document-types/new?document_id=${type.document_id}&suggestion_id=${type.suggestion_id}&name=${encodeURIComponent(type.suggested_display_name)}`}
+                          >
+                            Registrar desde su documento
+                          </Link>
+                        </Button>
+                      )}
                     </CardHeader>
                   </Card>
                 ))}

@@ -8,6 +8,9 @@ POST /v1/document-types                                  new type, as draft v1 (
 POST /v1/document-types/{key}/versions                   new draft version (admin)
 POST /v1/document-types/{key}/versions/{version}/publish draft -> published (admin)
 POST /v1/document-types/{key}/versions/{version}/retire  published -> retired (admin)
+POST /v1/document-types/proposals                        draft a new type from an example document (admin, VRT-33)
+POST /v1/document-types/registrations                    register a reviewed draft: type published + its semantic
+                                                         mappings as a new catalog version (admin, VRT-33)
 
 A definition is validated by its Pydantic model (422). Publishing also
 checks it against what already points at the type: every semantic mapping
@@ -17,19 +20,25 @@ layer reads. A published version is immutable; its extractions record it."""
 
 from __future__ import annotations
 
+import asyncio
 import re
 import uuid
 from datetime import datetime
+from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from idp.api.deps import get_current_user, get_db_session, require_role
+from idp.api.deps import get_app_settings, get_current_user, get_db_session, get_object_store, require_role
+from idp.classification.type_from_example import DraftMapping, checked_mappings, propose_type_from_example
+from idp.config import Settings
 from idp.domain.document_type_catalog import DocumentTypeDefinition, FieldSpec, compile_schema
-from idp.domain.semantic import SemanticCatalog
+from idp.domain.semantic import FieldMapping, SemanticCatalog
 from idp.persistence.models import DocumentTypeRecord, DocumentTypeVersion, User
-from idp.persistence.repositories import DocumentTypeRepository, SemanticCatalogRepository, TypeSuggestionRepository
+from idp.persistence.repositories import DocumentRepository, DocumentTypeRepository, SemanticCatalogRepository, TypeSuggestionRepository
+from idp.pipeline.orchestrator import parse_example
+from idp.storage.object_store import S3ObjectStore
 
 router = APIRouter(prefix="/document-types", tags=["document-types"], dependencies=[Depends(get_current_user)])
 admin_router = APIRouter(prefix="/v1/document-types", tags=["document-types"], dependencies=[Depends(get_current_user)])
@@ -56,6 +65,7 @@ class DocumentTypeInfo(BaseModel):
 
 class PendingTypeInfo(BaseModel):
     suggestion_id: str
+    document_id: str
     suggested_type_name: str
     suggested_display_name: str
     rationale: str
@@ -102,6 +112,7 @@ async def get_document_type_catalog(session: AsyncSession = Depends(get_db_sessi
     pending = [
         PendingTypeInfo(
             suggestion_id=str(row.id),
+            document_id=str(row.document_id),
             suggested_type_name=row.suggested_type_name,
             suggested_display_name=row.suggested_display_name,
             rationale=row.rationale,
@@ -250,3 +261,109 @@ async def retire_document_type_version(
     if row.status != "published":
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"solo se retira una versión publicada (está '{row.status}')")
     return _detail(record, await repo.set_status(row, status="retired", actor=user.email))
+
+
+# --- a new type from an example (VRT-33) -------------------------------------
+
+
+class TypeProposalResponse(BaseModel):
+    definition: DocumentTypeDefinition
+    mappings: list[DraftMapping] = Field(description="Mapeos a atributos del catálogo semántico, ya verificados contra él.")
+    dropped_mappings: list[str] = Field(description="Mapeos que propuso el modelo y el catálogo no admite, con el motivo.")
+    similar_existing_type: str | None
+    key_taken: bool = Field(description="Ya existe un tipo con esa clave: registrarlo exigirá otra.")
+    rationale: str
+
+
+class RegistrationRequest(BaseModel):
+    definition: DocumentTypeDefinition
+    mappings: list[DraftMapping] = Field(default_factory=list)
+    suggestion_id: uuid.UUID | None = Field(default=None, description="La sugerencia aceptada que este registro resuelve.")
+
+
+@admin_router.post("/proposals", response_model=TypeProposalResponse, dependencies=[Depends(require_role("admin"))])
+async def propose_document_type(
+    file: Annotated[UploadFile | None, File(description="Documento de ejemplo.")] = None,
+    document_id: Annotated[uuid.UUID | None, Form(description="O un documento ya cargado, p. ej. el de una sugerencia aceptada.")] = None,
+    name_hint: Annotated[str | None, Form(description="Cómo lo llama el usuario, si quiere orientar la propuesta.")] = None,
+    session: AsyncSession = Depends(get_db_session),
+    settings: Settings = Depends(get_app_settings),
+    object_store: S3ObjectStore = Depends(get_object_store),
+) -> TypeProposalResponse:
+    """Reads the example and drafts the whole type. Nothing is stored: the
+    draft is reviewed and edited, then sent to ``/registrations``."""
+    if (file is None) == (document_id is None):
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="envía un archivo o un document_id, uno de los dos")
+    if file is not None:
+        content, filename = await file.read(), file.filename or "ejemplo"
+    else:
+        document = await DocumentRepository(session).get(document_id)  # type: ignore[arg-type]
+        if document is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="documento no encontrado")
+        content, filename = await asyncio.to_thread(object_store.get, document.storage_key), document.original_filename
+    if not content:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="el documento está vacío")
+
+    repo = DocumentTypeRepository(session)
+    type_catalog = await repo.load_catalog()
+    active = await SemanticCatalogRepository(session).load_active()
+    if active is None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="no hay un catálogo semántico publicado")
+    parsed = await asyncio.to_thread(parse_example, settings, content, filename)
+    draft = await asyncio.to_thread(
+        propose_type_from_example, settings, parsed, type_catalog=type_catalog, semantic=active[0], name_hint=name_hint
+    )
+    definition = draft.definition()
+    mappings, dropped = checked_mappings(definition, draft.mappings, active[0])
+    return TypeProposalResponse(
+        definition=definition,
+        mappings=mappings,
+        dropped_mappings=dropped,
+        similar_existing_type=draft.similar_existing_type if draft.similar_existing_type in type_catalog.keys() else None,
+        key_taken=await repo.get_by_key(definition.key) is not None,
+        rationale=draft.rationale,
+    )
+
+
+@admin_router.post("/registrations", response_model=TypeVersionDetail, status_code=status.HTTP_201_CREATED)
+async def register_document_type(
+    body: RegistrationRequest, session: AsyncSession = Depends(get_db_session), user: User = Depends(require_role("admin"))
+) -> TypeVersionDetail:
+    """Publishes the reviewed type as v1 and, when it brings mappings, a new
+    semantic catalog version that includes them — everything is validated
+    before anything is written, so a rejected registration leaves no trace."""
+    repo = DocumentTypeRepository(session)
+    definition = body.definition
+    if await repo.get_by_key(definition.key) is not None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"el tipo '{definition.key}' ya existe")
+    _compiles(definition)
+
+    semantic_repo = SemanticCatalogRepository(session)
+    new_catalog = None
+    if body.mappings:
+        active = await semantic_repo.load_active()
+        if active is None:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="no hay un catálogo semántico publicado")
+        kept, dropped = checked_mappings(definition, body.mappings, active[0])
+        if dropped:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=dropped)
+        added = [FieldMapping(document_type=definition.key, field_path=m.field_path, attribute=m.attribute, role=m.role) for m in kept]
+        try:
+            new_catalog = SemanticCatalog.model_validate({**active[0].model_dump(), "mappings": [*active[0].mappings, *added]})
+        except ValidationError as exc:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"el catálogo semántico no admite los mapeos: {exc.errors()[0]['msg']}") from exc
+
+    suggestions = TypeSuggestionRepository(session)
+    if body.suggestion_id is not None and await suggestions.get(body.suggestion_id) is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="sugerencia no encontrada")
+
+    row = await repo.create_type(definition, created_by=user.email)
+    row = await repo.set_status(row, status="published", actor=user.email)
+    if body.suggestion_id is not None:
+        await suggestions.resolve(body.suggestion_id, decision="registered", reviewer_identity=user.email)
+    if new_catalog is not None:
+        draft = await semantic_repo.create_draft(new_catalog, created_by=user.email)
+        await semantic_repo.publish(draft, published_by=user.email)
+    await session.commit()  # the suggestion's resolution is only flushed
+    return _detail(await _type_or_404(repo, definition.key), row)
+

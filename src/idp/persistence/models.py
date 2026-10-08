@@ -252,7 +252,7 @@ class DocumentTypeSuggestion(Base):
     suggested_display_name: Mapped[str] = mapped_column(String(256), nullable=False)
     rationale: Mapped[str] = mapped_column(Text, nullable=False)
     fields: Mapped[list] = mapped_column(JSONB, nullable=False)
-    status: Mapped[str] = mapped_column(String(16), default="pending", nullable=False)  # pending|accepted|rejected
+    status: Mapped[str] = mapped_column(String(16), default="pending", nullable=False)  # pending|accepted|rejected|registered
     reviewer_identity: Mapped[str | None] = mapped_column(String(256), nullable=True)
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

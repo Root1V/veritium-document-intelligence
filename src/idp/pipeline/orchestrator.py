@@ -99,6 +99,12 @@ def _parse_serialized(settings: Settings, backend: ParserBackend, file_bytes: by
         return parse_document(settings, backend, file_bytes, filename, document_id=document_id)
 
 
+def parse_example(settings: Settings, file_bytes: bytes, filename: str) -> ParsedDocument:
+    """OCR of an example document outside any case (VRT-33), through the
+    same serialized backend the pipeline uses."""
+    return _parse_serialized(settings, shared_parser_backend(settings), file_bytes, filename, document_id="example")
+
+
 def _hardcoded_rules(settings: Settings) -> list[ValidationRule]:
     """The registered hand-written rule set — one or more concrete rules
     per of the 6 categories (5 from the user's feedback plus intra-document
