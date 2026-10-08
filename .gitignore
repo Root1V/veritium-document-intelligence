@@ -23,3 +23,8 @@ build/
 /tests/golden/expected_extractions/
 
 .claude/
+
+# aeon local deployment (VRT-26): generated per machine
+deploy/aeon/callers.yaml
+deploy/aeon/secrets/
+deploy/aeon/artifacts/

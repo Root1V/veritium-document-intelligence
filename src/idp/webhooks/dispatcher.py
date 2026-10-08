@@ -11,8 +11,9 @@ At-least-once: a crash between sending and recording means the delivery is
 sent again when its lease expires; consumers deduplicate by ``webhook-id``.
 Claims use SKIP LOCKED, so several dispatchers can run side by side.
 
-Runs inside the API process (see api/app.py lifespan) until the worker
-exists (VRT-26); ``python -m idp.webhooks.dispatcher`` runs it standalone."""
+Runs inside the API process (see api/app.py lifespan), so it works with
+either case executor; ``python -m idp.webhooks.dispatcher`` runs it
+standalone."""
 
 from __future__ import annotations
 

@@ -23,7 +23,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from idp.api.case_contract import CaseResultV1, ConditionResult, ProfileRef, Verdict, build_case_result, condition_result, latest_run, profile_ref
-from idp.api.case_service import open_run, read_uploads, request_fingerprint, resolve_profile_version, store_uploads
+from idp.api.case_service import dispatch_run, open_run, read_uploads, request_fingerprint, resolve_profile_version, store_uploads
 from idp.api.deps import get_app_settings, get_current_user, get_db_session, get_object_store, require_role
 from idp.config import Settings
 from idp.domain.verdict import VerdictReason
@@ -31,7 +31,6 @@ from idp.persistence.models import Case, User
 from idp.persistence.repositories import CaseConditionRepository, CaseRepository, CaseRunRepository
 from idp.pipeline.case_evaluation import refresh_verdict
 from idp.storage.object_store import S3ObjectStore
-from idp.worker.tasks import run_case
 
 router = APIRouter(prefix="/v1/cases", tags=["cases"], dependencies=[Depends(get_current_user)])
 
@@ -186,7 +185,7 @@ async def submit_case(
     await store_uploads(session, object_store, case, uploads)
     run = await open_run(session, case, trigger="submit")
     await session.commit()
-    background_tasks.add_task(run_case, settings, case.id, run.id)
+    await dispatch_run(session, settings, case, run, background_tasks)
     return _accepted(case, run.run_number, replayed=False)
 
 
@@ -216,7 +215,7 @@ async def add_documents(
     # "completed" while this run waits to start.
     case.status = "uploaded"
     await session.commit()
-    background_tasks.add_task(run_case, settings, case.id, run.id)
+    await dispatch_run(session, settings, case, run, background_tasks)
     return _accepted(case, run.run_number, replayed=False)
 
 

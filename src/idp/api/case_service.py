@@ -8,11 +8,14 @@ import hashlib
 import json
 from dataclasses import dataclass
 
-from fastapi import HTTPException, UploadFile, status
+from fastapi import BackgroundTasks, HTTPException, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from idp.config import Settings
+from idp.execution.port import executor_for
 from idp.persistence.models import Case, CaseRun, Document, ProcessProfileVersion
 from idp.persistence.repositories import CaseRunRepository, DocumentRepository, ProcessProfileRepository
+from idp.pipeline.orchestrator import fail_run
 from idp.storage.object_store import ObjectStore
 
 
@@ -88,3 +91,17 @@ async def store_uploads(session: AsyncSession, object_store: ObjectStore, case: 
 
 async def open_run(session: AsyncSession, case: Case, *, trigger: str) -> CaseRun:
     return await CaseRunRepository(session).create_next(case, trigger=trigger)
+
+
+async def dispatch_run(session: AsyncSession, settings: Settings, case: Case, run: CaseRun, background: BackgroundTasks) -> None:
+    """Hand the run to the configured executor (VRT-26). If it cannot be
+    started (e.g. aeon unreachable), the run is marked failed instead of
+    being left pending forever, and the caller gets a 503."""
+    try:
+        ref = await executor_for(settings).submit(case_id=case.id, run_id=run.id, channel=case.channel, background=background)
+    except Exception as exc:
+        await fail_run(settings, case.id, run.id, f"no se pudo iniciar la corrida: {type(exc).__name__}: {exc}")
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="el ejecutor de expedientes no está disponible") from exc
+    if ref is not None:
+        run.execution_ref = ref
+        await session.commit()

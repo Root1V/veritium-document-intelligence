@@ -23,13 +23,12 @@ from idp.api.schemas import DocumentSummary
 from idp.config import Settings
 from idp.persistence.db import get_session_factory
 from idp.persistence.models import Case
-from idp.api.case_service import open_run, read_uploads, resolve_profile_version, store_uploads
+from idp.api.case_service import dispatch_run, open_run, read_uploads, resolve_profile_version, store_uploads
 from idp.domain.process_profile_seed import AD_HOC_KEY
 from idp.domain.semantic_resolution import ConsolidatedView
 from idp.persistence.repositories import CaseRepository, DocumentRepository
 from idp.pipeline.orchestrator import case_document_fields, resolve_semantic_view
 from idp.storage.object_store import S3ObjectStore
-from idp.worker.tasks import run_case
 
 router = APIRouter(prefix="/batches", tags=["batches"], dependencies=[Depends(get_current_user)])
 
@@ -86,7 +85,7 @@ async def create_batch(
     run = await open_run(session, case, trigger="submit")
     await session.commit()
 
-    background_tasks.add_task(run_case, settings, case.id, run.id)
+    await dispatch_run(session, settings, case, run, background_tasks)
 
     return BatchCreateResponse(batch_id=case.id)
 

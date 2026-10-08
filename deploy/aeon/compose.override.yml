@@ -1,0 +1,46 @@
+# INTERIM aeon instance (VRT-26, ADR-0003). The target is ONE shared,
+# multi-tenant aeon deployment for every project; until aeon delivers
+# multi-tenancy (VRT-AEON-005: data scoping T-2..T-4, bundle per tenant T-5),
+# this is another instance of the SAME aeon code and images with only
+# configuration added (callers, Cedar bundle, ports, artifact dir). Never a
+# fork, and delete it when the shared deployment exists: Veritium then only
+# changes AEON_RUNCONTROLLER_URL, TEMPORAL_ADDRESS and AEON_API_TOKEN. Used by scripts/aeon_dev.sh on
+# top of the aeon repo's deploy/compose/docker-compose.yml, as compose
+# project "veritium-aeon" so it never mixes with aeon's own dev stack.
+#
+# Only what Veritium uses from the host is published, on 127.0.0.1 (the
+# convention agreed in VRT-AEON-002) and on ports of its own so it can run
+# beside aeon's own dev stack: Temporal 7243, Temporal UI 8233, runcontroller
+# 9414. Postgres, searxng and toolgw stay internal. MinIO is not started.
+services:
+  temporal:
+    ports: !override
+      - "127.0.0.1:7243:7233"
+  temporal-ui:
+    ports: !override
+      - "127.0.0.1:8233:8080"
+  postgres:
+    ports: !reset []
+  searxng:
+    ports: !reset []
+  toolgw:
+    ports: !reset []
+    environment:
+      # Hardcoded to the deep-research bundle in the base file.
+      AEON_POLICY_BUNDLE_PATH: /veritium/policy_bundle.yaml
+    volumes:  # merged by target: /artifacts is replaced, the rest kept
+      - ${VERITIUM_AEON_DIR}/artifacts:/artifacts:ro
+      - ${VERITIUM_AEON_DIR}:/veritium:ro
+  worker:
+    environment:
+      # Graphs with external activities need the real policy check (RUN-006);
+      # ledger mode and the gateway address are mutually exclusive.
+      AEON_TOOL_EXECUTION_MODE: ""
+      AEON_TOOLGW_ADDR: toolgw:9403
+    volumes:
+      - ${VERITIUM_AEON_DIR}/artifacts:/artifacts
+  runcontroller:
+    ports: !override
+      - "127.0.0.1:9414:9404"
+    volumes:
+      - ${VERITIUM_AEON_DIR}:/veritium:ro

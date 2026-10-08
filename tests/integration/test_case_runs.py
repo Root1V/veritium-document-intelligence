@@ -27,11 +27,9 @@ from idp.persistence.repositories import (
     CaseRunRepository,
     DocumentRepository,
     ProcessProfileRepository,
-    ReferenceDataRepository,
 )
 from idp.pipeline import orchestrator
 from idp.pipeline.case_evaluation import refresh_verdict
-from idp.validation.ports import StubExternalSystemPort
 
 pytestmark = [pytest.mark.usefixtures("require_postgres")]
 
@@ -64,16 +62,12 @@ def stub_extraction(monkeypatch):
 async def _run(settings, session, case: Case) -> uuid.UUID:
     run = await CaseRunRepository(session).create_next(case, trigger="submit")
     await session.commit()
-    await orchestrator.process_case_run(
-        settings=settings,
-        session=session,
-        case_id=case.id,
-        run_id=run.id,
-        object_store=None,  # type: ignore[arg-type]  # unused: extraction is stubbed
-        reference_data=ReferenceDataRepository(session),
-        external_system=StubExternalSystemPort(),
-    )
-    return run.id
+    run_id = run.id
+    await orchestrator.process_case_run(settings=settings, case_id=case.id, run_id=run_id)
+    # The run's steps write through their own sessions: drop this session's
+    # cached objects so the assertions read what the run actually stored.
+    session.expire_all()
+    return run_id
 
 
 @pytest.mark.asyncio

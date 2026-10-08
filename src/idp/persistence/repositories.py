@@ -147,6 +147,12 @@ class CaseRunRepository:
         stmt = select(func.count()).select_from(CaseRun).where(CaseRun.case_id == case_id, CaseRun.status.in_(("pending", "running")))
         return bool(await self._session.scalar(stmt))
 
+    async def list_unfinished_with_ref(self) -> list[CaseRun]:
+        """Runs handed to an executor that have not finished — what the
+        worker's reconciler checks against aeon (VRT-26)."""
+        stmt = select(CaseRun).where(CaseRun.status.in_(("pending", "running")), CaseRun.execution_ref.is_not(None))
+        return list((await self._session.scalars(stmt)).all())
+
     async def mark_running(self, run: CaseRun, *, provenance: dict) -> None:
         run.status, run.provenance, run.started_at = "running", provenance, datetime.now(UTC)
 
@@ -201,6 +207,17 @@ class DocumentRepository:
         )
         result = await self._session.execute(stmt)
         return result.scalar_one_or_none()
+
+    async def find_child(self, parent_document_id: uuid.UUID, *, page_start: int, page_end: int) -> Document | None:
+        """The segment child for this page range, if an earlier attempt
+        already created it."""
+        stmt = (
+            select(Document)
+            .where(Document.parent_document_id == parent_document_id, Document.page_start == page_start, Document.page_end == page_end)
+            .options(selectinload(Document.extraction))
+            .execution_options(populate_existing=True)
+        )
+        return await self._session.scalar(stmt)
 
     async def list_for_case(self, case_id: uuid.UUID) -> list[Document]:
         # populate_existing=True: within a case run, these Document objects

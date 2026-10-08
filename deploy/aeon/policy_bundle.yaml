@@ -1,0 +1,21 @@
+# Veritium's Cedar bundle for its aeon deployment (VRT-26). Default-deny:
+# only these permits exist. Each permit carries the `resource is
+# ExternalActivity` type guard (RUN-006): without it, a tool with the same
+# name would inherit the permit. Activity names and task queues must match
+# src/idp/execution/aeon.py (a unit test checks it).
+apiVersion: harness.ai/v1
+kind: PolicyBundle
+cedarVersion: "4.0"
+policies:
+  - id: allow-veritium-case-steps
+    effect: permit
+    cedarSource: |
+      permit(
+        principal == Agent::"veritium-case-run@1.0.0",
+        action,
+        resource
+      ) when {
+        resource is ExternalActivity &&
+        ["veritium.case.start_run", "veritium.case.process_document", "veritium.case.evaluate"].contains(resource.name) &&
+        ["veritium-online", "veritium-backoffice", "veritium-bulk"].contains(resource.task_queue)
+      };

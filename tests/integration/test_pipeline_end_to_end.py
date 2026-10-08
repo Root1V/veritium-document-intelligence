@@ -20,10 +20,9 @@ import json
 import pytest
 
 from idp.persistence.db import get_session_factory
-from idp.persistence.repositories import CaseRepository, CaseRunRepository, DocumentRepository, ReferenceDataRepository
+from idp.persistence.repositories import CaseRepository, CaseRunRepository, DocumentRepository
 from idp.pipeline.orchestrator import process_case_run
 from idp.storage.object_store import S3ObjectStore
-from idp.validation.ports import StubExternalSystemPort
 from tests.conftest import FIXTURES_DIR, GOLDEN_DIR, normalize_extracted_string
 
 pytestmark = [pytest.mark.usefixtures("require_postgres", "require_minio", "require_reasoning_llm")]
@@ -47,15 +46,7 @@ async def _run_fixture(live_settings, filename: str):
         run = await CaseRunRepository(session).create_next(case, trigger="submit")
         await session.commit()
 
-        await process_case_run(
-            settings=live_settings,
-            session=session,
-            case_id=case.id,
-            run_id=run.id,
-            object_store=object_store,
-            reference_data=ReferenceDataRepository(session),
-            external_system=StubExternalSystemPort(),
-        )
+        await process_case_run(settings=live_settings, case_id=case.id, run_id=run.id)
 
         return await document_repo.get(document.id)
 

@@ -14,6 +14,7 @@ promotion is mechanical, not a rewrite.
 from __future__ import annotations
 
 import asyncio
+import threading
 import uuid
 from typing import Any
 
@@ -35,12 +36,15 @@ from idp.observability.otel import traced_stage
 from idp.parsing.base import ParserBackend
 from idp.parsing.docling_backend import DoclingBackend
 from idp.parsing.paddleocr_backend import PaddleOCRBackend
+from idp.persistence.db import get_session_factory
+from idp.persistence.models import Case
 from idp.persistence.models import ValidationIssue as ValidationIssueModel
 from idp.persistence.repositories import (
     CaseRepository,
     CaseRunRepository,
     DocumentRepository,
     ExtractionRepository,
+    ReferenceDataRepository,
     ReviewRepository,
     SemanticCatalogRepository,
     TypeSuggestionRepository,
@@ -54,11 +58,11 @@ from idp.webhooks.events import emit_run_finished
 from idp.pipeline.stages import classify_document, extract_document, parse_document, segment_document, suggest_type
 from idp.review.queue import enqueue_review_items
 from idp.review.routing import find_review_candidates
-from idp.storage.object_store import ObjectStore
+from idp.storage.object_store import ObjectStore, S3ObjectStore
 from idp.validation.base import ValidationRule
 from idp.validation.context import DocumentFields, ValidationContext
 from idp.validation.engine import run_validation
-from idp.validation.ports import ExternalSystemPort, ReferenceDataPort
+from idp.validation.ports import ExternalSystemPort, ReferenceDataPort, StubExternalSystemPort
 from idp.validation.rules.batch_rules import DuplicateDocumentIdentifier, EmployeeNameCrossDocumentMatch
 from idp.validation.rules.external_system_rules import InsurancePolicyVerifiedExternally
 from idp.validation.rules.generic import DataDrivenRule
@@ -72,6 +76,27 @@ def make_parser_backend(settings: Settings) -> ParserBackend:
     if settings.parser_backend == "docling":
         return DoclingBackend(settings)
     return PaddleOCRBackend(settings)
+
+
+_SHARED_BACKENDS: dict[str, ParserBackend] = {}
+# OCR runs one document at a time per process: the models are large and
+# their thread-safety is not guaranteed. LLM extraction — the slow part —
+# still runs in parallel.
+_PARSE_LOCK = threading.Lock()
+
+
+def shared_parser_backend(settings: Settings) -> ParserBackend:
+    """One backend per process, so the OCR models load once instead of on
+    every run."""
+    backend = _SHARED_BACKENDS.get(settings.parser_backend)
+    if backend is None:
+        backend = _SHARED_BACKENDS[settings.parser_backend] = make_parser_backend(settings)
+    return backend
+
+
+def _parse_serialized(settings: Settings, backend: ParserBackend, file_bytes: bytes, filename: str, *, document_id: str) -> ParsedDocument:
+    with _PARSE_LOCK:
+        return parse_document(settings, backend, file_bytes, filename, document_id=document_id)
 
 
 def _hardcoded_rules(settings: Settings) -> list[ValidationRule]:
@@ -318,7 +343,7 @@ async def _process_uploaded_file(
     await document_repo.set_status(document_id, "parsing")
     await session.commit()
     file_bytes = await asyncio.to_thread(object_store.get, storage_key)
-    parsed = await asyncio.to_thread(parse_document, settings, backend, file_bytes, filename, document_id=str(document_id))
+    parsed = await asyncio.to_thread(_parse_serialized, settings, backend, file_bytes, filename, document_id=str(document_id))
     segments = await asyncio.to_thread(segment_document, settings, parsed, document_id=str(document_id))
 
     if len(segments) <= 1:
@@ -340,14 +365,20 @@ async def _process_uploaded_file(
     all_fields: list[DocumentFields] = []
     for segment in segments:
         sliced = slice_by_pages(parsed, segment.start_page, segment.end_page)
-        child = await document_repo.create_child(
-            case_id=case_id,
-            parent_document_id=document_id,
-            storage_key=storage_key,
-            original_filename=f"{filename}#p{segment.start_page}-{segment.end_page}",
-            page_start=segment.start_page,
-            page_end=segment.end_page,
-        )
+        # A retried attempt reuses the child an earlier attempt created for
+        # the same page range instead of duplicating it.
+        child = await document_repo.find_child(document_id, page_start=segment.start_page, page_end=segment.end_page)
+        if child is not None and (child.extraction is not None or child.status in ("extracted", "needs_review", "completed", "failed")):
+            continue
+        if child is None:
+            child = await document_repo.create_child(
+                case_id=case_id,
+                parent_document_id=document_id,
+                storage_key=storage_key,
+                original_filename=f"{filename}#p{segment.start_page}-{segment.end_page}",
+                page_start=segment.start_page,
+                page_end=segment.end_page,
+            )
         await session.commit()
         try:
             fields = await _classify_and_extract(
@@ -373,80 +404,111 @@ async def _process_uploaded_file(
     return all_fields
 
 
-async def process_case_run(
-    *,
-    settings: Settings,
-    session: AsyncSession,
-    case_id: uuid.UUID,
-    run_id: uuid.UUID,
-    object_store: ObjectStore,
-    reference_data: ReferenceDataPort,
-    external_system: ExternalSystemPort,
-) -> None:
-    """One evaluation of a case. Only documents still ``uploaded`` (added
-    since the previous run) go through extraction; validation then covers
-    every document of the case that has an extraction, so cross-document
-    and semantic checks see the case as it is now. The previous run's
-    issues are superseded, never deleted."""
-    case_repo = CaseRepository(session)
-    run_repo = CaseRunRepository(session)
-    document_repo = DocumentRepository(session)
-    extraction_repo = ExtractionRepository(session)
-    validation_repo = ValidationRepository(session)
-    review_repo = ReviewRepository(session)
-    type_suggestion_repo = TypeSuggestionRepository(session)
+# Documents in these states are done for the run that processed them.
+_TERMINAL_DOCUMENT_STATUSES = {"extracted", "needs_review", "completed", "failed"}
 
-    case = await case_repo.get(case_id)
-    run = await run_repo.get(run_id)
-    if case is None or run is None:
-        raise ValueError(f"case run not found: case={case_id} run={run_id}")
 
-    profile_version = case.profile_version
-    definition = profile_definition(case)
-    rules = rules_for_profile(await build_default_rules(settings, session), definition)
-    provenance = build_provenance(settings, profile_version=profile_version, rules=rules)
-    await run_repo.mark_running(run, provenance=provenance)
-    await case_repo.set_status(case_id, "processing")
-    await session.commit()
-
-    try:
-        backend = make_parser_backend(settings)
-        request_payload = RequestInputPayload(data=case.request_input_payload or {})
-
-        for document in [d for d in case.documents if d.status == "uploaded"]:
-            with traced_stage("process_document", case_id=str(case_id), document_id=str(document.id)):
-                try:
-                    await _process_uploaded_file(
-                        settings=settings,
-                        session=session,
-                        backend=backend,
-                        case_id=case_id,
-                        document_id=document.id,
-                        storage_key=document.storage_key,
-                        filename=document.original_filename,
-                        object_store=object_store,
-                        document_repo=document_repo,
-                        extraction_repo=extraction_repo,
-                        type_suggestion_repo=type_suggestion_repo,
-                    )
-                except ExtractionIncomplete:
-                    await document_repo.mark_needs_review(document.id)
-                    await document_repo.set_status(document.id, "needs_review")
-                except Exception:
-                    # A single document's failure (e.g. the configured
-                    # LLM/VLM endpoint being unreachable) must not leave the
-                    # whole case stuck in "processing" — mark this document
-                    # failed and keep going. The OTEL span records the error.
-                    await document_repo.set_status(document.id, "failed")
+async def start_run(settings: Settings, case_id: uuid.UUID, run_id: uuid.UUID) -> list[uuid.UUID]:
+    """Step 1 of a case run (VRT-26): mark the run running, record its
+    provenance, and return the top-level documents still to extract.
+    Idempotent: a retried start does not reset an already running run."""
+    async with get_session_factory(settings)() as session:
+        case_repo, run_repo = CaseRepository(session), CaseRunRepository(session)
+        case, run = await case_repo.get(case_id), await run_repo.get(run_id)
+        if case is None or run is None:
+            raise ValueError(f"case run not found: case={case_id} run={run_id}")
+        if run.status == "completed":
+            return []
+        if run.status == "pending":
+            definition = profile_definition(case)
+            rules = rules_for_profile(await build_default_rules(settings, session), definition)
+            await run_repo.mark_running(run, provenance=build_provenance(settings, profile_version=case.profile_version, rules=rules))
+            await case_repo.set_status(case_id, "processing")
             await session.commit()
+        return _pending(case)
 
+
+def _pending(case: Case) -> list[uuid.UUID]:
+    return [d.id for d in case.documents if d.parent_document_id is None and d.extraction is None and d.status not in _TERMINAL_DOCUMENT_STATUSES]
+
+
+async def pending_documents(settings: Settings, case_id: uuid.UUID) -> list[uuid.UUID]:
+    """The top-level documents a new run of this case has to extract —
+    what the aeon graph fans out over (VRT-26)."""
+    async with get_session_factory(settings)() as session:
+        case = await CaseRepository(session).get(case_id)
+        if case is None:
+            raise ValueError(f"case not found: {case_id}")
+        return _pending(case)
+
+
+async def process_document(settings: Settings, case_id: uuid.UUID, run_id: uuid.UUID, document_id: uuid.UUID) -> None:
+    """Step 2, once per document and in parallel: parse, segment, classify
+    and extract one uploaded document. Idempotent — an already extracted
+    document is skipped, and a retried segmentation reuses the children a
+    previous attempt created instead of duplicating them. A document that
+    fails is marked failed and the case goes on (the verdict reports it)."""
+    async with get_session_factory(settings)() as session:
+        document_repo = DocumentRepository(session)
+        document = await document_repo.get(document_id)
+        if document is None or document.case_id != case_id:
+            raise ValueError(f"document {document_id} does not belong to case {case_id}")
+        if document.extraction is not None or document.status in _TERMINAL_DOCUMENT_STATUSES:
+            return
+        with traced_stage("process_document", case_id=str(case_id), document_id=str(document_id)):
+            try:
+                await _process_uploaded_file(
+                    settings=settings,
+                    session=session,
+                    backend=shared_parser_backend(settings),
+                    case_id=case_id,
+                    document_id=document_id,
+                    storage_key=document.storage_key,
+                    filename=document.original_filename,
+                    object_store=S3ObjectStore(settings),
+                    document_repo=document_repo,
+                    extraction_repo=ExtractionRepository(session),
+                    type_suggestion_repo=TypeSuggestionRepository(session),
+                )
+            except ExtractionIncomplete:
+                await document_repo.mark_needs_review(document_id)
+                await document_repo.set_status(document_id, "needs_review")
+            except Exception:
+                # One document's failure (e.g. the LLM/VLM endpoint being
+                # unreachable) must not stop the case. The span records it.
+                await document_repo.set_status(document_id, "failed")
+        await session.commit()
+
+
+async def evaluate_case(settings: Settings, case_id: uuid.UUID, run_id: uuid.UUID) -> str | None:
+    """Step 3, after every document: re-validate the whole case, refresh
+    its conditions and verdict, close the run and emit its events.
+    Idempotent: a completed run returns its verdict; a retry after a crash
+    re-evaluates from scratch (the partial issues are superseded)."""
+    async with get_session_factory(settings)() as session:
+        case_repo, run_repo, document_repo = CaseRepository(session), CaseRunRepository(session), DocumentRepository(session)
+        validation_repo, review_repo = ValidationRepository(session), ReviewRepository(session)
+        case, run = await case_repo.get(case_id), await run_repo.get(run_id)
+        if case is None or run is None:
+            raise ValueError(f"case run not found: case={case_id} run={run_id}")
+        if run.status == "completed":
+            return run.verdict
+
+        definition = profile_definition(case)
+        rules = rules_for_profile(await build_default_rules(settings, session), definition)
         all_fields = await case_document_fields(document_repo, case_id)
-        catalog_version = profile_version.semantic_catalog_version if profile_version is not None else None
+        catalog_version = case.profile_version.semantic_catalog_version if case.profile_version is not None else None
         semantic_view = await resolve_semantic_view(session, all_fields, catalog_version=catalog_version)
-        run.provenance = {**provenance, "semantic_catalog_version": semantic_view.catalog_version if semantic_view else None}
+        run.provenance = {
+            **(run.provenance or build_provenance(settings, profile_version=case.profile_version, rules=rules)),
+            # the rules actually evaluated (a toggle may have changed since the run started)
+            "rules": build_provenance(settings, profile_version=case.profile_version, rules=rules)["rules"],
+            "semantic_catalog_version": semantic_view.catalog_version if semantic_view else None,
+        }
         await validation_repo.supersede_active(case_id)
         await session.commit()
 
+        request_payload = RequestInputPayload(data=case.request_input_payload or {})
         for current in all_fields:
             await _validate_document(
                 settings=settings,
@@ -458,8 +520,8 @@ async def process_case_run(
                 rules=rules,
                 definition=definition,
                 request_payload=request_payload,
-                reference_data=reference_data,
-                external_system=external_system,
+                reference_data=ReferenceDataRepository(session),
+                external_system=StubExternalSystemPort(),
                 semantic_view=semantic_view,
                 document_repo=document_repo,
                 validation_repo=validation_repo,
@@ -472,16 +534,41 @@ async def process_case_run(
         await run_repo.mark_finished(run, status="completed")
         emit_run_finished(session, case, run)
         await session.commit()
-    except Exception as exc:
-        await session.rollback()
+        return run.verdict
+
+
+async def fail_run(settings: Settings, case_id: uuid.UUID, run_id: uuid.UUID, error: str) -> None:
+    """When a run cannot finish: mark it and the case failed and emit
+    ``run.failed``. No-op on a run that already finished."""
+    async with get_session_factory(settings)() as session:
+        case_repo, run_repo = CaseRepository(session), CaseRunRepository(session)
         run = await run_repo.get(run_id)
-        if run is not None:
-            await run_repo.mark_finished(run, status="failed", error=f"{type(exc).__name__}: {exc}")
+        if run is None or run.status in ("completed", "failed"):
+            return
+        await run_repo.mark_finished(run, status="failed", error=error[:2000])
         await case_repo.set_status(case_id, "failed")
-        failed_case = await case_repo.get(case_id)
-        if run is not None and failed_case is not None:
-            emit_run_finished(session, failed_case, run)
+        case = await case_repo.get(case_id)
+        if case is not None:
+            emit_run_finished(session, case, run)
         await session.commit()
+
+
+async def process_case_run(*, settings: Settings, case_id: uuid.UUID, run_id: uuid.UUID) -> None:
+    """The whole run in-process (the interim executor, VRT-26): the same
+    steps the aeon graph runs, with documents in parallel up to
+    ``case_max_parallel_documents``."""
+    pending = await start_run(settings, case_id, run_id)
+    try:
+        semaphore = asyncio.Semaphore(settings.case_max_parallel_documents)
+
+        async def one(document_id: uuid.UUID) -> None:
+            async with semaphore:
+                await process_document(settings, case_id, run_id, document_id)
+
+        await asyncio.gather(*(one(d) for d in pending))
+        await evaluate_case(settings, case_id, run_id)
+    except Exception as exc:
+        await fail_run(settings, case_id, run_id, f"{type(exc).__name__}: {exc}")
         raise
 
 

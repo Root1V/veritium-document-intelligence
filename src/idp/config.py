@@ -93,14 +93,33 @@ class Settings(BaseSettings):
     otel_service_name: str = "idp"
     otel_console_export: bool = True
 
+    # --- Case execution (VRT-26) ---
+    # "in_process": the API runs the case itself (no durability; for
+    # development). "aeon": the case runs as an aeon graph whose steps are
+    # executed by Veritium's worker (python -m idp.worker).
+    case_executor: Literal["in_process", "aeon"] = "in_process"
+    case_max_parallel_documents: int = 3
+    # aeon (Veritium's own deployment: scripts/aeon_dev.sh). The token is the
+    # bearer of the "veritium-api" caller; setup writes it to .env.
+    aeon_runcontroller_url: str = "http://127.0.0.1:9414"
+    aeon_api_token: SecretStr | None = None
+    aeon_agent_ref: str = "veritium-case-run@1.0.0"
+    aeon_request_timeout_seconds: float = 10.0
+    # The worker (python -m idp.worker): Temporal of the aeon deployment, how
+    # many steps each lane's queue runs at once, and how often it checks aeon
+    # for runs that failed before reaching evaluation.
+    temporal_address: str = "localhost:7243"
+    temporal_namespace: str = "default"
+    worker_lane_concurrency: dict[str, int] = {"online": 4, "backoffice": 2, "bulk": 1}
+    worker_reconcile_interval_seconds: float = 30.0
+
     # --- Webhooks (VRT-28) ---
     # Fernet key that encrypts webhook signing secrets at rest. Required to
     # register an endpoint. Generate one with:
     #   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
     secrets_encryption_key: SecretStr | None = None
-    # The dispatcher runs inside the API process until the worker exists
-    # (VRT-26); deliveries are claimed with SKIP LOCKED, so several
-    # instances can run it at once.
+    # The dispatcher runs inside the API process; deliveries are claimed
+    # with SKIP LOCKED, so several instances can run it at once.
     webhook_dispatcher_enabled: bool = True
     webhook_dispatch_interval_seconds: float = 2.0
     webhook_request_timeout_seconds: float = 10.0

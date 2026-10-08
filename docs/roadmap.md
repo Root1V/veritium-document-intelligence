@@ -129,10 +129,10 @@ Veritium pasa de "subir documentos sueltos" a ser una **capacidad de decisión d
 ## VRT-26 — Ejecución durable sobre aeon
 **Why:** hoy un expediente corre en secuencia dentro de `BackgroundTasks`; si el proceso cae, se pierde ([ADR-0003](adr/0003-ejecucion-sobre-aeon.md)).
 **Scope:**
-- `CaseExecutionPort` con `AeonExecutor`: grafo `start_run → parallel[process_document × N] → evaluate_case → finish_run` en aeon.
-- Worker propio (`python -m idp.worker`) con task queues por carril: `veritium-online`, `veritium-backoffice`, `veritium-bulk`. Actividades idempotentes con estado en la BD de Veritium.
-- `InProcessExecutor` interino, con paralelismo acotado y **no durable**.
-- Instancia propia de aeon, bundle de Cedar con guardas `ExternalActivity` y heartbeat en las actividades largas ([ADR-0003](adr/0003-ejecucion-sobre-aeon.md)).
+- `CaseExecutionPort` (`CASE_EXECUTOR`) con `AeonExecutor`: grafo `start → parallel[process_document × N] → evaluate` de nodos `activity`, con `max_activity_calls = N+2`.
+- Worker propio (`python -m idp.worker`) con task queues por carril: `veritium-online`, `veritium-backoffice`, `veritium-bulk`. Actividades idempotentes con estado en la BD de Veritium, heartbeat en `process_document`, y un reconciliador que marca fallida la corrida cuyo run de aeon falló antes de evaluar (aeon no avisa).
+- `InProcessExecutor` (default), con paralelismo acotado y **no durable**.
+- Instancia **interina** del mismo código de aeon hasta que exista el despliegue compartido multi-tenant (`VRT-AEON-005`); el cambio será solo de configuración: `deploy/aeon/` (override de compose, bundle de Cedar con guarda `ExternalActivity`) y `scripts/aeon_dev.sh` (callers y tokens generados por máquina) ([ADR-0003](adr/0003-ejecucion-sobre-aeon.md)).
 - Se cierra cuando A-1 está entregado (`VRT-AEON-001`) y el crash-resume está probado.
 
 ## VRT-27 — Completitud y veredicto
@@ -157,6 +157,7 @@ Veritium pasa de "subir documentos sueltos" a ser una **capacidad de decisión d
 **Scope:**
 - `InferencePort` (`structured`, `vision`). Adaptador autónomo: `synaptum.generate()` (S-6, registrado en el journal) sobre `LocalGateway` + `AxoniumModel` → prometheus; la imagen viaja como data-URI (S-7). Sin helper propio de salida estructurada.
 - Migran a async los 6 llamadores. La procedencia registra el modelo que respondió, no el configurado.
+- Respuestas de `VRT-AXO-001`: `axonium==1.0.0rc9`; un cliente por bucle de eventos (lifespan de la API, arranque del worker); `Idempotency-Key` derivada del cuerpo; `finish_reason == "length"` → `ExtractionIncomplete`.
 - Requiere synaptum `1.0.0rc4` (pedida en `VRT-SYN-003`). Las credenciales de prometheus ya están (cliente con `model:gpt-oss-20b-mxfp4` y `model:qwen3vl-30b-a3b`).
 
 ## VRT-30 — Extracción agéntica sobre synaptum
