@@ -48,7 +48,7 @@ Estados: `done` · `todo` · `blocked` (espera a otro equipo) · `superseded` (a
 
 | ID | Feature | Estado | Descripción |
 |---|---|---|---|
-| VRT-32 | Catálogo de tipos documentales en BD | todo | Nombre, descripción y esquema por tipo, versionados en la BD en vez de en el código. |
+| VRT-32 | Catálogo de tipos documentales en BD | done | Nombre, descripción y esquema por tipo, versionados en la BD en vez de en el código. |
 | VRT-33 | Nuevo tipo desde un documento de ejemplo | todo | Subir un ejemplo → propuesta de esquema y de mapeo a atributos existentes → revisar y publicar. |
 | VRT-34 | UI del catálogo semántico | todo | Gestionar entidades, atributos, roles y mapeos desde la web. |
 | VRT-35 | Validadores intrínsecos por atributo | todo | Formato y validación definidos una sola vez por atributo, no por tipo de documento. |
