@@ -193,7 +193,12 @@ Veritium pasa de "subir documentos sueltos" a ser una **capacidad de decisión d
 - Fuera: editar una versión nueva de un tipo existente desde la web (VRT-34).
 
 ## VRT-34 — UI del catálogo semántico
-**Why:** la capa semántica la mantienen usuarios de negocio, no desarrolladores. **Scope:** CRUD versionado de entidades, atributos, roles y mapeos.
+**Why:** la capa semántica la mantienen usuarios de negocio, no desarrolladores.
+**Scope:**
+- Página `/semantic-catalog`: mapeos, atributos, entidades y roles; edición (admin) → borrador → publicar; versiones con los perfiles que fijan cada una.
+- Un borrador se rechaza si un mapeo apunta a un tipo no publicado o a un campo que su esquema vigente no tiene.
+- Fuera: adoptar una versión nueva del catálogo en un perfil sigue siendo una versión nueva del perfil por API (VRT-37).
+
 ## VRT-35 — Validadores intrínsecos por atributo
 **Why:** el formato de un DNI no depende del documento en el que aparece. **Scope:** validadores por atributo que reemplazan reglas parametrizadas por tipo (p. ej. `DniFormatValid`).
 ## VRT-36 — Biblioteca de reglas sobre atributos

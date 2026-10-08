@@ -3,14 +3,16 @@
 GET  /v1/semantic-catalog                       the latest published version
 GET  /v1/semantic-catalog/versions              all versions (summary)
 GET  /v1/semantic-catalog/versions/{version}    one version, with its catalog
-POST /v1/semantic-catalog/versions              new draft (admin); the catalog is validated on the way in (422 if inconsistent)
+POST /v1/semantic-catalog/versions              new draft (admin); the catalog is validated on the way in (422 if inconsistent),
+                                                and its mappings against the published document types (400)
 POST /v1/semantic-catalog/versions/{version}/publish   draft -> published (admin)
 
 Published versions are immutable: a change is always a new draft version.
-The web UI for this lives in F2 (VRT-34)."""
+The web page is /semantic-catalog (VRT-34)."""
 
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import datetime
 
@@ -19,9 +21,10 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from idp.api.deps import get_current_user, get_db_session, require_role
+from idp.domain.document_type_catalog import DocumentTypeCatalog
 from idp.domain.semantic import SemanticCatalog
 from idp.persistence.models import SemanticCatalogVersion, User
-from idp.persistence.repositories import SemanticCatalogRepository
+from idp.persistence.repositories import DocumentTypeRepository, SemanticCatalogRepository
 
 router = APIRouter(prefix="/v1/semantic-catalog", tags=["semantic-catalog"], dependencies=[Depends(get_current_user)])
 
@@ -39,6 +42,24 @@ class CatalogVersionSummary(BaseModel):
 
 class CatalogVersionDetail(CatalogVersionSummary):
     catalog: SemanticCatalog
+
+
+_INDEX = re.compile(r"\[\d+\]")
+
+
+def mapping_errors(catalog: SemanticCatalog, types: DocumentTypeCatalog) -> list[str]:
+    """A mapping must read a field that exists: a published document type
+    and a path of its current schema (VRT-34; the type side checks the same
+    when a new schema is published, VRT-32)."""
+    errors = []
+    for m in catalog.mappings:
+        current = types.current(m.document_type)
+        if current is None:
+            errors.append(f"mapeo {m.document_type}: no hay un tipo documental publicado con esa clave")
+            continue
+        paths = current[1].field_paths()
+        errors += [f"mapeo {m.document_type}.{p}: el esquema v{current[0]} no tiene ese campo" for p in m.field_paths if _INDEX.sub("[]", p) not in paths]
+    return errors
 
 
 def _summary(row: SemanticCatalogVersion) -> CatalogVersionSummary:
@@ -85,6 +106,9 @@ async def create_catalog_draft(
     session: AsyncSession = Depends(get_db_session),
     user: User = Depends(require_role("admin")),
 ) -> CatalogVersionDetail:
+    errors = mapping_errors(catalog, await DocumentTypeRepository(session).load_catalog())
+    if errors:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=errors)
     row = await SemanticCatalogRepository(session).create_draft(catalog, created_by=user.email)
     return _detail(row)
 

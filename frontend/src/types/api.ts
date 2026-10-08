@@ -331,3 +331,70 @@ export interface RegisterDocumentTypeRequest {
   suggestion_id?: string | null
 }
 
+// --- Semantic catalog (VRT-23, web in VRT-34) ------------------------------
+
+export type SemanticDataType = 'string' | 'number' | 'integer' | 'date' | 'boolean'
+export type SemanticComparison = 'identifier' | 'person_name' | 'company_name' | 'text' | 'number' | 'date'
+export type PiiClass = 'none' | 'personal' | 'sensitive'
+
+export interface SemanticEntity {
+  key: string
+  name: string
+  definition: string
+}
+
+export interface SemanticAttribute {
+  key: string
+  name: string
+  definition: string
+  data_type: SemanticDataType
+  comparison: SemanticComparison
+  unit?: string | null
+  format_cel?: string | null
+  cardinality?: 'one' | 'many'
+  pii_class: PiiClass
+  tolerance?: number | null
+}
+
+export interface SemanticRole {
+  key: string
+  name: string
+  definition: string
+}
+
+export interface FieldMapping {
+  document_type: string
+  field_path: string | string[]
+  attribute: string
+  role: string
+}
+
+export interface SemanticCatalog {
+  entities: SemanticEntity[]
+  attributes: SemanticAttribute[]
+  roles: SemanticRole[]
+  mappings: FieldMapping[]
+}
+
+export interface CatalogVersionSummary {
+  id: string
+  version: number
+  status: 'draft' | 'published'
+  content_hash: string
+  created_by: string | null
+  created_at: string
+  published_by: string | null
+  published_at: string | null
+}
+
+export interface CatalogVersionDetail extends CatalogVersionSummary {
+  catalog: SemanticCatalog
+}
+
+export interface ProcessProfileSummary {
+  key: string
+  name: string
+  active_version: number | null
+  versions: { version: number; status: string; semantic_catalog_version: number }[]
+}
+

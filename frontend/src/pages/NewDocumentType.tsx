@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { isAxiosError } from 'axios'
 import { AlertTriangle, Loader2, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
@@ -10,19 +9,11 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
+import { errorDetail } from '@/lib/apiErrors'
 import { useProposeDocumentType, useRegisterDocumentType } from '@/lib/queries'
 import type { DocumentTypeDefinition, FieldSpec, FieldSpecType, TypeProposal } from '@/types/api'
 
 const LEAF_TYPES: FieldSpecType[] = ['str', 'int', 'float', 'bool', 'enum']
-
-function errorDetail(error: unknown): string {
-  if (isAxiosError(error)) {
-    const detail = error.response?.data?.detail
-    if (Array.isArray(detail)) return detail.map((d) => (typeof d === 'string' ? d : d.msg)).join(' · ')
-    if (typeof detail === 'string') return detail
-  }
-  return 'No se pudo completar la operación.'
-}
 
 function FieldRow({
   field,

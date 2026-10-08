@@ -94,3 +94,19 @@ def test_publishing_a_schema_that_drops_a_semantically_mapped_field_is_caught():
     assert unmapped_paths(payslip, seed_catalog()) == []
     without_net = payslip.model_copy(update={"fields": [f for f in payslip.fields if f.name != "net_pay"]})
     assert unmapped_paths(without_net, seed_catalog()) == ["net_pay"]
+
+
+def test_a_semantic_catalog_cannot_map_a_field_no_published_type_has():
+    from idp.api.routes.semantic_catalog import mapping_errors
+    from idp.domain.semantic import SemanticCatalog
+
+    types = DocumentTypeCatalog([(d.key, 1, "published", d) for d in seed_definitions()])
+    seed = seed_catalog()
+    assert mapping_errors(seed, types) == []
+    broken = SemanticCatalog.model_validate(seed.model_dump() | {"mappings": [
+        *[m.model_dump() for m in seed.mappings],
+        {"document_type": "payslip", "field_path": "bonus_amount", "attribute": "ingreso.bruto_mensual", "role": "conyuge"},
+        {"document_type": "factura", "field_path": "total", "attribute": "persona.dni", "role": "titular"},
+    ]})
+    errors = mapping_errors(broken, types)
+    assert any("payslip.bonus_amount" in e for e in errors) and any("factura" in e for e in errors) and len(errors) == 2

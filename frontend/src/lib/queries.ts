@@ -12,7 +12,11 @@ import type {
   CreateUserRequest,
   DocumentDetailResponse,
   DocumentListResponse,
+  CatalogVersionDetail,
+  CatalogVersionSummary,
   DocumentTypeCatalogResponse,
+  ProcessProfileSummary,
+  SemanticCatalog,
   RegisterDocumentTypeRequest,
   TypeProposal,
   DraftRuleRequest,
@@ -269,6 +273,58 @@ export function useRegisterDocumentType() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['document-types'] })
     },
+  })
+}
+
+export function useSemanticCatalog() {
+  return useQuery({
+    queryKey: ['semantic-catalog', 'active'],
+    queryFn: async () => {
+      const { data } = await apiClient.get<CatalogVersionDetail>('/v1/semantic-catalog')
+      return data
+    },
+  })
+}
+
+export function useProcessProfiles() {
+  return useQuery({
+    queryKey: ['profiles'],
+    queryFn: async () => {
+      const { data } = await apiClient.get<ProcessProfileSummary[]>('/v1/profiles')
+      return data
+    },
+  })
+}
+
+export function useSemanticCatalogVersions() {
+  return useQuery({
+    queryKey: ['semantic-catalog', 'versions'],
+    queryFn: async () => {
+      const { data } = await apiClient.get<CatalogVersionSummary[]>('/v1/semantic-catalog/versions')
+      return data
+    },
+  })
+}
+
+export function useCreateCatalogDraft() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (catalog: SemanticCatalog) => {
+      const { data } = await apiClient.post<CatalogVersionDetail>('/v1/semantic-catalog/versions', catalog)
+      return data
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['semantic-catalog'] }),
+  })
+}
+
+export function usePublishCatalogVersion() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (version: number) => {
+      const { data } = await apiClient.post<CatalogVersionDetail>(`/v1/semantic-catalog/versions/${version}/publish`)
+      return data
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['semantic-catalog'] }),
   })
 }
 

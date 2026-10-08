@@ -10,6 +10,7 @@ import { ReviewQueuePage } from '@/pages/ReviewQueue'
 import { TypeSuggestionsPage } from '@/pages/TypeSuggestions'
 import { DocumentTypesPage } from '@/pages/DocumentTypes'
 import { NewDocumentTypePage } from '@/pages/NewDocumentType'
+import { SemanticCatalogPage } from '@/pages/SemanticCatalog'
 import { AuditPage } from '@/pages/Audit'
 import { DocumentsPage } from '@/pages/Documents'
 import { UsersPage } from '@/pages/Users'
@@ -93,6 +94,14 @@ export default function App() {
             <RequireRole roles={['admin']}>
               <NewDocumentTypePage />
             </RequireRole>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/semantic-catalog"
+        element={
+          <ProtectedRoute>
+            <SemanticCatalogPage />
           </ProtectedRoute>
         }
       />
