@@ -132,7 +132,7 @@ Veritium pasa de "subir documentos sueltos" a ser una **capacidad de decisión d
 - `CaseExecutionPort` (`CASE_EXECUTOR`) con `AeonExecutor`: grafo `start → parallel[process_document × N] → evaluate` de nodos `activity`, con `max_activity_calls = N+2`.
 - Worker propio (`python -m idp.worker`) con task queues por carril: `veritium-online`, `veritium-backoffice`, `veritium-bulk`. Actividades idempotentes con estado en la BD de Veritium, heartbeat en `process_document`, y un reconciliador que marca fallida la corrida cuyo run de aeon falló antes de evaluar (aeon no avisa).
 - `InProcessExecutor` (default), con paralelismo acotado y **no durable**.
-- Instancia **interina** del mismo código de aeon hasta que exista el despliegue compartido multi-tenant (`VRT-AEON-005`); el cambio será solo de configuración: `deploy/aeon/` (override de compose, bundle de Cedar con guarda `ExternalActivity`) y `scripts/aeon_dev.sh` (callers y tokens generados por máquina) ([ADR-0003](adr/0003-ejecucion-sobre-aeon.md)).
+- Instancia **interina** del mismo código de aeon hasta que exista el despliegue compartido multi-tenant (`VRT-AEON-005`); el cambio será solo de configuración: `deploy/aeon/` (override de compose, bundle de Cedar del tenant `veritium` con guarda `ExternalActivity`) y `scripts/aeon_dev.sh` (callers y tokens generados por máquina) ([ADR-0003](adr/0003-ejecucion-sobre-aeon.md)).
 - Se cierra cuando A-1 está entregado (`VRT-AEON-001`) y el crash-resume está probado.
 
 ## VRT-27 — Completitud y veredicto

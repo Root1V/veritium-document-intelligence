@@ -3,7 +3,7 @@ the run's graph — start, one ``process_document`` per document in
 parallel, evaluate — out of ``activity`` nodes (aeon's VRT-AEON-001) that
 aeon schedules on the lane's task queue and Veritium's worker executes
 (``python -m idp.worker``). aeon checks every step against Veritium's
-Cedar bundle (deploy/aeon/policy_bundle.yaml) and its budgets; Temporal
+Cedar bundle (deploy/aeon/policies/veritium.yaml) and its budgets; Temporal
 makes the run survive a worker crash.
 
 Steps only receive ids: every step reads and writes the case in Veritium's

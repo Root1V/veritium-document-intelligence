@@ -60,7 +60,7 @@ def test_graph_validates_against_aeons_schema():
 
 
 def test_cedar_bundle_permits_exactly_our_activities_and_queues():
-    bundle = yaml.safe_load((ROOT / "deploy" / "aeon" / "policy_bundle.yaml").read_text())
+    bundle = yaml.safe_load((ROOT / "deploy" / "aeon" / "policies" / "veritium.yaml").read_text())
     source = "\n".join(p["cedarSource"] for p in bundle["policies"])
     assert "resource is ExternalActivity" in source
     for name in ACTIVITY_NAMES:

@@ -1,4 +1,5 @@
-# Veritium's Cedar bundle for its aeon deployment (VRT-26). Default-deny:
+# Veritium's Cedar bundle: tenant `veritium` (the file name IS the tenant,
+# aeon GOV-001d). Default-deny:
 # only these permits exist. Each permit carries the `resource is
 # ExternalActivity` type guard (RUN-006): without it, a tool with the same
 # name would inherit the permit. Activity names and task queues must match

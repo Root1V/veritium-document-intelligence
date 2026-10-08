@@ -26,8 +26,10 @@ services:
   toolgw:
     ports: !reset []
     environment:
-      # Hardcoded to the deep-research bundle in the base file.
-      AEON_POLICY_BUNDLE_PATH: /veritium/policy_bundle.yaml
+      # One Cedar bundle per tenant (aeon GOV-001d): policies/<tenant>.yaml.
+      # The base file sets the single-bundle variable; both at once is refused.
+      AEON_POLICY_BUNDLE_PATH: ""
+      AEON_POLICY_BUNDLE_DIR: /veritium/policies
     volumes:  # merged by target: /artifacts is replaced, the rest kept
       - ${VERITIUM_AEON_DIR}/artifacts:/artifacts:ro
       - ${VERITIUM_AEON_DIR}:/veritium:ro
