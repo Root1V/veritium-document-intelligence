@@ -68,8 +68,8 @@ from idp.validation.rules.external_system_rules import InsurancePolicyVerifiedEx
 from idp.validation.rules.generic import DataDrivenRule
 from idp.validation.rules.reference_data_rules import EmployeeCodeExistsInReferenceData, EmployeeNameExistsInReferenceData
 from idp.validation.rules.request_input_rules import ExpectedEmployeeCodeMatches
-from idp.validation.rules.self_rules import DniFormatValid, PayslipArithmeticConsistency
-from idp.validation.rules.semantic_rules import SemanticAttributeConsistency
+from idp.validation.rules.self_rules import PayslipArithmeticConsistency
+from idp.validation.rules.semantic_rules import SemanticAttributeConsistency, format_rules
 
 
 def make_parser_backend(settings: Settings) -> ParserBackend:
@@ -113,15 +113,6 @@ def _hardcoded_rules(settings: Settings) -> list[ValidationRule]:
     instance instead of duplicating those strings by hand elsewhere."""
     return [
         PayslipArithmeticConsistency(),
-        DniFormatValid("insurance_disclosure", "insured_dni"),
-        DniFormatValid("authorization_letter", "client_dni"),
-        DniFormatValid("loan_application", "applicant_dni"),
-        DniFormatValid("loan_approval_remittance", "applicant_dni"),
-        DniFormatValid("loan_payment_schedule", "client_dni"),
-        DniFormatValid("credit_summary", "member_dni"),
-        DniFormatValid("account_statement", "member_dni"),
-        DniFormatValid("debt_subrogation_authorization", "client_dni"),
-        DniFormatValid("debt_capacity_calculation", "client_dni"),
         ExpectedEmployeeCodeMatches(),
         DuplicateDocumentIdentifier(),
         EmployeeNameCrossDocumentMatch(settings),
@@ -134,15 +125,6 @@ def _hardcoded_rules(settings: Settings) -> list[ValidationRule]:
 
 HARDCODED_RULE_DESCRIPTIONS: dict[str, str] = {
     "self.payslip_arithmetic_consistency": "Verifica que el neto de la boleta de pago sea igual al bruto menos los descuentos totales (con una pequeña tolerancia).",
-    "self.insurance_disclosure_dni_format_valid": "Verifica que el DNI del asegurado tenga el formato peruano valido (8 digitos numericos).",
-    "self.authorization_letter_dni_format_valid": "Verifica que el DNI del cliente en la carta de autorizacion tenga formato valido (8 digitos).",
-    "self.loan_application_dni_format_valid": "Verifica que el DNI del solicitante en la solicitud de prestamo tenga formato valido (8 digitos).",
-    "self.loan_approval_remittance_dni_format_valid": "Verifica que el DNI del solicitante en la remesa de aprobacion tenga formato valido (8 digitos).",
-    "self.loan_payment_schedule_dni_format_valid": "Verifica que el DNI del cliente en el cronograma de pagos tenga formato valido (8 digitos).",
-    "self.credit_summary_dni_format_valid": "Verifica que el DNI del miembro en el resumen crediticio tenga formato valido (8 digitos).",
-    "self.account_statement_dni_format_valid": "Verifica que el DNI del miembro en el estado de cuenta tenga formato valido (8 digitos).",
-    "self.debt_subrogation_authorization_dni_format_valid": "Verifica que el DNI del cliente en la autorizacion de subrogacion de deuda tenga formato valido (8 digitos).",
-    "self.debt_capacity_calculation_dni_format_valid": "Verifica que el DNI del cliente en el calculo de capacidad de endeudamiento tenga formato valido (8 digitos).",
     "request_input.expected_employee_code_matches": "Compara el codigo de empleado extraido de la boleta contra el codigo esperado ingresado al subir la solicitud.",
     "batch.duplicate_identifier": "Detecta si el mismo identificador (codigo de empleado o numero de poliza) aparece duplicado entre documentos del mismo tipo dentro de la misma solicitud.",
     "batch.employee_name_matches_insured_name": "Compara el nombre del empleado en la boleta contra el nombre del asegurado en la declaracion de seguro de la misma solicitud (tolera variaciones de formato; escala a un LLM en casos ambiguos).",
@@ -181,24 +163,25 @@ async def build_default_rules(settings: Settings, session: AsyncSession) -> list
     return hardcoded + data_driven
 
 
+async def load_semantic_catalog(session: AsyncSession, catalog_version: int | None) -> tuple[SemanticCatalog, int] | None:
+    """The catalog a case resolves against: ``catalog_version`` when the
+    case's profile pins one, else the latest published. None if there is none."""
+    repo = SemanticCatalogRepository(session)
+    if catalog_version is None:
+        return await repo.load_active()
+    row = await repo.get_version(catalog_version)
+    return (SemanticCatalog.model_validate(row.definition), row.version) if row is not None else None
+
+
 async def resolve_semantic_view(
     session: AsyncSession, documents: list[DocumentFields], *, catalog_version: int | None = None
 ) -> ConsolidatedView | None:
     """The case's consolidated semantic view (VRT-23) over every document
-    that reached extraction — against ``catalog_version`` when the case's
-    profile pins one, else the latest published catalog. None when there is
-    no catalog to resolve against."""
-    repo = SemanticCatalogRepository(session)
-    if catalog_version is not None:
-        row = await repo.get_version(catalog_version)
-        if row is None:
-            return None
-        catalog, version = SemanticCatalog.model_validate(row.definition), row.version
-    else:
-        active = await repo.load_active()
-        if active is None:
-            return None
-        catalog, version = active
+    that reached extraction. None when there is no catalog to resolve against."""
+    loaded = await load_semantic_catalog(session, catalog_version)
+    if loaded is None:
+        return None
+    catalog, version = loaded
     extractions = [
         DocumentExtraction(document_id=d.document_id, document_type=d.document_type, payload=d.payload)
         for d in documents
@@ -510,10 +493,13 @@ async def evaluate_case(settings: Settings, case_id: uuid.UUID, run_id: uuid.UUI
             return run.verdict
 
         definition = profile_definition(case)
-        rules = rules_for_profile(await build_default_rules(settings, session), definition)
         all_fields = await case_document_fields(document_repo, case_id)
         catalog_version = case.profile_version.semantic_catalog_version if case.profile_version is not None else None
         semantic_view = await resolve_semantic_view(session, all_fields, catalog_version=catalog_version)
+        # The format rules come from the same catalog version the view used (VRT-35).
+        loaded = await load_semantic_catalog(session, catalog_version)
+        attribute_formats = format_rules(loaded[0]) if loaded is not None else []
+        rules = rules_for_profile(await build_default_rules(settings, session) + attribute_formats, definition)
         run.provenance = {
             **(run.provenance or build_provenance(settings, profile_version=case.profile_version, rules=rules)),
             # the rules actually evaluated (a toggle may have changed since the run started)

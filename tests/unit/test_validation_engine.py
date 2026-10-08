@@ -21,10 +21,11 @@ async def test_tampered_total_produces_validation_issue_via_engine():
 
 @pytest.mark.asyncio
 async def test_rule_that_does_not_apply_is_skipped_entirely():
-    # The insurance-only rule must not run against a payslip document.
-    from idp.validation.rules.self_rules import DniFormatValid
+    # A format rule with no value of its attribute in this document must not run.
+    from idp.domain.semantic_seed import seed_catalog
+    from idp.validation.rules.semantic_rules import format_rules
 
     fields = make_document_fields("payslip", {"gross_pay": 100.0, "total_deductions": 10.0, "net_pay": 90.0})
     context = make_context(fields)
-    results = await run_validation([DniFormatValid("insurance_disclosure", "insured_dni")], context)
+    results = await run_validation(format_rules(seed_catalog()), context)
     assert results == []

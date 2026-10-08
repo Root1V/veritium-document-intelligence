@@ -30,6 +30,7 @@ from idp.domain.semantic import SemanticCatalog
 from idp.persistence.models import ProcessProfile, ProcessProfileVersion, User
 from idp.persistence.repositories import DocumentTypeRepository, ProcessProfileRepository, SemanticCatalogRepository, ValidationRuleRepository
 from idp.pipeline.orchestrator import hardcoded_rule_metadata
+from idp.validation.rules.semantic_rules import format_rules
 
 router = APIRouter(prefix="/v1/profiles", tags=["profiles"], dependencies=[Depends(get_current_user)])
 
@@ -165,11 +166,13 @@ async def create_profile_draft(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=[f"el catálogo semántico v{definition.semantic_catalog_version} no existe o no está publicado"],
         )
+    catalog = SemanticCatalog.model_validate(catalog_row.definition)
     errors = cross_reference_errors(
         definition,
-        catalog=SemanticCatalog.model_validate(catalog_row.definition),
+        catalog=catalog,
         known_document_types=set((await DocumentTypeRepository(session).load_catalog()).keys()),
-        known_rule_ids=await _known_rule_ids(session, settings),
+        # + one format rule per attribute of the pinned catalog that declares a format (VRT-35)
+        known_rule_ids=await _known_rule_ids(session, settings) | {r.rule_id for r in format_rules(catalog)},
     )
     if errors:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=errors)

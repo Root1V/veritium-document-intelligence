@@ -164,6 +164,11 @@ export function SemanticCatalogPage() {
       edit: choice(['identifier', 'person_name', 'company_name', 'text', 'number', 'date'], (a) => a.comparison, (a, v) => ({ ...a, comparison: v as SemanticAttribute['comparison'] })),
     },
     {
+      label: 'Formato (CEL sobre value)',
+      read: (a) => (a.format_cel ? <code className="text-xs">{a.format_cel}</code> : <span className="text-muted-foreground">—</span>),
+      edit: text((a) => a.format_cel ?? '', (a, v) => ({ ...a, format_cel: v.trim() ? v : null }), true),
+    },
+    {
       label: 'PII',
       read: (a) => (a.pii_class === 'none' ? '—' : <Badge variant={a.pii_class === 'sensitive' ? 'destructive' : 'secondary'}>{a.pii_class}</Badge>),
       edit: choice(['none', 'personal', 'sensitive'], (a) => a.pii_class, (a, v) => ({ ...a, pii_class: v as SemanticAttribute['pii_class'] })),

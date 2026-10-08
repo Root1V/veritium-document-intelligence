@@ -15,12 +15,14 @@ from idp.domain.semantic_seed import seed_catalog
 from idp.pipeline.orchestrator import hardcoded_rule_metadata
 from idp.validation.base import Severity
 from idp.validation.cel import compile_expression, evaluate
+from idp.validation.rules.semantic_rules import format_rules
 
 KNOWN_TYPES = {t.value for t in DocumentType}
 
 
 def _known_rules() -> set[str]:
-    return {rule_id for rule_id, _, _ in hardcoded_rule_metadata(Settings(_env_file=None))}
+    # As the profiles route does: the hardcoded rules plus the pinned catalog's format rules (VRT-35).
+    return {rule_id for rule_id, _, _ in hardcoded_rule_metadata(Settings(_env_file=None))} | {r.rule_id for r in format_rules(seed_catalog())}
 
 
 def _errors(definition: ProcessProfileDefinition) -> list[str]:

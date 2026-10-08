@@ -34,7 +34,7 @@ def rules_for_profile(rules: list[ValidationRule], definition: ProcessProfileDef
     (ad-hoc) or there is no profile."""
     if definition is None or definition.include_all_rules:
         return rules
-    bound = {b.rule_id for b in definition.rule_bindings}
+    bound = definition.bound_rule_ids()
     return [r for r in rules if r.rule_id in bound]
 
 

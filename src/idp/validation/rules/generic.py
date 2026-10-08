@@ -1,6 +1,5 @@
 """A single generic ValidationRule that executes a DB-stored CEL
-condition — the data-driven analog of self_rules.py::DniFormatValid being
-one Python class parametrized many times, except parametrized by a
+condition — one Python class parametrized many times, by a
 persistence.models.ValidationRuleDefinition row instead of constructor
 args written in code. Only kind="cel" rows become instances of this class
 (see pipeline/orchestrator.py::build_default_rules); kind="toggle" rows

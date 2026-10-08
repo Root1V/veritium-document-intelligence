@@ -200,7 +200,12 @@ Veritium pasa de "subir documentos sueltos" a ser una **capacidad de decisión d
 - Fuera: adoptar una versión nueva del catálogo en un perfil sigue siendo una versión nueva del perfil por API (VRT-37).
 
 ## VRT-35 — Validadores intrínsecos por atributo
-**Why:** el formato de un DNI no depende del documento en el que aparece. **Scope:** validadores por atributo que reemplazan reglas parametrizadas por tipo (p. ej. `DniFormatValid`).
+**Why:** el formato de un DNI no depende del documento en el que aparece.
+**Scope:**
+- `semantic.format.<atributo>`: una regla por atributo con `format_cel`, construida desde la versión del catálogo que usa la corrida; valida todo valor que cualquier documento aporte a ese atributo. Hoy `persona.dni` y `empleador.ruc`.
+- Retira las 9 `DniFormatValid` por tipo. Los perfiles publicados que las vinculan siguen funcionando: sus ids se resuelven a la regla nueva con la vinculación más estricta; una versión nueva de perfil debe usar el id nuevo.
+- El formato se edita en la página del catálogo semántico (columna `format_cel`).
+
 ## VRT-36 — Biblioteca de reglas sobre atributos
 **Why:** las reglas en lenguaje humano tienen que poder usar tools y no solo comparar campos, sin abrir la puerta a código arbitrario. **Scope:** lenguaje natural → CEL o procedimiento acotado; resultado `AMBIGUA` explícito; casos de prueba por regla; aprobación humana.
 ## VRT-37 — Diseñador de perfiles

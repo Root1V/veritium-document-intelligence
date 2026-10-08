@@ -59,6 +59,20 @@ class ChecklistItem(BaseModel):
         return self
 
 
+# Rule ids retired by VRT-35: the nine per-document-type DNI format rules
+# became one per-attribute rule over the semantic catalog. A published
+# profile version is immutable, so its bindings to the old ids keep working
+# here; a new version must bind the new id (cross_reference_errors).
+LEGACY_RULE_IDS: dict[str, str] = {
+    f"self.{t}_dni_format_valid": "semantic.format.persona.dni"
+    for t in (
+        "insurance_disclosure", "authorization_letter", "loan_application", "loan_approval_remittance", "loan_payment_schedule",
+        "credit_summary", "account_statement", "debt_subrogation_authorization", "debt_capacity_calculation",
+    )
+}
+_SEVERITY_ORDER = [Severity.INFO, Severity.WARNING, Severity.ERROR]
+
+
 class RuleBinding(BaseModel):
     rule_id: str
     severity: Severity = Severity.WARNING
@@ -110,11 +124,23 @@ class ProcessProfileDefinition(BaseModel):
         canonical = json.dumps(self.model_dump(mode="json"), sort_keys=True, ensure_ascii=False, separators=(",", ":"))
         return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
+    def bound_rule_ids(self) -> set[str]:
+        return {LEGACY_RULE_IDS.get(b.rule_id, b.rule_id) for b in self.rule_bindings}
+
     def binding_for(self, rule_id: str) -> RuleBinding | None:
-        for b in self.rule_bindings:
-            if b.rule_id == rule_id:
-                return b
-        return None
+        """The binding of ``rule_id`` — including bindings to the ids it
+        replaced (``LEGACY_RULE_IDS``), merged to the strictest when several
+        retired ids now name the same rule."""
+        matches = [b for b in self.rule_bindings if LEGACY_RULE_IDS.get(b.rule_id, b.rule_id) == rule_id]
+        if len(matches) <= 1:
+            return matches[0].model_copy(update={"rule_id": rule_id}) if matches else None
+        blocking = [b for b in matches if b.blocking]
+        return RuleBinding(
+            rule_id=rule_id,
+            severity=max((b.severity for b in matches), key=_SEVERITY_ORDER.index),
+            blocking=bool(blocking),
+            on_fail="return_to_client" if any(b.on_fail == "return_to_client" for b in blocking) else "human_review",
+        )
 
 
 def cross_reference_errors(
