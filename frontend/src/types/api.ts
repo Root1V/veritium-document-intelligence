@@ -419,7 +419,61 @@ export interface CatalogVersionDetail extends CatalogVersionSummary {
 export interface ProcessProfileSummary {
   key: string
   name: string
+  description: string | null
   active_version: number | null
-  versions: { version: number; status: string; semantic_catalog_version: number }[]
+  versions: { version: number; status: string; semantic_catalog_version: number; published_at: string | null; created_by: string | null }[]
 }
 
+// --- Process profiles (VRT-24, designer in VRT-37) ---------------------------
+
+export interface ChecklistItem {
+  key: string
+  label: string
+  document_type?: string | null
+  requires_attributes: string[]
+  role: string
+  accepted_document_types?: string[] | null
+  required: boolean
+  required_when_cel?: string | null
+  min_count: number
+}
+
+export interface RuleBinding {
+  rule_id: string
+  severity: 'info' | 'warning' | 'error'
+  blocking: boolean
+  on_fail: 'human_review' | 'return_to_client'
+}
+
+export interface ProcessProfileDefinition {
+  semantic_catalog_version: number
+  checklist: ChecklistItem[]
+  include_all_rules: boolean
+  rule_bindings: RuleBinding[]
+  thresholds: { field_confidence_min?: number | null }
+}
+
+export interface ProfileVersionDetail {
+  profile_key: string
+  version: number
+  status: string
+  definition: ProcessProfileDefinition
+}
+
+export interface ProfileLibrary {
+  catalog_version: number
+  catalog_versions: number[]
+  document_types: { key: string; display_name: string; used_by: string[] }[]
+  attributes: { key: string; name: string; data_type: string; providers: { document_type: string; role: string }[]; used_by: string[] }[]
+  roles: { key: string; name: string }[]
+  rules: {
+    rule_id: string
+    kind: 'code' | 'cel' | 'format'
+    description: string
+    document_type: string | null
+    attribute: string | null
+    applies_to: string[]
+    used_by: string[]
+  }[]
+  legacy_rule_ids: Record<string, string>
+}

@@ -215,7 +215,11 @@ Veritium pasa de "subir documentos sueltos" a ser una **capacidad de decisión d
 - Fuera: el procedimiento acotado con tools (RENIEC/SUNAT/SBS) espera a que existan esos conectores (VRT-60); diseñarlo antes sería especulativo.
 
 ## VRT-37 — Diseñador de perfiles
-**Why:** configurar un proceso nuevo debe ser reutilizar, no partir de cero. **Scope:** armar perfiles desde la biblioteca, con sugerencias de tipos, atributos y reglas ya usados en otros procesos.
+**Why:** configurar un proceso nuevo debe ser reutilizar, no partir de cero.
+**Scope:**
+- Páginas `/profiles` y editor: catálogo semántico fijado (con aviso si hay uno más nuevo), requisitos por tipo o por evidencia (con qué tipos la satisfacen), reglas vinculadas con severidad/bloqueo, borrador → publicar.
+- `GET /v1/profiles/library`: tipos, atributos, roles y reglas vinculables de una versión del catálogo, con dónde corren y qué perfiles ya los usan; las sugerencias son reglas que corren sobre los documentos del perfil o que usan otros procesos.
+- Una versión nueva parte de la activa con los ids retirados (VRT-35) ya convertidos.
 
 ## F3 — Expediente y revisión
 ## VRT-38 — Vista E2E del expediente

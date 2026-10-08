@@ -15,7 +15,10 @@ import type {
   CatalogVersionDetail,
   CatalogVersionSummary,
   DocumentTypeCatalogResponse,
+  ProcessProfileDefinition,
   ProcessProfileSummary,
+  ProfileLibrary,
+  ProfileVersionDetail,
   SemanticCatalog,
   RegisterDocumentTypeRequest,
   TypeProposal,
@@ -295,6 +298,50 @@ export function useProcessProfiles() {
       const { data } = await apiClient.get<ProcessProfileSummary[]>('/v1/profiles')
       return data
     },
+  })
+}
+
+export function useProfileVersion(key: string | undefined, version: number | null | undefined) {
+  return useQuery({
+    queryKey: ['profiles', key, version],
+    enabled: !!key && !!version,
+    queryFn: async () => {
+      const { data } = await apiClient.get<ProfileVersionDetail>(`/v1/profiles/${key}/versions/${version}`)
+      return data
+    },
+  })
+}
+
+export function useProfileLibrary(catalogVersion: number | undefined) {
+  return useQuery({
+    queryKey: ['profiles', 'library', catalogVersion],
+    queryFn: async () => {
+      const { data } = await apiClient.get<ProfileLibrary>('/v1/profiles/library', { params: catalogVersion ? { catalog_version: catalogVersion } : {} })
+      return data
+    },
+  })
+}
+
+export function useSaveProfileVersion() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (input: { key: string; isNew: boolean; name?: string; description?: string; definition: ProcessProfileDefinition }) => {
+      if (input.isNew) await apiClient.post('/v1/profiles', { key: input.key, name: input.name, description: input.description || null })
+      const { data } = await apiClient.post<ProfileVersionDetail>(`/v1/profiles/${input.key}/versions`, input.definition)
+      return data
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['profiles'] }),
+  })
+}
+
+export function usePublishProfileVersion() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ key, version }: { key: string; version: number }) => {
+      const { data } = await apiClient.post<ProfileVersionDetail>(`/v1/profiles/${key}/versions/${version}/publish`)
+      return data
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['profiles'] }),
   })
 }
 

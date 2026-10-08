@@ -11,6 +11,8 @@ import { TypeSuggestionsPage } from '@/pages/TypeSuggestions'
 import { DocumentTypesPage } from '@/pages/DocumentTypes'
 import { NewDocumentTypePage } from '@/pages/NewDocumentType'
 import { SemanticCatalogPage } from '@/pages/SemanticCatalog'
+import { ProfilesPage } from '@/pages/Profiles'
+import { ProfileEditorPage } from '@/pages/ProfileEditor'
 import { AuditPage } from '@/pages/Audit'
 import { DocumentsPage } from '@/pages/Documents'
 import { UsersPage } from '@/pages/Users'
@@ -93,6 +95,34 @@ export default function App() {
           <ProtectedRoute>
             <RequireRole roles={['admin']}>
               <NewDocumentTypePage />
+            </RequireRole>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/profiles"
+        element={
+          <ProtectedRoute>
+            <ProfilesPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/profiles/new"
+        element={
+          <ProtectedRoute>
+            <RequireRole roles={['admin']}>
+              <ProfileEditorPage />
+            </RequireRole>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/profiles/:key/edit"
+        element={
+          <ProtectedRoute>
+            <RequireRole roles={['admin']}>
+              <ProfileEditorPage />
             </RequireRole>
           </ProtectedRoute>
         }
