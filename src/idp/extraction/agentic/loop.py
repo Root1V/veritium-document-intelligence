@@ -17,7 +17,6 @@ from pydantic import BaseModel
 from synaptum import LimitExceeded, NoObjectGeneratedError, Text, ToolStep
 
 from idp.config import Settings
-from idp.domain.document_types import DocumentType
 from idp.domain.envelope import ToolCallRecord
 from idp.extraction.agentic.prompts import build_system_prompt
 from idp.extraction.agentic.tools import region_tools
@@ -43,7 +42,9 @@ def run_agentic_extraction(
     settings: Settings,
     parsed: ParsedDocument,
     schema_cls: type[BaseModel],
-    document_type: DocumentType,
+    *,
+    purpose: str,
+    hint: str,
     correction_note: str | None = None,
 ) -> tuple[BaseModel, list[ToolCallRecord]]:
     task = "Extrae los datos del documento segun el esquema objetivo."
@@ -54,8 +55,8 @@ def run_agentic_extraction(
         try:
             result, steps = port.run_sync(
                 port.run_agent(
-                    purpose=f"extract/{document_type.value}",
-                    instructions=build_system_prompt(document_type, schema_cls, parsed),
+                    purpose=purpose,
+                    instructions=build_system_prompt(hint, schema_cls, parsed),
                     task=task,
                     tools=region_tools(parsed),
                     output=schema_cls,

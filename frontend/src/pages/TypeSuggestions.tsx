@@ -235,7 +235,7 @@ export function TypeSuggestionsPage() {
         <p className="text-muted-foreground">
           Cuando un documento cae en <code>generic</code>, el sistema puede proponer un tipo nuevo. Antes de decidir, se
           puede editar la propuesta (nombre, campos). Aceptar solo marca la propuesta como accionable — no registra el
-          tipo automáticamente, eso sigue siendo un cambio de código.
+          tipo automáticamente: registrarlo es publicar su definición en el catálogo de tipos.
         </p>
       </div>
 

@@ -177,7 +177,13 @@ Veritium pasa de "subir documentos sueltos" a ser una **capacidad de decisión d
 
 ## F2 — Diseñador y catálogo
 ## VRT-32 — Catálogo de tipos documentales en BD
-**Why:** hoy los tipos viven en código, así que crear o ajustar un tipo requiere un desarrollador. **Scope:** tipos versionados en la BD con nombre, descripción, esquema y mapeos semánticos. Absorbe VRT-19.
+**Why:** hoy los tipos viven en código, así que crear o ajustar un tipo requiere un desarrollador ([ADR-0008](adr/0008-tipos-documentales-como-datos.md)).
+**Scope:**
+- `document_types` + `document_type_versions` (nombre visible, descripción, pista de extracción, esquema), seed v1 derivado de los esquemas de código con el mismo JSON Schema. API admin `/v1/document-types` (crear, versionar, publicar, retirar); `/document-types` para la web.
+- Clasificador, descubrimiento de tipos y extracción leen el catálogo por corrida; un extractor agéntico único reemplaza a los 12 iguales. Cada extracción registra su versión de tipo.
+- Publicar rechaza un esquema que quite campos mapeados por el catálogo semántico publicado.
+- Fuera: UI de edición (VRT-33/34); las reglas codificadas por tipo siguen igual (VRT-35/36). Absorbe VRT-19.
+
 ## VRT-33 — Nuevo tipo desde un documento de ejemplo
 **Why:** es el diferenciador frente a las plataformas *schema-first*; evoluciona VRT-03. **Scope:** ejemplo → propuesta de esquema y de mapeo a atributos existentes → revisión humana → publicación.
 ## VRT-34 — UI del catálogo semántico

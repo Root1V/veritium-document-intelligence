@@ -18,20 +18,18 @@ variance within a known one.
 
 from __future__ import annotations
 
-from idp.classification.classifier import TYPE_DESCRIPTIONS
 from idp.config import Settings
+from idp.domain.document_type_catalog import DocumentTypeCatalog
 from idp.domain.schemas.generic import GenericSchema
 from idp.domain.type_suggestion import DocumentTypeProposal
 from idp.llm.port import structured
 from idp.observability.otel import traced_llm_call
 
-_KNOWN_TYPES_LIST = "\n".join(f"- {t.value}: {desc}" for t, desc in TYPE_DESCRIPTIONS.items())
-
-_SYSTEM_PROMPT = f"""Eres un agente que decide si un documento sin clasificar deberia convertirse en un \
+_SYSTEM_PROMPT = """Eres un agente que decide si un documento sin clasificar deberia convertirse en un \
 tipo de documento propio de la plataforma, en vez de seguir cayendo en el extractor generico.
 
 Tipos ya conocidos por la plataforma (NO propongas un tipo redundante con alguno de estos):
-{_KNOWN_TYPES_LIST}
+{known_types}
 
 Se te da el resultado de una extraccion generica (campos clave-valor + resumen) de UN documento. \
 Decide:
@@ -50,7 +48,8 @@ de donde se extrae, y si es consistentemente requerido u opcional).
 3. Si is_promotable es False: deja rationale explicando por que, y fields vacio."""
 
 
-def suggest_document_type(settings: Settings, generic_result: GenericSchema) -> DocumentTypeProposal:
+def suggest_document_type(settings: Settings, generic_result: GenericSchema, catalog: DocumentTypeCatalog) -> DocumentTypeProposal:
+    known_types = "\n".join(f"- {k}: {catalog.current(k)[1].description}" for k in catalog.keys())  # type: ignore[index]
     fields_summary = "\n".join(f"- {f.key}: {f.value.value!r}" for f in generic_result.fields)
     summary = generic_result.summary.value if generic_result.summary else ""
     with traced_llm_call(role="reasoning", model=settings.reasoning_model):
@@ -58,6 +57,6 @@ def suggest_document_type(settings: Settings, generic_result: GenericSchema) -> 
             purpose="suggest_document_type",
             role="reasoning",
             output=DocumentTypeProposal,
-            instructions=_SYSTEM_PROMPT,
+            instructions=_SYSTEM_PROMPT.format(known_types=known_types),
             task=f"Resumen: {summary}\n\nCampos extraidos:\n{fields_summary}",
         )

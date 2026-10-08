@@ -25,11 +25,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from idp.api.deps import get_app_settings, get_current_user, get_db_session, require_role
 from idp.config import Settings
-from idp.domain.document_types import DocumentType
 from idp.domain.process_profile import ProcessProfileDefinition, cross_reference_errors
 from idp.domain.semantic import SemanticCatalog
 from idp.persistence.models import ProcessProfile, ProcessProfileVersion, User
-from idp.persistence.repositories import ProcessProfileRepository, SemanticCatalogRepository, ValidationRuleRepository
+from idp.persistence.repositories import DocumentTypeRepository, ProcessProfileRepository, SemanticCatalogRepository, ValidationRuleRepository
 from idp.pipeline.orchestrator import hardcoded_rule_metadata
 
 router = APIRouter(prefix="/v1/profiles", tags=["profiles"], dependencies=[Depends(get_current_user)])
@@ -169,7 +168,7 @@ async def create_profile_draft(
     errors = cross_reference_errors(
         definition,
         catalog=SemanticCatalog.model_validate(catalog_row.definition),
-        known_document_types={t.value for t in DocumentType},
+        known_document_types=set((await DocumentTypeRepository(session).load_catalog()).keys()),
         known_rule_ids=await _known_rule_ids(session, settings),
     )
     if errors:

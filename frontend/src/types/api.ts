@@ -131,10 +131,13 @@ export interface DocumentTypeFieldInfo {
   field_type: string
   description: string | null
   required: boolean
+  items?: DocumentTypeFieldInfo[] | null
 }
 
 export interface DocumentTypeInfo {
   name: string
+  display_name: string
+  version: number
   description: string
   fields: DocumentTypeFieldInfo[]
 }

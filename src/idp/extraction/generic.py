@@ -7,11 +7,9 @@ call is enough."""
 from __future__ import annotations
 
 from idp.config import Settings
-from idp.domain.document_types import DocumentType
 from idp.domain.schemas.generic import GenericSchema
 from idp.extraction.base import ExtractionOutcome, attach_trace
 from idp.extraction.grounding import attach_grounding
-from idp.extraction.registry import register_extractor
 from idp.llm.port import structured
 from idp.observability.otel import traced_llm_call
 from idp.parsing.normalize import ParsedDocument
@@ -22,10 +20,7 @@ identificadores) y un resumen breve. Cada campo debe incluir su nivel de confian
 exacto de origen."""
 
 
-@register_extractor(DocumentType.GENERIC)
 class GenericExtractor:
-    schema_version = "1.0"
-
     def extract(self, parsed: ParsedDocument, settings: Settings, correction_note: str | None = None) -> ExtractionOutcome:
         text = parsed.full_text[:6000]
         with traced_llm_call(role="reasoning", model=settings.reasoning_model):

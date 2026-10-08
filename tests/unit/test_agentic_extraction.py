@@ -13,7 +13,6 @@ from synaptum import Request, Response, Text, ToolResult
 from synaptum.testing.fake import calls, says
 
 from idp.config import Settings
-from idp.domain.document_types import DocumentType
 from idp.extraction.agentic.loop import ExtractionIncomplete, run_agentic_extraction
 from idp.llm import port
 from idp.parsing.normalize import ParsedBlock, ParsedDocument
@@ -50,7 +49,7 @@ def _tool_results(request: Request) -> list[str]:
 async def _extract(script: Script, max_turns: int = 6, correction_note: str | None = None):
     settings = Settings(_env_file=None, reasoning_model="razonador", extraction_max_turns=max_turns)
     async with port.inference_lifespan(settings, model=script):
-        return await asyncio.to_thread(run_agentic_extraction, settings, PARSED, Boleta, DocumentType.PAYSLIP, correction_note)
+        return await asyncio.to_thread(lambda: run_agentic_extraction(settings, PARSED, Boleta, purpose="extract/payslip/v1", hint="Es una boleta.", correction_note=correction_note))
 
 
 @pytest.mark.asyncio

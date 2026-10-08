@@ -1,8 +1,6 @@
-"""Maps ``DocumentType`` to its target extraction schema — the single source
-of truth the orchestrator uses to re-validate a persisted extraction payload
-back into a typed schema instance (e.g. for review-candidate routing).
-Without this, code that hardcodes 'payslip or else insurance_disclosure'
-breaks silently for any other document type, including ``generic``."""
+"""The built-in types' schemas in code: the source of version 1 of the
+document type catalog (``domain/document_type_seed.py``, VRT-32). At
+runtime a type's schema comes from the catalog, compiled per version."""
 
 from __future__ import annotations
 
@@ -39,7 +37,3 @@ SCHEMA_BY_DOCUMENT_TYPE: dict[DocumentType, type[BaseModel]] = {
     DocumentType.GENERIC: GenericSchema,
 }
 
-
-def schema_for(document_type: DocumentType | str) -> type[BaseModel]:
-    key = DocumentType(document_type) if not isinstance(document_type, DocumentType) else document_type
-    return SCHEMA_BY_DOCUMENT_TYPE[key]

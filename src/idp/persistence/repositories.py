@@ -13,6 +13,8 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from idp.domain.document_type_catalog import DocumentTypeCatalog, DocumentTypeDefinition
+from idp.domain.document_type_seed import seed_definitions
 from idp.domain.process_profile import ProcessProfileDefinition
 from idp.domain.process_profile_seed import SEED_PROFILES
 from idp.domain.semantic import SemanticCatalog
@@ -23,7 +25,9 @@ from idp.persistence.models import (
     CaseCondition,
     CaseRun,
     Document,
+    DocumentTypeRecord,
     DocumentTypeSuggestion,
+    DocumentTypeVersion,
     Extraction,
     OutboxEvent,
     ProcessProfile,
@@ -767,6 +771,82 @@ class SemanticCatalogRepository:
         row.status = "published"
         row.published_by = published_by
         row.published_at = datetime.now(UTC)
+        await self._session.commit()
+        await self._session.refresh(row)
+        return row
+
+
+class DocumentTypeRepository:
+    """Backs api/routes/document_types.py and every run's view of the
+    catalog (``load_catalog``). See persistence/models.py::DocumentTypeRecord."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def ensure_seed(self) -> None:
+        """Publish the built-in types as version 1 if the catalog is empty —
+        idempotent, called at API startup."""
+        if await self._session.scalar(select(func.count()).select_from(DocumentTypeRecord)):
+            return
+        now = datetime.now(UTC)
+        for definition in seed_definitions():
+            record = DocumentTypeRecord(key=definition.key)
+            record.versions.append(
+                DocumentTypeVersion(
+                    version=1,
+                    status="published",
+                    definition=definition.model_dump(mode="json"),
+                    content_hash=definition.content_hash(),
+                    created_by="seed",
+                    published_by="seed",
+                    published_at=now,
+                )
+            )
+            self._session.add(record)
+        await self._session.commit()
+
+    async def load_catalog(self) -> DocumentTypeCatalog:
+        stmt = select(DocumentTypeRecord.key, DocumentTypeVersion).join(DocumentTypeVersion).where(DocumentTypeVersion.status != "draft")
+        rows = (await self._session.execute(stmt)).all()
+        return DocumentTypeCatalog([(key, v.version, v.status, DocumentTypeDefinition.model_validate(v.definition)) for key, v in rows])
+
+    async def list_types(self) -> list[DocumentTypeRecord]:
+        stmt = select(DocumentTypeRecord).options(selectinload(DocumentTypeRecord.versions)).order_by(DocumentTypeRecord.key)
+        return list((await self._session.scalars(stmt)).all())
+
+    async def get_by_key(self, key: str) -> DocumentTypeRecord | None:
+        stmt = select(DocumentTypeRecord).where(DocumentTypeRecord.key == key).options(selectinload(DocumentTypeRecord.versions))
+        return await self._session.scalar(stmt)
+
+    async def create_type(self, definition: DocumentTypeDefinition, *, created_by: str) -> DocumentTypeVersion:
+        record = DocumentTypeRecord(key=definition.key)
+        self._session.add(record)
+        await self._session.flush()
+        return await self._add_draft(record, definition, version=1, created_by=created_by)
+
+    async def create_draft(self, record: DocumentTypeRecord, definition: DocumentTypeDefinition, *, created_by: str) -> DocumentTypeVersion:
+        return await self._add_draft(record, definition, version=max((v.version for v in record.versions), default=0) + 1, created_by=created_by)
+
+    async def _add_draft(self, record: DocumentTypeRecord, definition: DocumentTypeDefinition, *, version: int, created_by: str) -> DocumentTypeVersion:
+        row = DocumentTypeVersion(
+            document_type_id=record.id,
+            version=version,
+            status="draft",
+            definition=definition.model_dump(mode="json"),
+            content_hash=definition.content_hash(),
+            created_by=created_by,
+        )
+        self._session.add(row)
+        await self._session.commit()
+        await self._session.refresh(row)
+        return row
+
+    async def set_status(self, row: DocumentTypeVersion, *, status: str, actor: str) -> DocumentTypeVersion:
+        row.status = status
+        if status == "published":
+            row.published_by, row.published_at = actor, datetime.now(UTC)
+        elif status == "retired":
+            row.retired_at = datetime.now(UTC)
         await self._session.commit()
         await self._session.refresh(row)
         return row

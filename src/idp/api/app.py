@@ -16,7 +16,7 @@ from idp.config import get_settings
 from idp.llm.port import inference_lifespan
 from idp.observability.otel import setup_tracing
 from idp.persistence.db import get_session_factory
-from idp.persistence.repositories import ProcessProfileRepository, SemanticCatalogRepository
+from idp.persistence.repositories import DocumentTypeRepository, ProcessProfileRepository, SemanticCatalogRepository
 from idp.storage.object_store import S3ObjectStore
 from idp.webhooks import dispatcher
 
@@ -31,6 +31,7 @@ def create_app() -> FastAPI:
         async with get_session_factory(settings)() as session:
             await SemanticCatalogRepository(session).ensure_seed()
             await ProcessProfileRepository(session).ensure_seed()
+            await DocumentTypeRepository(session).ensure_seed()
         stop = asyncio.Event()
         task = asyncio.create_task(dispatcher.run(settings, stop)) if settings.webhook_dispatcher_enabled else None
         async with inference_lifespan(settings):  # the in-process executor and rule drafting call models
@@ -56,6 +57,7 @@ def create_app() -> FastAPI:
     app.include_router(cases.router)
     app.include_router(documents.router)
     app.include_router(document_types.router)
+    app.include_router(document_types.admin_router)
     app.include_router(review.router)
     app.include_router(type_suggestions.router)
     app.include_router(audit.router)

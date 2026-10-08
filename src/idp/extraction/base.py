@@ -1,17 +1,12 @@
-"""Port: the extractor abstraction. Whether a concrete extractor uses the
-bounded agentic loop (payslip, insurance_disclosure) or a single fixed call
-(generic) is a strategy decision made per document type in ``registry.py`` —
-the orchestrator never knows which."""
+"""What an extraction returns, and the walkers that attach its trace. Catalog
+types use the bounded agentic loop (``catalog_extractor``); ``generic`` a
+single fixed call."""
 
 from __future__ import annotations
 
-from typing import Protocol
-
 from pydantic import BaseModel
 
-from idp.config import Settings
 from idp.domain.envelope import Extracted, ToolCallRecord
-from idp.parsing.normalize import ParsedDocument
 
 
 class ExtractionOutcome(BaseModel):
@@ -26,14 +21,9 @@ class ExtractionOutcome(BaseModel):
     needs_review: bool
     review_reason: str | None = None
     extraction_method: str = "fixed"  # "agentic" | "fixed"
-
-
-class BaseExtractor(Protocol):
-    schema_version: str
-
-    def extract(
-        self, parsed: ParsedDocument, settings: Settings, correction_note: str | None = None
-    ) -> ExtractionOutcome: ...
+    # The catalog version of the type whose schema produced the payload
+    # (VRT-32); "1.0" for generic, whose schema lives in code.
+    schema_version: str = "1.0"
 
 
 def attach_trace(instance: BaseModel, trace: list[ToolCallRecord]) -> None:

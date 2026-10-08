@@ -338,6 +338,46 @@ class SemanticCatalogVersion(Base):
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class DocumentTypeRecord(Base):
+    """A document type of the catalog (VRT-32, ADR-0008) — e.g. 'payslip'.
+    Its schema and texts live in its versions; ``key`` is what
+    ``documents.document_type``, profiles and semantic mappings refer to."""
+
+    __tablename__ = "document_types"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    key: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    versions: Mapped[list["DocumentTypeVersion"]] = relationship(
+        back_populates="document_type", cascade="all, delete-orphan", order_by="DocumentTypeVersion.version"
+    )
+
+
+class DocumentTypeVersion(Base):
+    """One version of a document type: the JSON of
+    ``domain.document_type_catalog.DocumentTypeDefinition``. Lifecycle:
+    draft -> published -> retired. Immutable once published; an extraction
+    records the version that produced it (``extractions.schema_version``)."""
+
+    __tablename__ = "document_type_versions"
+    __table_args__ = (UniqueConstraint("document_type_id", "version"),)
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    document_type_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("document_types.id", ondelete="CASCADE"), nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String(16), default="draft", server_default="draft", nullable=False)  # draft | published | retired
+    definition: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_by: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    published_by: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    retired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    document_type: Mapped["DocumentTypeRecord"] = relationship(back_populates="versions")
+
+
 class ProcessProfile(Base):
     """A business process that uses Veritium (VRT-24) — e.g. 'convenios'.
     Its behaviour lives in its versions; the key is the stable handle

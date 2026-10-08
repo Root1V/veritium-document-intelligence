@@ -23,10 +23,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from idp.classification.classifier import needs_review as classification_needs_review
 from idp.config import Settings
-from idp.domain.document_types import DocumentType
+from idp.domain.document_type_catalog import GENERIC, DocumentTypeCatalog
 from idp.domain.envelope import Extracted
 from idp.domain.request_payload import RequestInputPayload
-from idp.domain.schemas import schema_for
 from idp.domain.schemas.generic import GenericSchema
 from idp.domain.process_profile import ProcessProfileDefinition
 from idp.domain.semantic import SemanticCatalog
@@ -40,6 +39,7 @@ from idp.persistence.db import get_session_factory
 from idp.persistence.models import Case
 from idp.persistence.models import ValidationIssue as ValidationIssueModel
 from idp.persistence.repositories import (
+    DocumentTypeRepository,
     CaseRepository,
     CaseRunRepository,
     DocumentRepository,
@@ -225,6 +225,7 @@ async def _classify_and_extract(
     document_repo: DocumentRepository,
     extraction_repo: ExtractionRepository,
     type_suggestion_repo: TypeSuggestionRepository,
+    type_catalog: DocumentTypeCatalog,
 ) -> DocumentFields | None:
     # Each stage transition commits immediately (not batched with the rest
     # of the document's processing) so a concurrent GET /batches/{id} poll
@@ -233,11 +234,11 @@ async def _classify_and_extract(
     # frontend's PipelineStepper, the reason this granularity exists.
     await document_repo.set_status(document_id, "classifying")
     await session.commit()
-    classification = await asyncio.to_thread(classify_document, settings, parsed, document_id=str(document_id))
+    classification = await asyncio.to_thread(classify_document, settings, parsed, type_catalog, document_id=str(document_id))
 
     await document_repo.set_classification(
         document_id,
-        document_type=classification.document_type.value,
+        document_type=classification.document_type,
         confidence=classification.confidence,
         reasoning=classification.reasoning,
         needs_review=classification_needs_review(settings, classification),
@@ -246,7 +247,7 @@ async def _classify_and_extract(
     await session.commit()
 
     outcome = await asyncio.to_thread(
-        extract_document, settings, parsed, classification.document_type, document_id=str(document_id)
+        extract_document, settings, parsed, classification.document_type, type_catalog, document_id=str(document_id)
     )
 
     if outcome.schema_instance is None:
@@ -256,25 +257,26 @@ async def _classify_and_extract(
 
     await extraction_repo.save(
         document_id=document_id,
-        schema_version="1.0",
+        schema_version=outcome.schema_version,
         payload=outcome.schema_instance.model_dump(mode="json"),
         parser_backend=parser_backend_name,
         extraction_method=outcome.extraction_method,
     )
     await document_repo.set_status(document_id, "extracted")
 
-    if classification.document_type == DocumentType.GENERIC and isinstance(outcome.schema_instance, GenericSchema):
+    if classification.document_type == GENERIC and isinstance(outcome.schema_instance, GenericSchema):
         await _suggest_type_if_promising(
             settings,
             outcome.schema_instance,
             document_id=document_id,
             case_id=case_id,
             type_suggestion_repo=type_suggestion_repo,
+            type_catalog=type_catalog,
         )
 
     return DocumentFields(
         document_id=document_id,
-        document_type=classification.document_type.value,
+        document_type=classification.document_type,
         fields=flatten_top_level_fields(outcome.schema_instance),
         payload=outcome.schema_instance.model_dump(mode="json"),
     )
@@ -287,6 +289,7 @@ async def _suggest_type_if_promising(
     document_id: uuid.UUID,
     case_id: uuid.UUID,
     type_suggestion_repo: TypeSuggestionRepository,
+    type_catalog: DocumentTypeCatalog,
 ) -> None:
     """Best-effort: a document that fell into 'generic' gets one more LLM
     pass asking whether its content looks like a stable, recurring
@@ -296,7 +299,7 @@ async def _suggest_type_if_promising(
     a side-channel signal for a human, not part of the document's pipeline
     result."""
     try:
-        proposal = await asyncio.to_thread(suggest_type, settings, generic_result, document_id=str(document_id))
+        proposal = await asyncio.to_thread(suggest_type, settings, generic_result, type_catalog, document_id=str(document_id))
     except Exception:
         return
     if not proposal.is_promotable or not proposal.suggested_type_name:
@@ -324,6 +327,7 @@ async def _process_uploaded_file(
     document_repo: DocumentRepository,
     extraction_repo: ExtractionRepository,
     type_suggestion_repo: TypeSuggestionRepository,
+    type_catalog: DocumentTypeCatalog,
 ) -> list[DocumentFields]:
     """Parses the raw physical upload once, then checks whether it actually
     bundles more than one logical document (segmentation.detect_segments —
@@ -357,6 +361,7 @@ async def _process_uploaded_file(
             document_repo=document_repo,
             extraction_repo=extraction_repo,
             type_suggestion_repo=type_suggestion_repo,
+            type_catalog=type_catalog,
         )
         return [fields] if fields is not None else []
 
@@ -391,6 +396,7 @@ async def _process_uploaded_file(
                 document_repo=document_repo,
                 extraction_repo=extraction_repo,
                 type_suggestion_repo=type_suggestion_repo,
+                type_catalog=type_catalog,
             )
         except ExtractionIncomplete:
             await document_repo.mark_needs_review(child.id)
@@ -469,6 +475,9 @@ async def process_document(settings: Settings, case_id: uuid.UUID, run_id: uuid.
                     document_repo=document_repo,
                     extraction_repo=ExtractionRepository(session),
                     type_suggestion_repo=TypeSuggestionRepository(session),
+                    # The published types as of this step (VRT-32): a type
+                    # published mid-run applies from the next document on.
+                    type_catalog=await DocumentTypeRepository(session).load_catalog(),
                 )
             except ExtractionIncomplete:
                 await document_repo.mark_needs_review(document_id)
@@ -509,6 +518,7 @@ async def evaluate_case(settings: Settings, case_id: uuid.UUID, run_id: uuid.UUI
         await session.commit()
 
         request_payload = RequestInputPayload(data=case.request_input_payload or {})
+        type_catalog = await DocumentTypeRepository(session).load_catalog()
         for current in all_fields:
             await _validate_document(
                 settings=settings,
@@ -526,6 +536,7 @@ async def evaluate_case(settings: Settings, case_id: uuid.UUID, run_id: uuid.UUI
                 document_repo=document_repo,
                 validation_repo=validation_repo,
                 review_repo=review_repo,
+                type_catalog=type_catalog,
             )
 
         await refresh_conditions(session, case, run, semantic_view, definition)
@@ -586,6 +597,19 @@ async def case_document_fields(document_repo: DocumentRepository, case_id: uuid.
     return out
 
 
+def _extraction_schema(type_catalog: DocumentTypeCatalog, document_type: str, schema_version: str) -> type[BaseModel]:
+    """The schema that produced a stored payload. generic's lives in code; a
+    catalog type's is the version recorded on the extraction (VRT-32) — "1.0",
+    written before the catalog existed, is version 1, which the seed
+    derived from those same code schemas."""
+    if document_type == GENERIC:
+        return GenericSchema
+    schema = type_catalog.schema(document_type, 1 if schema_version == "1.0" else int(schema_version))
+    if schema is None:
+        raise ValueError(f"tipo documental '{document_type}' v{schema_version} no está en el catálogo")
+    return schema
+
+
 async def _validate_document(
     *,
     settings: Settings,
@@ -603,6 +627,7 @@ async def _validate_document(
     document_repo: DocumentRepository,
     validation_repo: ValidationRepository,
     review_repo: ReviewRepository,
+    type_catalog: DocumentTypeCatalog,
 ) -> None:
     await document_repo.set_status(current.document_id, "validating")
     await session.commit()
@@ -641,7 +666,7 @@ async def _validate_document(
 
         document = await document_repo.get(current.document_id)
         if document is not None and document.extraction is not None:
-            schema_instance = schema_for(current.document_type).model_validate(document.extraction.payload)
+            schema_instance = _extraction_schema(type_catalog, current.document_type, document.extraction.schema_version).model_validate(document.extraction.payload)
             threshold = definition.thresholds.field_confidence_min if definition and definition.thresholds.field_confidence_min is not None else settings.review_confidence_threshold
             candidates = find_review_candidates(schema_instance, results, confidence_threshold=threshold)
             # A re-evaluation must not ask a human twice about the same field.
