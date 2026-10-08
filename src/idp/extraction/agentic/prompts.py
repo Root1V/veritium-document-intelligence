@@ -111,7 +111,7 @@ tabla de ingresos o descuentos), pasalas TODAS juntas en una sola llamada (regio
 en vez de una llamada por region — cada llamada consume un turno de tu presupuesto acotado.
 - read_table_region(region_id): interpreta visualmente una region de tipo tabla.
 - read_figure_region(region_id): interpreta visualmente una region de tipo figura/grafico.
-- submit_extraction(...): entrega el resultado final segun el esquema objetivo. Debes llamarla para terminar.
+- submit(...): entrega el resultado final segun el esquema objetivo. Debes llamarla para terminar.
 
 Esquema objetivo (JSON Schema):
 {schema_cls.model_json_schema()}
@@ -124,7 +124,7 @@ tabla en una o dos llamadas a read_text_region, no una llamada por celda.
 3. Usa read_table_region/read_figure_region solo cuando el dato que necesitas esta en una tabla o figura \
 que no se puede leer como texto plano.
 4. Tienes un numero limitado de turnos. En cuanto tengas los campos requeridos (obligatorios) del esquema, \
-llama a submit_extraction — no es necesario agotar todas las regiones ni completar listas opcionales si el \
+llama a submit — no es necesario agotar todas las regiones ni completar listas opcionales si el \
 presupuesto de turnos se esta agotando.
 5. Cada campo del esquema requiere: value, page, bbox, confidence (0-1), source_text (el texto exacto \
 de donde se extrajo el valor) y region_id — esto es obligatorio para poder auditar la extraccion despues. \

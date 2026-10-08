@@ -164,8 +164,9 @@ Veritium pasa de "subir documentos sueltos" a ser una **capacidad de decisión d
 ## VRT-30 — Extracción agéntica sobre synaptum
 **Why:** los agentes de Veritium se construyen con el framework del ecosistema, no con un loop propio.
 **Scope:**
-- El loop de `extraction/agentic/` pasa a `synaptum.Agent`: tools de lectura como `@tool`, el VLM dentro de la tool vía `InferencePort.vision`, `submit_extraction` validado y `Limits`.
-- Requiere synaptum `1.0.0rc4`: `Sampling(temperature=0)` (S-1), errores de binding devueltos al modelo (S-3, sin wrappers tolerantes) y `Agent(submit_tool=True)` (S-2). `LimitExceeded` (nunca entregó) y `NoObjectGeneratedError` (entregó y no validó) se mapean a `ExtractionIncomplete` → revisión humana. La re-pregunta consume `max_steps`.
+- El loop de `extraction/agentic/` pasa a `synaptum.Agent` (`InferencePort.run_agent`): las tools de lectura son `@tool` async ligadas al documento, el VLM se llama dentro de la tool vía `InferencePort.vision`, y el resultado entra por `submit_tool=True` con `Limits(max_steps=extraction_max_turns)` y `Sampling(temperature=0)`.
+- Sin wrappers tolerantes: un argumento mal formado vuelve al modelo como error (S-3). `LimitExceeded` y `NoObjectGeneratedError` pasan a `ExtractionIncomplete` → revisión humana. La re-pregunta consume `max_steps`.
+- Sale el último cliente directo (`openai`): todo el tráfico de modelo pasa por synaptum → axonium → prometheus. Los spans de las tools los emitimos nosotros (synaptum los deja a quien ejecuta la tool).
 
 ## VRT-31 — Observabilidad con argus
 **Why:** con varios procesos, workers y la ruta aeon de por medio, sin una traza de punta a punta no se puede diagnosticar ni atribuir el costo por expediente.

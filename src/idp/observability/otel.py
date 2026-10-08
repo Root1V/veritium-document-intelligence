@@ -88,12 +88,15 @@ def record_llm_usage(span: Span, *, input_tokens: int | None, output_tokens: int
 
 
 @contextmanager
-def traced_tool_call(*, tool_name: str, turn: int, arguments: dict[str, Any] | None = None) -> Iterator[Span]:
-    """One span per tool call inside the bounded agentic extraction loop."""
+def traced_tool_call(*, tool_name: str, turn: int | None = None, arguments: dict[str, Any] | None = None) -> Iterator[Span]:
+    """One span per tool call inside the bounded agentic extraction loop.
+    synaptum leaves tool execution spans to whoever executes the tool — in
+    the autonomous route, these functions."""
     tracer = get_tracer()
     with tracer.start_as_current_span("gen_ai.tool") as span:
         span.set_attribute("gen_ai.tool.name", tool_name)
-        span.set_attribute("idp.agent.turn", turn)
+        if turn is not None:
+            span.set_attribute("idp.agent.turn", turn)
         if arguments:
             span.set_attribute("idp.agent.arguments", str(arguments))
         try:

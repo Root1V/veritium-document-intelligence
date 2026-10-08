@@ -13,6 +13,8 @@ from urllib.parse import urlparse
 import pytest
 import pytest_asyncio
 
+from axonium import DEFAULT_GATEWAY_BASE_URL
+
 from idp.config import Settings
 from idp.llm.port import inference_lifespan
 
@@ -45,10 +47,10 @@ def require_minio(live_settings: Settings) -> None:
 
 
 @pytest.fixture(scope="session")
-def require_reasoning_llm(live_settings: Settings) -> None:
-    url = urlparse(live_settings.reasoning_base_url)
+def require_prometheus() -> None:
+    url = urlparse(DEFAULT_GATEWAY_BASE_URL)
     if not _port_open(url.hostname or "localhost", url.port or 80):
-        pytest.skip(f"Endpoint LLM de razonamiento no alcanzable en {live_settings.reasoning_base_url} (configura Prometheus u otro servidor OpenAI-compatible)")
+        pytest.skip(f"gateway de prometheus no alcanzable en {DEFAULT_GATEWAY_BASE_URL}")
 
 
 @pytest_asyncio.fixture

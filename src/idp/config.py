@@ -52,10 +52,6 @@ class Settings(BaseSettings):
     vision_model: str = "qwen3vl-30b-a3b"
     axonium_client_id: str | None = None
     axonium_client_secret: SecretStr | None = None
-    # Only the agentic extraction loop still calls the reasoning server
-    # directly, until it moves onto synaptum (VRT-30).
-    reasoning_base_url: str = "http://localhost:8086/v1"
-    reasoning_api_key: str = "none"
 
     # Per-request timeout for calls to the externally-served LLM/VLM
     # endpoints. Without an explicit bound, a stalled connection blocks a

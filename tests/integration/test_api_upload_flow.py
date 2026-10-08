@@ -30,7 +30,7 @@ from idp.persistence.repositories import UserRepository
 from idp.storage.object_store import S3ObjectStore
 from tests.conftest import FIXTURES_DIR, GOLDEN_DIR, normalize_extracted_string
 
-pytestmark = [pytest.mark.usefixtures("require_postgres", "require_minio", "require_reasoning_llm", "inference_port")]
+pytestmark = [pytest.mark.usefixtures("require_postgres", "require_minio", "require_prometheus", "inference_port")]
 
 _TEST_USER_EMAIL = "test-runner@example.com"
 _TEST_USER_PASSWORD = "test-runner-password"

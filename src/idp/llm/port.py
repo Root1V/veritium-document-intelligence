@@ -35,7 +35,7 @@ from typing import Any, Literal, TypeVar
 from axonium import AsyncAxonium
 from axonium.config import Timeouts
 from pydantic import BaseModel
-from synaptum import Image, LocalGateway, MemoryCheckpointer, Sampling, Session, Text, generate
+from synaptum import Agent, FinalStep, Image, Limits, LocalGateway, MemoryCheckpointer, Phase, Sampling, Session, Text, ToolStep, generate
 from synaptum.providers.axonium import AxoniumModel
 
 from idp.config import Settings
@@ -67,6 +67,7 @@ class Inference:
                 timeouts=Timeouts(read=timeout, write=timeout),
             )
             model = AxoniumModel(client=self._client).complete
+        self._model_call = model
         self._gateway = LocalGateway(model=model, warn=False)
 
     async def aclose(self) -> None:
@@ -92,6 +93,37 @@ class Inference:
 
     async def vision(self, *, purpose: str, image_b64: str, prompt: str, mime_type: str = "image/png") -> str:
         return await self._generate(purpose, "vision", [Text(prompt), Image(media_type=mime_type, data=image_b64)], max_steps=1)
+
+    async def run_agent(
+        self, *, purpose: str, instructions: str, task: str, tools: list[Any], output: type[T], max_steps: int
+    ) -> tuple[T, list[ToolStep]]:
+        """A bounded tool-using agent on the reasoning model (VRT-30). The
+        result arrives through synaptum's submit tool, validated against
+        ``output``; an invalid submission is shown its error and costs a turn.
+        Raises ``LimitExceeded`` (never submitted) or ``NoObjectGeneratedError``
+        (submitted, never valid). Returns the result and the completed tool
+        steps, for the extraction's trace."""
+        gateway = LocalGateway(model=self._model_call, tools=tools, warn=False)
+        agent = Agent(
+            "veritium-extractor",
+            model=self._settings.reasoning_model,
+            instructions=instructions,
+            tools=tools,
+            output=output,
+            limits=Limits(max_steps=max_steps),
+            sampling=Sampling(temperature=0),
+            submit_tool=True,
+        )
+        session = Session(run_id=f"veritium/{purpose}", gateway=gateway, checkpointer=MemoryCheckpointer())
+        names = {t.name for t in tools}  # not the submit tool: its call is the result
+        steps: list[ToolStep] = []
+        result: Any = None
+        async for step in agent.run(task, session=session):
+            if isinstance(step, ToolStep) and step.phase == Phase.COMPLETED and step.call.name in names:
+                steps.append(step)
+            elif isinstance(step, FinalStep) and step.phase == Phase.COMPLETED:
+                result = step.output
+        return result, steps
 
     def run_sync(self, call: Coroutine[Any, Any, Any]) -> Any:
         """Run a call from a worker thread on the port's loop and wait for it."""
@@ -129,8 +161,3 @@ def structured(*, purpose: str, role: Role, output: type[T], instructions: str, 
     """Sync entry point for the pipeline's threads."""
     port = inference()
     return port.run_sync(port.structured(purpose=purpose, role=role, output=output, instructions=instructions, task=task))
-
-
-def vision(*, purpose: str, image_b64: str, prompt: str) -> str:
-    port = inference()
-    return port.run_sync(port.vision(purpose=purpose, image_b64=image_b64, prompt=prompt))
