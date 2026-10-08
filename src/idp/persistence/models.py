@@ -301,7 +301,13 @@ class ValidationRuleDefinition(Base):
     rule_id: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
     category: Mapped[str] = mapped_column(String(32), nullable=False)
     document_type: Mapped[str | None] = mapped_column(String(64), nullable=True)  # null = applies to any type
+    # VRT-36: a rule over a semantic attribute (e.g. 'ingreso.neto_mensual')
+    # runs on every document that contributes it, whatever its type.
+    attribute: Mapped[str | None] = mapped_column(String(64), nullable=True)
     field_path: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    # VRT-36: [{name, input: {value|doc|case|request}, expect: pass|fail}];
+    # activating a rule requires every case to give its expected outcome.
+    test_cases: Mapped[list] = mapped_column(JSONB, default=list, server_default="[]", nullable=False)
     description_nl: Mapped[str | None] = mapped_column(Text, nullable=True)  # the human's plain-language prompt, kind="cel" only
     condition_cel: Mapped[str | None] = mapped_column(Text, nullable=True)
     applies_when_cel: Mapped[str | None] = mapped_column(Text, nullable=True)

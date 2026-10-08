@@ -10,6 +10,9 @@ from __future__ import annotations
 
 from typing import Any
 
+from pydantic import BaseModel
+
+from idp.domain.rule_draft import RuleTestCase
 from idp.persistence.models import ValidationRuleDefinition
 from idp.validation.base import ConfidenceMethod, RuleCategory, Severity, ValidationResult, ValidationRule
 from idp.validation.cel import CelEvaluationError, compile_expression, evaluate
@@ -43,6 +46,8 @@ class DataDrivenRule(ValidationRule):
         # data checks always live in condition_cel, never applies_when_cel.
         if self._row.document_type is not None and context.current_document.document_type != self._row.document_type:
             return False
+        if self._row.attribute is not None and not self._attribute_values(context):
+            return False  # a rule over an attribute runs where a document contributes it (VRT-36)
         if self._applies_when_program is None:
             return True
         try:
@@ -72,8 +77,13 @@ class DataDrivenRule(ValidationRule):
                 exists = record is not None
             env["reference_data"] = {"employee_code_exists": exists}
 
+        field_path = self._row.field_path
         try:
-            passed = bool(evaluate(self._condition_program, env))
+            if self._row.attribute is None:
+                passed = bool(evaluate(self._condition_program, env))
+            else:
+                failing = [path for path, value in self._attribute_values(context) if not bool(evaluate(self._condition_program, env | {"value": value}))]
+                passed, field_path = not failing, ",".join(failing) or None
         except CelEvaluationError as exc:
             return ValidationResult(
                 rule_id=self.rule_id,
@@ -91,12 +101,26 @@ class DataDrivenRule(ValidationRule):
             category=self.category,
             passed=passed,
             severity=None if passed else severity,
-            field_path=self._row.field_path,
+            field_path=field_path,
             message=(self._row.message_pass or "Condicion cumplida.") if passed else (self._row.message_fail or "Condicion no cumplida."),
             confidence=1.0,
             confidence_method=ConfidenceMethod.DETERMINISTIC,
             explanation=f"Regla data-driven (CEL): {self._row.condition_cel!r} -> {passed}.",
         )
+
+
+    def _attribute_values(self, context: ValidationContext) -> list[tuple[str, Any]]:
+        """(field path, value) of every value this document contributes to
+        the rule's attribute, in any role."""
+        if context.semantic_view is None:
+            return []
+        return [
+            (s.field_path, s.value)
+            for r in context.semantic_view.attributes
+            if r.attribute == self._row.attribute
+            for s in r.sources
+            if s.document_id == context.current_document.document_id and s.value not in (None, "")
+        ]
 
 
 def _cel_env(context: ValidationContext) -> dict[str, Any]:
@@ -108,3 +132,55 @@ def _cel_env(context: ValidationContext) -> dict[str, Any]:
         "request": context.request_payload.data,
         "case": context.semantic_view.as_cel() if context.semantic_view is not None else {},
     }
+
+
+class TestCaseResult(BaseModel):
+    name: str
+    expect: str
+    got: str  # pass | fail | error
+    detail: str | None = None
+
+    @property
+    def ok(self) -> bool:
+        return self.got == self.expect
+
+
+def _as(kind: str | None, value: Any) -> Any:
+    if kind in ("float", "number") and isinstance(value, int) and not isinstance(value, bool):
+        return float(value)
+    if kind in ("int", "integer") and isinstance(value, float) and value.is_integer():
+        return int(value)
+    return value
+
+
+def run_test_cases(
+    condition_cel: str,
+    applies_when_cel: str | None,
+    cases: list[RuleTestCase],
+    *,
+    value_type: str | None = None,
+    field_types: dict[str, str] | None = None,
+) -> list[TestCaseResult]:
+    """What each test case gives against the rule's CEL — the same
+    variables the rule sees at run time (VRT-36). A case where the rule
+    does not apply (applies_when false) counts as 'pass': it raises no finding.
+
+    CEL does not compare int with double, and extraction delivers each
+    value with its declared type; so a case's ``value`` and ``doc`` numbers
+    take the type the attribute (``value_type``) or the document type's
+    fields (``field_types``) declare, as they would at run time."""
+    condition = compile_expression(condition_cel)
+    gate = compile_expression(applies_when_cel) if applies_when_cel else None
+    results = []
+    for case in cases:
+        env = case.input.model_dump()
+        env["value"] = _as(value_type, env["value"])
+        env["doc"] = {k: _as((field_types or {}).get(k), v) for k, v in env["doc"].items()}
+        try:
+            applies = bool(evaluate(gate, env)) if gate is not None else True
+            got = "pass" if not applies or bool(evaluate(condition, env)) else "fail"
+            results.append(TestCaseResult(name=case.name, expect=case.expect, got=got))
+        except CelEvaluationError as exc:
+            results.append(TestCaseResult(name=case.name, expect=case.expect, got="error", detail=str(exc)))
+    return results
+

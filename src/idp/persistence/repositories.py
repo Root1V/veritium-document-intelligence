@@ -573,12 +573,16 @@ class ValidationRuleRepository:
         message_fail: str,
         rationale: str | None,
         created_by: str,
+        attribute: str | None = None,
+        test_cases: list[dict] | None = None,
     ) -> ValidationRuleDefinition:
         row = ValidationRuleDefinition(
             kind="cel",
             rule_id=rule_id,
             category=category,
             document_type=document_type,
+            attribute=attribute,
+            test_cases=test_cases or [],
             field_path=field_path,
             description_nl=description_nl,
             condition_cel=condition_cel,
@@ -647,6 +651,7 @@ class ValidationRuleRepository:
         message_pass: str | None = None,
         message_fail: str | None = None,
         field_path: str | None = None,
+        test_cases: list[dict] | None = None,
     ) -> ValidationRuleDefinition:
         """Refines a still-draft kind="cel" row before activation — the
         caller (api/routes/validation_rules.py) is responsible for
@@ -657,6 +662,8 @@ class ValidationRuleRepository:
             raise ValueError(f"validation rule definition not found: {definition_id}")
         if condition_cel is not None:
             row.condition_cel = condition_cel
+        if test_cases is not None:
+            row.test_cases = test_cases
         if applies_when_cel is not None:
             row.applies_when_cel = applies_when_cel
         if severity is not None:

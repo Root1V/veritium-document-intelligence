@@ -206,6 +206,7 @@ export interface ValidationRule {
   rule_id: string
   category: string
   document_type: string | null
+  attribute: string | null
   field_path: string | null
   description_nl: string | null
   condition_cel: string | null
@@ -217,11 +218,33 @@ export interface ValidationRule {
   status: RuleStatus
   created_by: string | null
   reviewer_identity: string | null
+  test_cases: RuleTestCase[]
+}
+
+// VRT-36: what a rule sees, and what it should give.
+export interface RuleTestCase {
+  name: string
+  input: { value?: unknown; doc?: Record<string, unknown>; case?: Record<string, unknown>; request?: Record<string, unknown>; reference_data?: Record<string, unknown> }
+  expect: 'pass' | 'fail'
+}
+
+export interface RuleTestResult {
+  name: string
+  expect: 'pass' | 'fail'
+  got: 'pass' | 'fail' | 'error'
+  detail: string | null
+}
+
+export interface DraftRuleResponse {
+  outcome: 'ok' | 'ambiguous'
+  questions: string[]
+  rule: ValidationRule | null
 }
 
 export interface DraftRuleRequest {
   description: string
-  document_type: string
+  document_type?: string
+  attribute?: string
   category: RuleCelCategory
   field_path?: string
   existing_fields_hint?: string[]
@@ -229,7 +252,8 @@ export interface DraftRuleRequest {
 
 export interface ManualRuleRequest {
   rule_id_suffix: string
-  document_type: string
+  document_type?: string
+  attribute?: string
   category: RuleCelCategory
   field_path?: string
   condition_cel: string
@@ -247,6 +271,7 @@ export interface UpdateRuleRequest {
   message_pass?: string
   message_fail?: string
   field_path?: string
+  test_cases?: RuleTestCase[]
 }
 
 export interface ToggleRule {

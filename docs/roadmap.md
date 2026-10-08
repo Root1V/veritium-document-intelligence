@@ -207,7 +207,13 @@ Veritium pasa de "subir documentos sueltos" a ser una **capacidad de decisión d
 - El formato se edita en la página del catálogo semántico (columna `format_cel`).
 
 ## VRT-36 — Biblioteca de reglas sobre atributos
-**Why:** las reglas en lenguaje humano tienen que poder usar tools y no solo comparar campos, sin abrir la puerta a código arbitrario. **Scope:** lenguaje natural → CEL o procedimiento acotado; resultado `AMBIGUA` explícito; casos de prueba por regla; aprobación humana.
+**Why:** las reglas en lenguaje humano tienen que poder usar tools y no solo comparar campos, sin abrir la puerta a código arbitrario.
+**Scope:**
+- Una regla CEL es sobre los campos de un tipo de documento o sobre un atributo semántico (`value`, en cualquier documento que lo aporte), con `case` y `request` disponibles.
+- Lenguaje natural → CEL con resultado `AMBIGUA` explícito: si falta un umbral o una definición, la IA devuelve las preguntas y no guarda nada.
+- Casos de prueba por regla (propuestos por la IA, editables); activar exige que todos den lo esperado. Aprobación humana como antes.
+- Fuera: el procedimiento acotado con tools (RENIEC/SUNAT/SBS) espera a que existan esos conectores (VRT-60); diseñarlo antes sería especulativo.
+
 ## VRT-37 — Diseñador de perfiles
 **Why:** configurar un proceso nuevo debe ser reutilizar, no partir de cero. **Scope:** armar perfiles desde la biblioteca, con sugerencias de tipos, atributos y reglas ya usados en otros procesos.
 

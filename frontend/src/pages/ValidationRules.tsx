@@ -7,6 +7,8 @@ import {
   useDocumentTypeCatalog,
   useDraftValidationRule,
   useResolveValidationRule,
+  useRunRuleTests,
+  useSemanticCatalog,
   useSetRuleToggle,
   useToggleRules,
   useUpdateValidationRule,
@@ -21,7 +23,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import type { RuleCelCategory, ValidationRule } from '@/types/api'
+import type { RuleCelCategory, RuleTestCase, RuleTestResult, ValidationRule } from '@/types/api'
 
 const CATEGORY_OPTIONS: { value: RuleCelCategory; label: string }[] = [
   { value: 'self', label: 'Interna del documento' },
@@ -32,19 +34,29 @@ const CATEGORY_LABEL: Record<string, string> = Object.fromEntries(CATEGORY_OPTIO
 const SEVERITY_OPTIONS = ['info', 'warning', 'error'] as const
 
 function errorDetail(error: unknown, fallback: string): string {
-  if (isAxiosError(error) && typeof error.response?.data?.detail === 'string') {
-    return error.response.data.detail
-  }
+  const detail = isAxiosError(error) ? error.response?.data?.detail : undefined
+  if (typeof detail === 'string') return detail
+  if (Array.isArray(detail)) return detail.map((d) => (typeof d === 'string' ? d : d.msg)).join(' · ')
   return fallback
+}
+
+// Only what the case sets: empty `doc`/`case`/`request` are noise.
+function compactInput(input: RuleTestCase['input']): string {
+  const set = Object.entries(input).filter(([, v]) => v !== null && v !== undefined && !(typeof v === 'object' && Object.keys(v as object).length === 0))
+  return JSON.stringify(Object.fromEntries(set))
 }
 
 function NewRuleForm() {
   const { data: catalog } = useDocumentTypeCatalog()
+  const { data: semantic } = useSemanticCatalog()
   const draftMutation = useDraftValidationRule()
   const manualMutation = useCreateManualRule()
   const [manualMode, setManualMode] = useState(false)
 
+  const [target, setTarget] = useState<'document' | 'attribute'>('attribute')
   const [documentType, setDocumentType] = useState('')
+  const [attribute, setAttribute] = useState('')
+  const [questions, setQuestions] = useState<string[]>([])
   const [category, setCategory] = useState<RuleCelCategory>('self')
   const [fieldPath, setFieldPath] = useState('')
   const [description, setDescription] = useState('')
@@ -65,9 +77,11 @@ function NewRuleForm() {
     setMessageFail('')
   }
 
+  const scope = target === 'attribute' ? { attribute } : { document_type: documentType }
+
   function handleSubmit() {
-    if (!documentType) {
-      toast.error('Elige un tipo de documento.')
+    if (target === 'document' ? !documentType : !attribute) {
+      toast.error(target === 'document' ? 'Elige un tipo de documento.' : 'Elige un atributo.')
       return
     }
     if (manualMode) {
@@ -78,7 +92,7 @@ function NewRuleForm() {
       manualMutation.mutate(
         {
           rule_id_suffix: ruleIdSuffix.trim(),
-          document_type: documentType,
+          ...scope,
           category,
           field_path: fieldPath || undefined,
           condition_cel: conditionCel,
@@ -99,11 +113,17 @@ function NewRuleForm() {
         toast.error('Describe la regla en lenguaje natural.')
         return
       }
-      const existingFieldsHint = catalog?.registered.find((t) => t.name === documentType)?.fields.map((f) => f.name)
+      const existingFieldsHint = target === 'document' ? catalog?.registered.find((t) => t.name === documentType)?.fields.map((f) => f.name) : undefined
       draftMutation.mutate(
-        { description, document_type: documentType, category, field_path: fieldPath || undefined, existing_fields_hint: existingFieldsHint },
+        { description, ...scope, category, field_path: fieldPath || undefined, existing_fields_hint: existingFieldsHint },
         {
-          onSuccess: () => {
+          onSuccess: (data) => {
+            if (data.outcome === 'ambiguous') {
+              setQuestions(data.questions)
+              toast.info('La descripción es ambigua: responde las preguntas en la descripción y vuelve a generar.')
+              return
+            }
+            setQuestions([])
             toast.success('Borrador generado con IA — revísalo abajo antes de activarlo.')
             resetForm()
           },
@@ -118,13 +138,42 @@ function NewRuleForm() {
       <CardHeader>
         <CardTitle>Nueva regla</CardTitle>
         <CardDescription>
-          Cubre reglas internas de un documento, comparación contra los datos de entrada de la solicitud, y
-          existencia en la base de referencia — no reglas entre documentos ni contra sistemas externos, esas
-          siguen siendo código.
+          Sobre un atributo del catálogo semántico (corre en cualquier documento que lo aporte) o sobre los campos de
+          un tipo de documento. Puede comparar con el expediente (<code>case</code>) y con los datos del proceso
+          (<code>request</code>). Cada regla trae casos de prueba, y solo se activa si todos dan lo esperado.
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         <div className="flex flex-wrap gap-3">
+          <div className="flex flex-col gap-1">
+            <Label>La regla es sobre</Label>
+            <Select value={target} onValueChange={(v) => setTarget(v as typeof target)}>
+              <SelectTrigger className="w-56">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="attribute">Un atributo (cualquier documento)</SelectItem>
+                <SelectItem value="document">Un tipo de documento</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {target === 'attribute' ? (
+            <div className="flex flex-col gap-1">
+              <Label>Atributo</Label>
+              <Select value={attribute} onValueChange={setAttribute}>
+                <SelectTrigger className="w-64">
+                  <SelectValue placeholder="Elegir atributo" />
+                </SelectTrigger>
+                <SelectContent>
+                  {semantic?.catalog.attributes.map((a) => (
+                    <SelectItem key={a.key} value={a.key}>
+                      {a.key}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          ) : (
           <div className="flex flex-col gap-1">
             <Label>Tipo de documento</Label>
             <Select value={documentType} onValueChange={setDocumentType}>
@@ -140,6 +189,7 @@ function NewRuleForm() {
               </SelectContent>
             </Select>
           </div>
+          )}
           <div className="flex flex-col gap-1">
             <Label>Categoría</Label>
             <Select value={category} onValueChange={(v) => setCategory(v as RuleCelCategory)}>
@@ -167,9 +217,23 @@ function NewRuleForm() {
             <Textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="p. ej. el neto de la boleta debe ser igual al bruto menos los descuentos, con una tolerancia de 0.01"
+              placeholder={
+                target === 'attribute'
+                  ? 'p. ej. el ingreso neto mensual debe ser de al menos 1025 soles (remuneración mínima vital)'
+                  : 'p. ej. el neto de la boleta debe ser igual al bruto menos los descuentos, con una tolerancia de 0.01'
+              }
               rows={3}
             />
+            {questions.length > 0 && (
+              <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm dark:bg-amber-950/30">
+                <p className="font-medium">AMBIGUA — la IA no inventa lo que falta. Precisa en la descripción:</p>
+                <ul className="mt-1 list-disc pl-5">
+                  {questions.map((q) => (
+                    <li key={q}>{q}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
         ) : (
           <div className="flex flex-col gap-3">
@@ -232,6 +296,9 @@ function NewRuleForm() {
 function RuleDraftCard({ rule }: { rule: ValidationRule }) {
   const update = useUpdateValidationRule()
   const resolve = useResolveValidationRule()
+  const runTests = useRunRuleTests()
+  const [results, setResults] = useState<RuleTestResult[] | undefined>()
+  const [testCasesJson, setTestCasesJson] = useState(JSON.stringify(rule.test_cases, null, 2))
   const [isEditing, setIsEditing] = useState(false)
   const [conditionCel, setConditionCel] = useState(rule.condition_cel ?? '')
   const [appliesWhenCel, setAppliesWhenCel] = useState(rule.applies_when_cel ?? '')
@@ -247,12 +314,31 @@ function RuleDraftCard({ rule }: { rule: ValidationRule }) {
     setSeverity(rule.severity ?? 'warning')
     setMessagePass(rule.message_pass ?? '')
     setMessageFail(rule.message_fail ?? '')
+    setTestCasesJson(JSON.stringify(rule.test_cases, null, 2))
     setIsEditing(true)
   }
 
+  function handleRunTests() {
+    runTests.mutate(rule.id, {
+      onSuccess: (data) => setResults(data.results),
+      onError: (error) => toast.error(errorDetail(error, 'No se pudieron correr los casos.')),
+    })
+  }
+
   function handleSave() {
+    let testCases: RuleTestCase[]
+    try {
+      testCases = JSON.parse(testCasesJson)
+    } catch {
+      toast.error('Los casos de prueba no son JSON válido.')
+      return
+    }
+    setResults(undefined)
     update.mutate(
-      { id: rule.id, body: { condition_cel: conditionCel, applies_when_cel: appliesWhenCel || undefined, severity, message_pass: messagePass, message_fail: messageFail } },
+      {
+        id: rule.id,
+        body: { condition_cel: conditionCel, applies_when_cel: appliesWhenCel || undefined, severity, message_pass: messagePass, message_fail: messageFail, test_cases: testCases },
+      },
       {
         onSuccess: () => {
           toast.success('Borrador actualizado.')
@@ -285,6 +371,11 @@ function RuleDraftCard({ rule }: { rule: ValidationRule }) {
           {rule.document_type && (
             <Badge variant="outline" className="text-[10px]">
               {rule.document_type}
+            </Badge>
+          )}
+          {rule.attribute && (
+            <Badge variant="secondary" className="text-[10px]">
+              atributo {rule.attribute}
             </Badge>
           )}
         </div>
@@ -327,6 +418,10 @@ function RuleDraftCard({ rule }: { rule: ValidationRule }) {
                 <Input value={messageFail} onChange={(e) => setMessageFail(e.target.value)} />
               </div>
             </div>
+            <div className="flex flex-col gap-1">
+              <Label>Casos de prueba (JSON: name, input &#123;value | doc | case | request&#125;, expect pass|fail)</Label>
+              <Textarea value={testCasesJson} onChange={(e) => setTestCasesJson(e.target.value)} className="font-mono text-xs" rows={6} />
+            </div>
           </div>
         ) : (
           <div className="flex flex-col gap-1">
@@ -337,6 +432,27 @@ function RuleDraftCard({ rule }: { rule: ValidationRule }) {
                 {rule.severity}
               </Badge>
               <span className="text-muted-foreground">{rule.message_fail}</span>
+            </div>
+            <div className="mt-2 flex flex-col gap-1">
+              <span className="text-xs font-medium">Casos de prueba ({rule.test_cases.length})</span>
+              {rule.test_cases.length === 0 && <span className="text-xs text-muted-foreground">Sin casos: no se puede activar hasta tener uno que cumpla y uno que no.</span>}
+              {rule.test_cases.map((c, i) => {
+                const result = results?.[i]
+                return (
+                  <div key={i} className="flex flex-wrap items-center gap-2 text-xs">
+                    <Badge variant="outline" className="text-[10px]">
+                      espera {c.expect}
+                    </Badge>
+                    {result && (
+                      <Badge variant={result.got === c.expect ? 'secondary' : 'destructive'} className="text-[10px]">
+                        dio {result.got}
+                      </Badge>
+                    )}
+                    <span>{c.name}</span>
+                    <code className="text-muted-foreground">{compactInput(c.input)}</code>
+                  </div>
+                )
+              })}
             </div>
           </div>
         )}
@@ -354,6 +470,10 @@ function RuleDraftCard({ rule }: { rule: ValidationRule }) {
             </>
           ) : (
             <>
+              <Button size="sm" variant="outline" disabled={runTests.isPending} onClick={handleRunTests}>
+                {runTests.isPending && <Loader2 className="size-3.5 animate-spin" />}
+                Probar casos
+              </Button>
               <Button size="sm" disabled={resolve.isPending} onClick={() => handleResolve('activate')}>
                 Activar
               </Button>
@@ -384,7 +504,7 @@ function ActiveRulesList() {
         <TableHeader>
           <TableRow>
             <TableHead>Regla</TableHead>
-            <TableHead>Tipo</TableHead>
+            <TableHead>Sobre</TableHead>
             <TableHead>Condición</TableHead>
             <TableHead>Severidad</TableHead>
             <TableHead />
@@ -394,7 +514,7 @@ function ActiveRulesList() {
           {rules.map((rule) => (
             <TableRow key={rule.id}>
               <TableCell className="font-mono text-xs">{rule.rule_id}</TableCell>
-              <TableCell className="text-xs">{rule.document_type}</TableCell>
+              <TableCell className="text-xs">{rule.document_type ?? (rule.attribute ? `atributo ${rule.attribute}` : '—')}</TableCell>
               <TableCell className="max-w-xs truncate font-mono text-xs">{rule.condition_cel}</TableCell>
               <TableCell>
                 <Badge variant="outline" className="text-[10px]">

@@ -20,6 +20,8 @@ import type {
   RegisterDocumentTypeRequest,
   TypeProposal,
   DraftRuleRequest,
+  DraftRuleResponse,
+  RuleTestResult,
   LoginRequest,
   LoginResponse,
   ManualRuleRequest,
@@ -394,7 +396,7 @@ export function useDraftValidationRule() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: async (body: DraftRuleRequest) => {
-      const { data } = await apiClient.post<ValidationRule>('/validation-rules/draft', body)
+      const { data } = await apiClient.post<DraftRuleResponse>('/validation-rules/draft', body)
       return data
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['validation-rules'] }),
@@ -409,6 +411,15 @@ export function useCreateManualRule() {
       return data
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['validation-rules'] }),
+  })
+}
+
+export function useRunRuleTests() {
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { data } = await apiClient.post<{ results: RuleTestResult[]; all_ok: boolean }>(`/validation-rules/${id}/test`)
+      return data
+    },
   })
 }
 
