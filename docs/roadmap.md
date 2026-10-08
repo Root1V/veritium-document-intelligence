@@ -155,10 +155,11 @@ Veritium pasa de "subir documentos sueltos" a ser una **capacidad de decisión d
 ## VRT-29 — Inferencia vía axonium
 **Why:** axonium es el SDK obligatorio hacia prometheus, y la ruta de inferencia tiene que poder pasar de autónoma a gobernada sin tocar el dominio ([ADR-0006](adr/0006-inferencia-gobernada-por-fases.md)).
 **Scope:**
-- `InferencePort` (`structured`, `vision`). Adaptador autónomo: `synaptum.generate()` (S-6, registrado en el journal) sobre `LocalGateway` + `AxoniumModel` → prometheus; la imagen viaja como data-URI (S-7). Sin helper propio de salida estructurada.
-- Migran a async los 6 llamadores. La procedencia registra el modelo que respondió, no el configurado.
-- Respuestas de `VRT-AXO-001`: `axonium==1.0.0rc9`; un cliente por bucle de eventos (lifespan de la API, arranque del worker); `Idempotency-Key` derivada del cuerpo; `finish_reason == "length"` → `ExtractionIncomplete`.
-- Requiere synaptum `1.0.0rc4` (pedida en `VRT-SYN-003`). Las credenciales de prometheus ya están (cliente con `model:gpt-oss-20b-mxfp4` y `model:qwen3vl-30b-a3b`).
+- `InferencePort` (`llm/port.py`: `structured`, `vision`) sobre `synaptum.generate()` (S-6, journaled) con `LocalGateway` + `AxoniumModel` → gateway de prometheus; imágenes como `Image` (S-7). Sale `instructor`; la validación y la re-pregunta con el error son de synaptum.
+- Un cliente de axonium por bucle: lo abren el lifespan de la API y el arranque del worker. Los llamadores siguen síncronos en sus hilos y llegan al puerto por un puente al bucle del puerto (pasarlos a async no cambia el resultado y toca el motor de reglas).
+- `Idempotency-Key` de synaptum (run + paso + huella del cuerpo): un reintento tras un crash se sirve como `idempotent_replay`, sin generar otra vez. `finish_reason == "length"` no valida → `NoObjectGeneratedError`.
+- Modelos por id del registro de prometheus (`gpt-oss-20b-mxfp4`, `qwen3vl-30b-a3b`); el puerto avisa si respondió otro. Procedencia con versiones de synaptum y axonium.
+- Fuera: el loop agéntico sigue llamando directo al servidor de razonamiento hasta VRT-30.
 
 ## VRT-30 — Extracción agéntica sobre synaptum
 **Why:** los agentes de Veritium se construyen con el framework del ecosistema, no con un loop propio.

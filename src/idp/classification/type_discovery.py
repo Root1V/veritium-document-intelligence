@@ -22,7 +22,7 @@ from idp.classification.classifier import TYPE_DESCRIPTIONS
 from idp.config import Settings
 from idp.domain.schemas.generic import GenericSchema
 from idp.domain.type_suggestion import DocumentTypeProposal
-from idp.llm.structured_output import extract_structured
+from idp.llm.port import structured
 from idp.observability.otel import traced_llm_call
 
 _KNOWN_TYPES_LIST = "\n".join(f"- {t.value}: {desc}" for t, desc in TYPE_DESCRIPTIONS.items())
@@ -54,12 +54,10 @@ def suggest_document_type(settings: Settings, generic_result: GenericSchema) -> 
     fields_summary = "\n".join(f"- {f.key}: {f.value.value!r}" for f in generic_result.fields)
     summary = generic_result.summary.value if generic_result.summary else ""
     with traced_llm_call(role="reasoning", model=settings.reasoning_model):
-        return extract_structured(
-            settings,
+        return structured(
+            purpose="suggest_document_type",
             role="reasoning",
-            response_model=DocumentTypeProposal,
-            messages=[
-                {"role": "system", "content": _SYSTEM_PROMPT},
-                {"role": "user", "content": f"Resumen: {summary}\n\nCampos extraidos:\n{fields_summary}"},
-            ],
+            output=DocumentTypeProposal,
+            instructions=_SYSTEM_PROMPT,
+            task=f"Resumen: {summary}\n\nCampos extraidos:\n{fields_summary}",
         )

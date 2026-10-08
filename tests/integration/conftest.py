@@ -7,11 +7,14 @@ provisions it itself."""
 from __future__ import annotations
 
 import socket
+from collections.abc import AsyncIterator
 from urllib.parse import urlparse
 
 import pytest
+import pytest_asyncio
 
 from idp.config import Settings
+from idp.llm.port import inference_lifespan
 
 
 def _port_open(host: str, port: int, timeout: float = 1.0) -> bool:
@@ -46,3 +49,13 @@ def require_reasoning_llm(live_settings: Settings) -> None:
     url = urlparse(live_settings.reasoning_base_url)
     if not _port_open(url.hostname or "localhost", url.port or 80):
         pytest.skip(f"Endpoint LLM de razonamiento no alcanzable en {live_settings.reasoning_base_url} (configura Prometheus u otro servidor OpenAI-compatible)")
+
+
+@pytest_asyncio.fixture
+async def inference_port(live_settings: Settings) -> AsyncIterator[None]:
+    """Opens the InferencePort (VRT-29) on the test's event loop, as the
+    API's lifespan and the worker do; ASGITransport does not run lifespans."""
+    if not live_settings.axonium_client_id or live_settings.axonium_client_secret is None:
+        pytest.skip("faltan AXONIUM_CLIENT_ID / AXONIUM_CLIENT_SECRET (credenciales de prometheus) en .env")
+    async with inference_lifespan(live_settings):
+        yield

@@ -25,7 +25,7 @@ from pydantic import BaseModel
 from rapidfuzz import distance, fuzz
 
 from idp.config import Settings
-from idp.llm.structured_output import extract_structured
+from idp.llm.port import structured
 
 Band = Literal["match", "no_match", "ambiguous"]
 
@@ -149,12 +149,10 @@ def escalate_to_llm_judge(settings: Settings, *, kind: EntityKind, value_a: str,
         f"Score algoritmico ({outcome.metric}): {outcome.score:.2f} (banda ambigua)\n"
         "¿Se refieren a la misma entidad?"
     )
-    return extract_structured(
-        settings,
+    return structured(
+        purpose="entity_judge",
         role="reasoning",
-        response_model=EntityMatchVerdict,
-        messages=[
-            {"role": "system", "content": _JUDGE_SYSTEM_PROMPT},
-            {"role": "user", "content": prompt},
-        ],
+        output=EntityMatchVerdict,
+        instructions=_JUDGE_SYSTEM_PROMPT,
+        task=prompt,
     )

@@ -24,7 +24,7 @@ from __future__ import annotations
 from pydantic import BaseModel, Field
 
 from idp.config import Settings
-from idp.llm.structured_output import extract_structured
+from idp.llm.port import structured
 from idp.observability.otel import traced_llm_call
 from idp.parsing.normalize import ParsedDocument
 
@@ -82,13 +82,11 @@ def detect_segments(settings: Settings, parsed: ParsedDocument) -> list[Document
         return [DocumentSegment(start_page=0, end_page=0, reasoning="Documento de una sola pagina.")]
 
     with traced_llm_call(role="reasoning", model=settings.reasoning_model):
-        result = extract_structured(
-            settings,
+        result = structured(
+            purpose="segment",
             role="reasoning",
-            response_model=_SegmentationResult,
-            messages=[
-                {"role": "system", "content": _SYSTEM_PROMPT},
-                {"role": "user", "content": _page_excerpts(parsed)},
-            ],
+            output=_SegmentationResult,
+            instructions=_SYSTEM_PROMPT,
+            task=_page_excerpts(parsed),
         )
     return result.segments or [DocumentSegment(start_page=0, end_page=parsed.page_count - 1, reasoning="Fallback: sin segmentos detectados.")]

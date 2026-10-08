@@ -20,6 +20,7 @@ from temporalio.worker import Worker
 
 from idp.config import Settings, get_settings
 from idp.execution.aeon import LANE_QUEUES, run_status
+from idp.llm.port import inference_lifespan
 from idp.persistence.db import get_session_factory
 from idp.persistence.repositories import CaseRunRepository
 from idp.pipeline.orchestrator import fail_run
@@ -68,6 +69,7 @@ async def main() -> None:
         loop.add_signal_handler(sig, stop.set)
 
     async with contextlib.AsyncExitStack() as stack:
+        await stack.enter_async_context(inference_lifespan(settings))
         for lane, concurrency in settings.worker_lane_concurrency.items():
             await stack.enter_async_context(
                 Worker(client, task_queue=LANE_QUEUES[lane], activities=activities, max_concurrent_activities=concurrency)

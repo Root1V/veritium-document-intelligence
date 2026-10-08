@@ -37,9 +37,9 @@ def code_version() -> str:
         return "unknown"
 
 
-def _package_version() -> str:
+def _package_version(name: str = "idp") -> str:
     try:
-        return version("idp")
+        return version(name)
     except PackageNotFoundError:
         return "unknown"
 
@@ -64,7 +64,9 @@ def build_provenance(
         "profile": profile,
         # Filled in once resolution actually loads it (see orchestrator).
         "semantic_catalog_version": None,
+        # Prometheus registry ids: the gateway serves exactly these (VRT-29).
         "models": {"reasoning": settings.reasoning_model, "vision": settings.vision_model},
+        "inference": {"route": "synaptum → axonium → prometheus", "synaptum": _package_version("synaptum"), "axonium": _package_version("axonium")},
         "parser_backend": settings.parser_backend,
         "thresholds": {
             "classification_confidence": settings.classification_confidence_threshold,

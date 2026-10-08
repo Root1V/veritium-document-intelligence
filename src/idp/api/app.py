@@ -13,6 +13,7 @@ from opentelemetry import trace
 
 from idp.api.routes import audit, auth, batches, cases, document_types, documents, profiles, review, semantic_catalog, type_suggestions, users, validation, validation_rules, webhooks
 from idp.config import get_settings
+from idp.llm.port import inference_lifespan
 from idp.observability.otel import setup_tracing
 from idp.persistence.db import get_session_factory
 from idp.persistence.repositories import ProcessProfileRepository, SemanticCatalogRepository
@@ -32,7 +33,8 @@ def create_app() -> FastAPI:
             await ProcessProfileRepository(session).ensure_seed()
         stop = asyncio.Event()
         task = asyncio.create_task(dispatcher.run(settings, stop)) if settings.webhook_dispatcher_enabled else None
-        yield
+        async with inference_lifespan(settings):  # the in-process executor and rule drafting call models
+            yield
         stop.set()
         if task is not None:
             await task

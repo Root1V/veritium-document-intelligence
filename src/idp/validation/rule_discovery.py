@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from idp.config import Settings
 from idp.domain.rule_draft import RuleDraft
-from idp.llm.structured_output import extract_structured
+from idp.llm.port import structured
 from idp.observability.otel import traced_llm_call
 
 _SYSTEM_PROMPT = """Eres un agente que traduce una descripcion en lenguaje natural de una regla de \
@@ -58,12 +58,10 @@ def draft_rule(
         f"{field_hint}{fields_hint}"
     )
     with traced_llm_call(role="reasoning", model=settings.reasoning_model):
-        return extract_structured(
-            settings,
+        return structured(
+            purpose="draft_rule",
             role="reasoning",
-            response_model=RuleDraft,
-            messages=[
-                {"role": "system", "content": _SYSTEM_PROMPT},
-                {"role": "user", "content": user_message},
-            ],
+            output=RuleDraft,
+            instructions=_SYSTEM_PROMPT,
+            task=user_message,
         )

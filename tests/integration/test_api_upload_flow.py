@@ -24,12 +24,13 @@ from httpx import ASGITransport, AsyncClient
 
 from idp.api.app import create_app
 from idp.auth.security import hash_password
+from idp.config import get_settings
 from idp.persistence.db import get_session_factory
 from idp.persistence.repositories import UserRepository
 from idp.storage.object_store import S3ObjectStore
 from tests.conftest import FIXTURES_DIR, GOLDEN_DIR, normalize_extracted_string
 
-pytestmark = [pytest.mark.usefixtures("require_postgres", "require_minio", "require_reasoning_llm")]
+pytestmark = [pytest.mark.usefixtures("require_postgres", "require_minio", "require_reasoning_llm", "inference_port")]
 
 _TEST_USER_EMAIL = "test-runner@example.com"
 _TEST_USER_PASSWORD = "test-runner-password"
@@ -44,7 +45,18 @@ async def _ensure_test_user(live_settings) -> None:
             await session.commit()
 
 
+@pytest.fixture
+def in_process_executor(monkeypatch):
+    """This test drives the in-process run through ASGITransport, whatever
+    executor the developer's .env selects (VRT-26)."""
+    monkeypatch.setenv("CASE_EXECUTOR", "in_process")
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("in_process_executor")
 async def test_upload_batch_and_retrieve_extraction(live_settings):
     S3ObjectStore(live_settings).ensure_bucket()
     await _ensure_test_user(live_settings)

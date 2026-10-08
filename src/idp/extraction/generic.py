@@ -12,7 +12,7 @@ from idp.domain.schemas.generic import GenericSchema
 from idp.extraction.base import ExtractionOutcome, attach_trace
 from idp.extraction.grounding import attach_grounding
 from idp.extraction.registry import register_extractor
-from idp.llm.structured_output import extract_structured
+from idp.llm.port import structured
 from idp.observability.otel import traced_llm_call
 from idp.parsing.normalize import ParsedDocument
 
@@ -29,14 +29,12 @@ class GenericExtractor:
     def extract(self, parsed: ParsedDocument, settings: Settings, correction_note: str | None = None) -> ExtractionOutcome:
         text = parsed.full_text[:6000]
         with traced_llm_call(role="reasoning", model=settings.reasoning_model):
-            result = extract_structured(
-                settings,
+            result = structured(
+                purpose="extract_generic",
                 role="reasoning",
-                response_model=GenericSchema,
-                messages=[
-                    {"role": "system", "content": _SYSTEM_PROMPT},
-                    {"role": "user", "content": f"Texto del documento:\n\n{text}"},
-                ],
+                output=GenericSchema,
+                instructions=_SYSTEM_PROMPT,
+                task=f"Texto del documento:\n\n{text}",
             )
         attach_trace(result, [])  # no-op: generic extraction never uses tool calls
         attach_grounding(result, parsed)

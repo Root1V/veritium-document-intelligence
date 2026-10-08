@@ -44,21 +44,18 @@ class Settings(BaseSettings):
     storage_bucket: str = "idp-documents"
     storage_region: str = "us-east-1"
 
-    # --- LLM/VLM: externally-served, OpenAI-compatible endpoints ---
-    # Points at whatever already serves the models (e.g. the user's Prometheus
-    # project). This project never starts, owns, or manages that server.
-    reasoning_base_url: str = "http://localhost:8086/v1"
+    # --- Inference (VRT-29): synaptum → axonium → prometheus's gateway ---
+    # Model ids are prometheus registry ids, and the client_credentials pair
+    # is Veritium's prometheus client (scopes model:<id>). axonium knows the
+    # gateway's URL.
     reasoning_model: str = "gpt-oss-20b-mxfp4"
+    vision_model: str = "qwen3vl-30b-a3b"
+    axonium_client_id: str | None = None
+    axonium_client_secret: SecretStr | None = None
+    # Only the agentic extraction loop still calls the reasoning server
+    # directly, until it moves onto synaptum (VRT-30).
+    reasoning_base_url: str = "http://localhost:8086/v1"
     reasoning_api_key: str = "none"
-
-    vision_base_url: str = "http://localhost:8107/v1"
-    vision_model: str = "qwen3vl-32B-Q4"
-    vision_api_key: str = "none"
-
-    # Whether the endpoint behind reasoning_base_url exposes grammar/JSON-
-    # schema-constrained decoding (e.g. vLLM's guided_json). When False,
-    # structured output relies entirely on Instructor's reask-on-failure loop.
-    llm_supports_guided_json: bool = False
 
     # Per-request timeout for calls to the externally-served LLM/VLM
     # endpoints. Without an explicit bound, a stalled connection blocks a

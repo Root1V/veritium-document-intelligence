@@ -50,7 +50,7 @@ def run_agentic_extraction(
     document_type: DocumentType,
     correction_note: str | None = None,
 ) -> tuple[BaseModel, list[ToolCallRecord]]:
-    client = make_client(settings, "reasoning")
+    client = make_client(settings)
     system_prompt = build_system_prompt(document_type, schema_cls, parsed)
     tools = [*TOOL_SPECS, _submit_tool_spec(schema_cls)]
 

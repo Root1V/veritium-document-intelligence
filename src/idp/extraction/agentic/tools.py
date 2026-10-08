@@ -13,7 +13,7 @@ from typing import Any
 from PIL import Image
 
 from idp.config import Settings
-from idp.llm.client import vision_chat
+from idp.llm.port import vision
 from idp.parsing.normalize import ParsedDocument
 
 TOOL_SPECS: list[dict[str, Any]] = [
@@ -106,14 +106,14 @@ def read_table_region(parsed: ParsedDocument, region_id: int, settings: Settings
     crop_b64 = _crop_region_b64(parsed, region_id)
     if crop_b64 is None:
         return f"Region {region_id} no encontrada."
-    return vision_chat(settings, image_b64=crop_b64, prompt=_TABLE_PROMPT)
+    return vision(purpose="read_table_region", image_b64=crop_b64, prompt=_TABLE_PROMPT)
 
 
 def read_figure_region(parsed: ParsedDocument, region_id: int, settings: Settings) -> str:
     crop_b64 = _crop_region_b64(parsed, region_id)
     if crop_b64 is None:
         return f"Region {region_id} no encontrada."
-    return vision_chat(settings, image_b64=crop_b64, prompt=_FIGURE_PROMPT)
+    return vision(purpose="read_figure_region", image_b64=crop_b64, prompt=_FIGURE_PROMPT)
 
 
 def _single_region_id(arguments: dict[str, Any]) -> int:

@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 
 from idp.config import Settings
 from idp.domain.document_types import DocumentType
-from idp.llm.structured_output import extract_structured
+from idp.llm.port import structured
 from idp.observability.otel import traced_llm_call
 from idp.parsing.normalize import ParsedDocument
 
@@ -92,14 +92,12 @@ class ClassificationResult(BaseModel):
 def classify(settings: Settings, parsed: ParsedDocument) -> ClassificationResult:
     text_excerpt = parsed.full_text[:4000]
     with traced_llm_call(role="reasoning", model=settings.reasoning_model):
-        result = extract_structured(
-            settings,
+        result = structured(
+            purpose="classify",
             role="reasoning",
-            response_model=ClassificationResult,
-            messages=[
-                {"role": "system", "content": _SYSTEM_PROMPT},
-                {"role": "user", "content": f"Texto del documento:\n\n{text_excerpt}"},
-            ],
+            output=ClassificationResult,
+            instructions=_SYSTEM_PROMPT,
+            task=f"Texto del documento:\n\n{text_excerpt}",
         )
     return result
 

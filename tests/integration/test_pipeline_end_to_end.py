@@ -25,7 +25,7 @@ from idp.pipeline.orchestrator import process_case_run
 from idp.storage.object_store import S3ObjectStore
 from tests.conftest import FIXTURES_DIR, GOLDEN_DIR, normalize_extracted_string
 
-pytestmark = [pytest.mark.usefixtures("require_postgres", "require_minio", "require_reasoning_llm")]
+pytestmark = [pytest.mark.usefixtures("require_postgres", "require_minio", "require_reasoning_llm", "inference_port")]
 
 _MAX_ATTEMPTS = 3
 
