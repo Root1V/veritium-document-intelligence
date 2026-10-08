@@ -11,9 +11,9 @@
 
 ## Decisión
 - Toda la inferencia pasa por **`InferencePort`**, y los agentes por **`AgentRuntime`**.
-- **F1:** adaptador **autónomo** (`AsyncAxonium` → prometheus; synaptum con `LocalGateway` + `AxoniumModel`).
+- **F1:** adaptador **autónomo**: todo el tráfico de modelo (llamadas sueltas con `synaptum.generate()` y el agente de extracción) pasa por synaptum con `LocalGateway` + `AxoniumModel` → prometheus. Así el paso a producción es solo cambiar el `Gateway` (acordado en `VRT-SYN-001`/`003`).
 - **Producción (VRT-56):** adaptador **gobernado** obligatorio. Se solicitan en paralelo a aeon A-2 y A-3, y a synaptum S-4 a S-8.
-- Se reemplazan `openai` + `instructor`. La salida estructurada se resuelve con `response_format` + Pydantic + re-pregunta con el error.
+- Se reemplazan `openai` + `instructor`. La salida estructurada la resuelve synaptum: `generate()` con validación Pydantic y re-pregunta mostrando el error (S-2/S-6).
 
 ## Consecuencias
 - No se pasa a producción sin la ruta gobernada.

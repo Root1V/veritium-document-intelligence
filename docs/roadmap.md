@@ -155,15 +155,15 @@ Veritium pasa de "subir documentos sueltos" a ser una **capacidad de decisión d
 ## VRT-29 — Inferencia vía axonium
 **Why:** axonium es el SDK obligatorio hacia prometheus, y la ruta de inferencia tiene que poder pasar de autónoma a gobernada sin tocar el dominio ([ADR-0006](adr/0006-inferencia-gobernada-por-fases.md)).
 **Scope:**
-- `InferencePort` (`structured`, `vision`), con un adaptador autónomo sobre `AsyncAxonium`: `response_format` + Pydantic + re-pregunta con el error.
-- Migran a async los 6 llamadores. Credenciales por carril.
-- Depende de las respuestas a `VRT-AXO-001` y `VRT-PRM-001`.
+- `InferencePort` (`structured`, `vision`). Adaptador autónomo: `synaptum.generate()` (S-6, registrado en el journal) sobre `LocalGateway` + `AxoniumModel` → prometheus; la imagen viaja como data-URI (S-7). Sin helper propio de salida estructurada.
+- Migran a async los 6 llamadores. La procedencia registra el modelo que respondió, no el configurado.
+- Requiere synaptum `1.0.0rc4` (pedida en `VRT-SYN-003`). Las credenciales de prometheus ya están (cliente con `model:gpt-oss-20b-mxfp4` y `model:qwen3vl-30b-a3b`).
 
 ## VRT-30 — Extracción agéntica sobre synaptum
 **Why:** los agentes de Veritium se construyen con el framework del ecosistema, no con un loop propio.
 **Scope:**
 - El loop de `extraction/agentic/` pasa a `synaptum.Agent`: tools de lectura como `@tool`, el VLM dentro de la tool vía `InferencePort.vision`, `submit_extraction` validado y `Limits`.
-- Requiere synaptum `1.0.0rc3` (S-1 y S-3 ya entregadas). Sin wrappers tolerantes: los errores de binding vuelven al modelo. S-2 (*submit tool*) está pendiente en synaptum; mientras tanto, el submit es una tool común que valida.
+- Requiere synaptum `1.0.0rc4`: `Sampling(temperature=0)` (S-1), errores de binding devueltos al modelo (S-3, sin wrappers tolerantes) y `Agent(submit_tool=True)` (S-2). `LimitExceeded` (nunca entregó) y `NoObjectGeneratedError` (entregó y no validó) se mapean a `ExtractionIncomplete` → revisión humana. La re-pregunta consume `max_steps`.
 
 ## VRT-31 — Observabilidad con argus
 **Why:** con varios procesos, workers y la ruta aeon de por medio, sin una traza de punta a punta no se puede diagnosticar ni atribuir el costo por expediente.
