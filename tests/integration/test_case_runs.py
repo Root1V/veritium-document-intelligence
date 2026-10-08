@@ -20,7 +20,7 @@ from idp.domain.schemas.insurance_disclosure import InsuranceDisclosureSchema
 from idp.domain.schemas.loan_application import LoanApplicationSchema
 from idp.domain.schemas.payslip import PayslipSchema
 from idp.persistence.db import get_session_factory
-from idp.persistence.models import Case, CaseCondition, ReviewItem, ValidationIssue
+from idp.persistence.models import Case, CaseCondition, OutboxEvent, ReviewItem, ValidationIssue
 from idp.persistence.repositories import (
     CaseConditionRepository,
     CaseRepository,
@@ -104,6 +104,7 @@ async def test_documents_extracted_in_a_run_are_validated_and_rerun_supersedes(l
             reviews_run2 = await session.scalar(select(func.count()).select_from(ReviewItem).where(ReviewItem.document_id == doc_id))
             assert reviews_run2 == reviews_run1, "a re-evaluation must not ask a human twice about the same field"
         finally:
+            await session.execute(delete(OutboxEvent).where(OutboxEvent.subject == str(case_id)))
             await session.execute(delete(Case).where(Case.id == case_id))
             await session.commit()
 
@@ -184,5 +185,6 @@ async def test_convenios_case_conditions_and_verdict_across_runs(live_settings, 
             assert [r.verdict for r in sorted(case.runs, key=lambda r: r.run_number)] == ["return_to_client", "continue"]
         finally:
             await session.execute(delete(CaseCondition).where(CaseCondition.case_id == case_id))
+            await session.execute(delete(OutboxEvent).where(OutboxEvent.subject == str(case_id)))
             await session.execute(delete(Case).where(Case.id == case_id))
             await session.commit()

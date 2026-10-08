@@ -13,6 +13,7 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Literal
 
+from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -91,6 +92,18 @@ class Settings(BaseSettings):
     # --- Observability ---
     otel_service_name: str = "idp"
     otel_console_export: bool = True
+
+    # --- Webhooks (VRT-28) ---
+    # Fernet key that encrypts webhook signing secrets at rest. Required to
+    # register an endpoint. Generate one with:
+    #   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+    secrets_encryption_key: SecretStr | None = None
+    # The dispatcher runs inside the API process until the worker exists
+    # (VRT-26); deliveries are claimed with SKIP LOCKED, so several
+    # instances can run it at once.
+    webhook_dispatcher_enabled: bool = True
+    webhook_dispatch_interval_seconds: float = 2.0
+    webhook_request_timeout_seconds: float = 10.0
 
 
 @lru_cache

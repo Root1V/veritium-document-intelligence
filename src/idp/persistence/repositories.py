@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 
 from sqlalchemy import Text, func, or_, select, update
 from sqlalchemy import cast as sa_cast
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -24,6 +25,7 @@ from idp.persistence.models import (
     Document,
     DocumentTypeSuggestion,
     Extraction,
+    OutboxEvent,
     ProcessProfile,
     ProcessProfileVersion,
     ReferenceEmployee,
@@ -32,6 +34,8 @@ from idp.persistence.models import (
     User,
     ValidationIssue,
     ValidationRuleDefinition,
+    WebhookDelivery,
+    WebhookEndpoint,
 )
 
 
@@ -863,4 +867,93 @@ class CaseConditionRepository:
 
     async def waive(self, condition: CaseCondition, *, by: str, reason: str) -> None:
         condition.status, condition.waived_by, condition.waived_reason, condition.resolved_at = "waived", by, reason, datetime.now(UTC)
+
+
+class OutboxRepository:
+    """Domain events waiting to be fanned out into webhook deliveries
+    (VRT-28). Claims use SKIP LOCKED so several dispatchers can run."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def claim_undispatched(self, limit: int = 100) -> list[OutboxEvent]:
+        stmt = (
+            select(OutboxEvent)
+            .where(OutboxEvent.dispatched_at.is_(None))
+            .order_by(OutboxEvent.created_at)
+            .limit(limit)
+            .with_for_update(skip_locked=True)
+        )
+        return list((await self._session.scalars(stmt)).all())
+
+    async def list_recent(self, *, subject: str | None = None, limit: int = 50) -> list[OutboxEvent]:
+        stmt = select(OutboxEvent).order_by(OutboxEvent.created_at.desc()).limit(limit)
+        if subject is not None:
+            stmt = stmt.where(OutboxEvent.subject == subject)
+        return list((await self._session.scalars(stmt)).all())
+
+
+class WebhookEndpointRepository:
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def create(self, endpoint: WebhookEndpoint) -> WebhookEndpoint:
+        self._session.add(endpoint)
+        await self._session.flush()
+        return endpoint
+
+    async def get(self, endpoint_id: uuid.UUID) -> WebhookEndpoint | None:
+        return await self._session.get(WebhookEndpoint, endpoint_id)
+
+    async def list(self, *, tenant: str) -> list[WebhookEndpoint]:
+        stmt = select(WebhookEndpoint).where(WebhookEndpoint.tenant == tenant).order_by(WebhookEndpoint.created_at)
+        return list((await self._session.scalars(stmt)).all())
+
+    async def subscribed(self, *, tenant: str, event_type: str) -> list[WebhookEndpoint]:
+        """Active endpoints of the tenant that want this type ([] = all)."""
+        stmt = select(WebhookEndpoint).where(WebhookEndpoint.tenant == tenant, WebhookEndpoint.active.is_(True))
+        return [e for e in (await self._session.scalars(stmt)).all() if not e.event_types or event_type in e.event_types]
+
+    async def disable(self, endpoint: WebhookEndpoint) -> None:
+        endpoint.active, endpoint.disabled_at = False, datetime.now(UTC)
+
+
+class WebhookDeliveryRepository:
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def create_for(self, event_id: uuid.UUID, endpoint_ids: list[uuid.UUID]) -> None:
+        """One delivery per endpoint; idempotent (a re-run of the fan-out
+        never duplicates)."""
+        if not endpoint_ids:
+            return
+        stmt = pg_insert(WebhookDelivery).values([{"id": uuid.uuid4(), "event_id": event_id, "endpoint_id": e} for e in endpoint_ids])
+        await self._session.execute(stmt.on_conflict_do_nothing(index_elements=["event_id", "endpoint_id"]))
+
+    async def claim_due(self, *, now: datetime, lease_until: datetime, limit: int = 50) -> list[WebhookDelivery]:
+        """Due pending deliveries, leased (next_attempt_at pushed to
+        ``lease_until``) so a crashed dispatcher's work is retried by
+        another once the lease expires — at-least-once."""
+        stmt = (
+            select(WebhookDelivery)
+            .where(WebhookDelivery.status == "pending", WebhookDelivery.next_attempt_at <= now)
+            .order_by(WebhookDelivery.next_attempt_at)
+            .limit(limit)
+            .with_for_update(skip_locked=True)
+            .options(selectinload(WebhookDelivery.event), selectinload(WebhookDelivery.endpoint))
+        )
+        rows = list((await self._session.scalars(stmt)).all())
+        for row in rows:
+            row.next_attempt_at = lease_until
+        return rows
+
+    async def list_for_endpoint(self, endpoint_id: uuid.UUID, *, limit: int = 50) -> list[WebhookDelivery]:
+        stmt = (
+            select(WebhookDelivery)
+            .where(WebhookDelivery.endpoint_id == endpoint_id)
+            .options(selectinload(WebhookDelivery.event))
+            .order_by(WebhookDelivery.created_at.desc())
+            .limit(limit)
+        )
+        return list((await self._session.scalars(stmt)).all())
 

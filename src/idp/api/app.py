@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -10,12 +11,13 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from opentelemetry import trace
 
-from idp.api.routes import audit, auth, batches, cases, document_types, documents, profiles, review, semantic_catalog, type_suggestions, users, validation, validation_rules
+from idp.api.routes import audit, auth, batches, cases, document_types, documents, profiles, review, semantic_catalog, type_suggestions, users, validation, validation_rules, webhooks
 from idp.config import get_settings
 from idp.observability.otel import setup_tracing
 from idp.persistence.db import get_session_factory
 from idp.persistence.repositories import ProcessProfileRepository, SemanticCatalogRepository
 from idp.storage.object_store import S3ObjectStore
+from idp.webhooks import dispatcher
 
 
 def create_app() -> FastAPI:
@@ -28,7 +30,12 @@ def create_app() -> FastAPI:
         async with get_session_factory(settings)() as session:
             await SemanticCatalogRepository(session).ensure_seed()
             await ProcessProfileRepository(session).ensure_seed()
+        stop = asyncio.Event()
+        task = asyncio.create_task(dispatcher.run(settings, stop)) if settings.webhook_dispatcher_enabled else None
         yield
+        stop.set()
+        if task is not None:
+            await task
         # BatchSpanProcessor buffers spans and exports on a timer — without
         # this, spans from requests near process shutdown can be silently
         # dropped instead of reaching the exporter.
@@ -55,6 +62,7 @@ def create_app() -> FastAPI:
     app.include_router(validation_rules.router)
     app.include_router(semantic_catalog.router)
     app.include_router(profiles.router)
+    app.include_router(webhooks.router)
 
     @app.get("/health")
     async def health() -> dict:

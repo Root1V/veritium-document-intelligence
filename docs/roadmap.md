@@ -149,6 +149,8 @@ Veritium pasa de "subir documentos sueltos" a ser una **capacidad de decisión d
 - `outbox_events` en la misma transacción que el veredicto.
 - `webhook_endpoints` (secreto cifrado) y `webhook_deliveries`.
 - Despachador con firma Standard Webhooks, backoff con jitter hasta ~3 días e idempotencia por `webhook-id`. Sink de prueba `scripts/webhook_sink.py`.
+- Eventos delgados (ids, estados, veredicto y links; nunca contenido ni datos personales) en sobre CloudEvents 1.0: `pe.veritium.case.run.completed|failed`, `pe.veritium.case.verdict.changed` (solo si el veredicto cambia), `pe.veritium.webhook.test`.
+- El despachador corre dentro de la API hasta VRT-26; la carga síncrona de modelos OCR del pipeline puede retrasar entregas unos segundos.
 
 ## VRT-29 — Inferencia vía axonium
 **Why:** axonium es el SDK obligatorio hacia prometheus, y la ruta de inferencia tiene que poder pasar de autónoma a gobernada sin tocar el dominio ([ADR-0006](adr/0006-inferencia-gobernada-por-fases.md)).

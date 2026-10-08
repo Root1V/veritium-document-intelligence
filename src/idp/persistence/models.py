@@ -12,7 +12,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -407,3 +407,69 @@ class CaseCondition(Base):
     waived_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     opened_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class OutboxEvent(Base):
+    """A domain event (VRT-28, ADR-0005), written in the same transaction as
+    the change it announces — so an event is never lost nor emitted for a
+    change that rolled back. ``id`` is the CloudEvents id and the
+    ``webhook-id`` every delivery of it carries. ``dispatched_at`` is set
+    once the event has been fanned out into deliveries."""
+
+    __tablename__ = "outbox_events"
+    __table_args__ = (Index("ix_outbox_events_undispatched", "created_at", postgresql_where=text("dispatched_at IS NULL")),)
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    tenant: Mapped[str] = mapped_column(String(64), default="default", nullable=False)
+    type: Mapped[str] = mapped_column(String(128), nullable=False)  # e.g. pe.veritium.case.verdict.changed
+    subject: Mapped[str | None] = mapped_column(String(256), nullable=True)  # the case id
+    data: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    dispatched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class WebhookEndpoint(Base):
+    """Where a consumer wants events delivered. The signing secret is stored
+    encrypted (Fernet) and shown to the consumer only once, at creation.
+    Disabling keeps the row (and its delivery history)."""
+
+    __tablename__ = "webhook_endpoints"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    tenant: Mapped[str] = mapped_column(String(64), default="default", nullable=False)
+    url: Mapped[str] = mapped_column(String(2048), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    event_types: Mapped[list] = mapped_column(JSONB, nullable=False)  # [] = all
+    secret_ciphertext: Mapped[str] = mapped_column(Text, nullable=False)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_by: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    disabled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class WebhookDelivery(Base):
+    """One event to one endpoint, with its retry state. Lifecycle:
+    pending -> delivered, or pending -> dead after the retry schedule is
+    exhausted (~3 days). At-least-once: a consumer deduplicates by
+    ``webhook-id`` (the event id)."""
+
+    __tablename__ = "webhook_deliveries"
+    __table_args__ = (
+        UniqueConstraint("event_id", "endpoint_id"),
+        Index("ix_webhook_deliveries_due", "next_attempt_at", postgresql_where=text("status = 'pending'")),
+    )
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    event_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("outbox_events.id", ondelete="CASCADE"), nullable=False)
+    endpoint_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("webhook_endpoints.id", ondelete="CASCADE"), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), default="pending", server_default="pending", nullable=False)  # pending|delivered|dead
+    attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    next_attempt_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    last_status_code: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    event: Mapped["OutboxEvent"] = relationship()
+    endpoint: Mapped["WebhookEndpoint"] = relationship()

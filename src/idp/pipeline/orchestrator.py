@@ -50,6 +50,7 @@ from idp.persistence.repositories import (
 from idp.parsing.normalize import ParsedDocument, slice_by_pages
 from idp.pipeline.case_evaluation import apply_binding, profile_definition, refresh_conditions, refresh_verdict, rules_for_profile
 from idp.pipeline.provenance import build_provenance
+from idp.webhooks.events import emit_run_finished
 from idp.pipeline.stages import classify_document, extract_document, parse_document, segment_document, suggest_type
 from idp.review.queue import enqueue_review_items
 from idp.review.routing import find_review_candidates
@@ -469,6 +470,7 @@ async def process_case_run(
         await refresh_verdict(session, case_id, run=run)
         await case_repo.set_status(case_id, "completed")
         await run_repo.mark_finished(run, status="completed")
+        emit_run_finished(session, case, run)
         await session.commit()
     except Exception as exc:
         await session.rollback()
@@ -476,6 +478,9 @@ async def process_case_run(
         if run is not None:
             await run_repo.mark_finished(run, status="failed", error=f"{type(exc).__name__}: {exc}")
         await case_repo.set_status(case_id, "failed")
+        failed_case = await case_repo.get(case_id)
+        if run is not None and failed_case is not None:
+            emit_run_finished(session, failed_case, run)
         await session.commit()
         raise
 

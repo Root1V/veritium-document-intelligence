@@ -18,6 +18,7 @@ from idp.domain.verdict import CaseVerdict, FindingInput, OpenCondition, Verdict
 from idp.persistence.models import Case, CaseCondition, CaseRun
 from idp.persistence.repositories import CaseConditionRepository, CaseRepository, DocumentRepository, ReviewRepository, ValidationRepository
 from idp.validation.base import ValidationResult, ValidationRule
+from idp.webhooks.events import emit_verdict_changed
 
 
 def profile_definition(case: Case) -> ProcessProfileDefinition | None:
@@ -103,7 +104,11 @@ async def refresh_verdict(session: AsyncSession, case_id: uuid.UUID, *, run: Cas
     )
     verdict = decide(inputs, profile_definition(case))
     reasons = [r.model_dump(mode="json") for r in verdict.reasons]
+    previous = case.verdict
     case.verdict, case.verdict_reasons, case.verdict_at = verdict.decision, reasons, datetime.now(UTC)
+    if verdict.decision != previous:
+        # Same transaction as the change (outbox, VRT-28).
+        emit_verdict_changed(session, case, previous=previous, reason_kinds=sorted({r.kind for r in verdict.reasons}))
     if run is not None:
         run.verdict, run.verdict_reasons = verdict.decision, reasons
     return verdict
