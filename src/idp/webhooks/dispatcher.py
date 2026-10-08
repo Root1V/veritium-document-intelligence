@@ -69,9 +69,9 @@ class TickStats:
     dead: int = 0
 
 
-async def fan_out(settings: Settings) -> int:
+async def fan_out(settings: Settings, *, tenant: str | None = None) -> int:
     async with get_session_factory(settings)() as session:
-        events = await OutboxRepository(session).claim_undispatched()
+        events = await OutboxRepository(session).claim_undispatched(tenant=tenant)
         endpoints, deliveries = WebhookEndpointRepository(session), WebhookDeliveryRepository(session)
         now = datetime.now(UTC)
         for event in events:
@@ -86,12 +86,16 @@ async def _send(settings: Settings, client: httpx.AsyncClient, delivery: Webhook
     event, endpoint = delivery.event, delivery.endpoint
     body = body_bytes(event)
     timestamp = int(time.time())
+    try:
+        secret = decrypt(settings, endpoint.secret_ciphertext)
+    except Exception as exc:  # e.g. the encryption key was rotated: this delivery fails, the rest go on
+        return None, f"no se pudo descifrar el secreto del endpoint ({type(exc).__name__})", 0
     headers = {
         "content-type": "application/json",
         "user-agent": USER_AGENT,
         "webhook-id": str(event.id),
         "webhook-timestamp": str(timestamp),
-        "webhook-signature": sign(decrypt(settings, endpoint.secret_ciphertext), str(event.id), timestamp, body),
+        "webhook-signature": sign(secret, str(event.id), timestamp, body),
     }
     started = time.monotonic()
     try:
@@ -101,13 +105,13 @@ async def _send(settings: Settings, client: httpx.AsyncClient, delivery: Webhook
         return None, f"{type(exc).__name__}: {exc}"[:500], int((time.monotonic() - started) * 1000)
 
 
-async def deliver_due(settings: Settings, client: httpx.AsyncClient) -> TickStats:
+async def deliver_due(settings: Settings, client: httpx.AsyncClient, *, tenant: str | None = None) -> TickStats:
     stats = TickStats()
     factory = get_session_factory(settings)
     async with factory() as session:
         now = datetime.now(UTC)
         lease = now + timedelta(seconds=settings.webhook_request_timeout_seconds + 30)
-        claimed = await WebhookDeliveryRepository(session).claim_due(now=now, lease_until=lease)
+        claimed = await WebhookDeliveryRepository(session).claim_due(now=now, lease_until=lease, tenant=tenant)
         await session.commit()  # the lease is taken; the HTTP calls happen outside the lock
 
         for delivery in claimed:

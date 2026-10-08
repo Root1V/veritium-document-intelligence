@@ -876,10 +876,10 @@ class OutboxRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    async def claim_undispatched(self, limit: int = 100) -> list[OutboxEvent]:
+    async def claim_undispatched(self, limit: int = 100, *, tenant: str | None = None) -> list[OutboxEvent]:
         stmt = (
             select(OutboxEvent)
-            .where(OutboxEvent.dispatched_at.is_(None))
+            .where(OutboxEvent.dispatched_at.is_(None), *([OutboxEvent.tenant == tenant] if tenant is not None else []))
             .order_by(OutboxEvent.created_at)
             .limit(limit)
             .with_for_update(skip_locked=True)
@@ -930,13 +930,14 @@ class WebhookDeliveryRepository:
         stmt = pg_insert(WebhookDelivery).values([{"id": uuid.uuid4(), "event_id": event_id, "endpoint_id": e} for e in endpoint_ids])
         await self._session.execute(stmt.on_conflict_do_nothing(index_elements=["event_id", "endpoint_id"]))
 
-    async def claim_due(self, *, now: datetime, lease_until: datetime, limit: int = 50) -> list[WebhookDelivery]:
+    async def claim_due(self, *, now: datetime, lease_until: datetime, limit: int = 50, tenant: str | None = None) -> list[WebhookDelivery]:
         """Due pending deliveries, leased (next_attempt_at pushed to
         ``lease_until``) so a crashed dispatcher's work is retried by
         another once the lease expires — at-least-once."""
         stmt = (
             select(WebhookDelivery)
             .where(WebhookDelivery.status == "pending", WebhookDelivery.next_attempt_at <= now)
+            .where(*([WebhookDelivery.endpoint_id.in_(select(WebhookEndpoint.id).where(WebhookEndpoint.tenant == tenant))] if tenant is not None else []))
             .order_by(WebhookDelivery.next_attempt_at)
             .limit(limit)
             .with_for_update(skip_locked=True)
