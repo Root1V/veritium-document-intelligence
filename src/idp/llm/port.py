@@ -74,6 +74,9 @@ class Inference:
         if self._client is not None:
             await self._client.aclose()
 
+    def _sampling(self) -> Sampling:
+        return Sampling(temperature=0, max_output_tokens=self._settings.llm_max_output_tokens)
+
     def _model(self, role: Role) -> str:
         return self._settings.reasoning_model if role == "reasoning" else self._settings.vision_model
 
@@ -81,7 +84,7 @@ class Inference:
         model = self._model(role)
         checkpointer = MemoryCheckpointer()
         session = Session(run_id=f"veritium/{purpose}", gateway=self._gateway, checkpointer=checkpointer)
-        result = await generate(task, model=model, session=session, sampling=Sampling(temperature=0), **kwargs)
+        result = await generate(task, model=model, session=session, sampling=self._sampling(), **kwargs)
         state = await checkpointer.load(session.run_id)
         answered = {step.response.model for step in state.events if getattr(step, "response", None) is not None}
         if answered - {model}:
@@ -111,7 +114,7 @@ class Inference:
             tools=tools,
             output=output,
             limits=Limits(max_steps=max_steps),
-            sampling=Sampling(temperature=0),
+            sampling=self._sampling(),
             submit_tool=True,
         )
         session = Session(run_id=f"veritium/{purpose}", gateway=gateway, checkpointer=MemoryCheckpointer())

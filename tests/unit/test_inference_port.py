@@ -42,7 +42,7 @@ async def test_structured_sends_instructions_task_and_temperature_zero():
         result = await inference.structured(purpose="classify", role="reasoning", output=Clase, instructions="Eres un clasificador", task="Texto: boleta de pago")
     assert result == Clase(tipo="boleta")
     (request,) = fake.requests
-    assert request.model == "razonador" and request.temperature == 0
+    assert request.model == "razonador" and request.temperature == 0 and request.max_output_tokens == 8192
     assert request.system.startswith("Eres un clasificador") and "boleta de pago" in _texts(request)
 
 

@@ -57,6 +57,11 @@ class Settings(BaseSettings):
     # endpoints. Without an explicit bound, a stalled connection blocks a
     # document's processing indefinitely — confirmed in practice.
     llm_request_timeout_seconds: float = 180.0
+    # Ceiling on what one model call may generate. Without it a runaway
+    # generation (a repetition loop) runs for many minutes, and a retry with
+    # the same idempotency key waits for it instead of failing. A truncated
+    # answer never validates, so it ends in human review, not in a hang.
+    llm_max_output_tokens: int = 8192
 
     # --- Parsing / OCR backend selection ---
     # "docling" | "paddleocr" — overridable per document type later; Phase 0
