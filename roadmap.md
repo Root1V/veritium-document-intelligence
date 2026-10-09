@@ -63,7 +63,7 @@ Estados: `done` · `todo` · `blocked` (espera a otro equipo) · `superseded` (a
 | VRT-39 | Corrección con motivo y sustento | done | Código de motivo obligatorio + sustento libre en cada corrección. |
 | VRT-40 | Reproceso selectivo | done | Reprocesar un atributo, documento, regla o el expediente, según el grafo de dependencias. |
 | VRT-41 | Exportes | done | PDF / JSON / YAML / Markdown desde el resultado canónico. |
-| VRT-64 | Avance del expediente por etapas | todo | Embudo Recibido → Lectura → Clasificación → Extracción → Validación → Decisión, en la lista y en el expediente. |
+| VRT-64 | Avance del expediente por etapas | done | Embudo Recibido → Lectura → Clasificación → Extracción → Validación → Decisión, en la lista y en el expediente. |
 
 ## F4 — Calidad y comprensión
 
@@ -80,7 +80,7 @@ Estados: `done` · `todo` · `blocked` (espera a otro equipo) · `superseded` (a
 
 | ID | Feature | Estado | Descripción |
 |---|---|---|---|
-| VRT-47 | Sesión de carga + verificación rápida | todo | Carga directa desde el front-end y verificación síncrona en segundos. |
+| VRT-47 | Sesión de carga + verificación rápida | done | Carga directa desde el front-end y verificación síncrona en segundos. |
 | VRT-48 | *Bulk jobs* | todo | Lotes masivos de expedientes de varios procesos, con resultado por expediente. |
 | VRT-49 | Eventos CloudEvents | todo | Entrada y salida por eventos (claim-check para los archivos). |
 | VRT-50 | Salida renderizable (A2UI) | todo | Capa de presentación declarativa sobre el resultado canónico. |
