@@ -14,16 +14,17 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from idp.persistence.models import Case, CaseRun, OutboxEvent
+from idp.persistence.models import BulkJob, Case, CaseRun, OutboxEvent
 
 SOURCE = "veritium"
 
 CASE_RUN_COMPLETED = "pe.veritium.case.run.completed"
 CASE_RUN_FAILED = "pe.veritium.case.run.failed"
 CASE_VERDICT_CHANGED = "pe.veritium.case.verdict.changed"
+BULK_JOB_COMPLETED = "pe.veritium.bulk_job.completed"
 WEBHOOK_TEST = "pe.veritium.webhook.test"
 
-EVENT_TYPES = (CASE_RUN_COMPLETED, CASE_RUN_FAILED, CASE_VERDICT_CHANGED, WEBHOOK_TEST)
+EVENT_TYPES = (CASE_RUN_COMPLETED, CASE_RUN_FAILED, CASE_VERDICT_CHANGED, BULK_JOB_COMPLETED, WEBHOOK_TEST)
 
 
 def _links(case_id: Any) -> dict[str, str]:
@@ -66,6 +67,23 @@ def emit_verdict_changed(session: AsyncSession, case: Case, *, previous: str | N
             "verdict": case.verdict,
             "reason_kinds": reason_kinds,
             "links": _links(case.id),
+        },
+    )
+
+
+def emit_bulk_job_completed(session: AsyncSession, job: BulkJob, *, outcomes: dict[str, int]) -> OutboxEvent:
+    """``outcomes``: how many cases ended with each verdict, plus ``failed``."""
+    return _emit(
+        session,
+        tenant=job.tenant,
+        type_=BULK_JOB_COMPLETED,
+        subject=str(job.id),
+        data={
+            "bulk_job_id": str(job.id),
+            "name": job.name,
+            "cases": sum(outcomes.values()),
+            "outcomes": outcomes,
+            "links": {"bulk_job": f"/v1/bulk-jobs/{job.id}", "results": f"/v1/bulk-jobs/{job.id}/results"},
         },
     )
 

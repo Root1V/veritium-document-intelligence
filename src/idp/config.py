@@ -122,6 +122,16 @@ class Settings(BaseSettings):
     worker_lane_concurrency: dict[str, int] = {"online": 4, "backoffice": 2, "bulk": 1}
     worker_reconcile_interval_seconds: float = 30.0
 
+    # --- Bulk jobs (VRT-48) ---
+    # How many of all bulk jobs' runs are in progress at once: the rest wait
+    # ("queued") so a large job never crowds out online work. The feeder
+    # runs inside the API process, like the webhook dispatcher.
+    bulk_max_in_flight: int = 2
+    bulk_feed_interval_seconds: float = 3.0
+    bulk_max_archive_mb: int = 500
+    bulk_max_cases: int = 1000
+    bulk_max_file_mb: int = 25
+
     # --- Webhooks (VRT-28) ---
     # Fernet key that encrypts webhook signing secrets at rest. Required to
     # register an endpoint. Generate one with:

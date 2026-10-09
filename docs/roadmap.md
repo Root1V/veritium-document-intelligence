@@ -310,7 +310,10 @@ Veritium pasa de "subir documentos sueltos" a ser una **capacidad de decisión d
 - Los requisitos del perfil se muestran ya filtrados por los datos del proceso, con los tipos que cumplen cada uno (también por atributo); enviar crea el expediente (o completa uno existente) en el canal `online`, sin los archivos rechazados, una sola vez.
 - Fuera: URL prefirmada directa al almacenamiento (la verificación necesita pasar por la API) y QR del enlace.
 ## VRT-48 — *Bulk jobs*
-**Why:** el backoffice procesa en masa sin afectar al canal en línea. **Scope:** lotes multi-expediente en el carril `bulk`, con resultado por expediente.
+**Why:** el backoffice procesa en masa sin afectar al canal en línea. **Scope:**
+- ZIP con una carpeta por expediente (su nombre es la referencia) y manifiesto opcional (perfil y datos del proceso por expediente); lo inutilizable se omite con su motivo.
+- Carril `bulk`: las corridas esperan `queued` y se liberan de a pocas (`bulk_max_in_flight`), sea cual sea el ejecutor.
+- Avance y resultado por expediente (pantalla y CSV) y evento `bulk_job.completed`. Fuera: carga por URL o almacenamiento externo (VRT-49).
 ## VRT-49 — Eventos CloudEvents
 **Why:** integración por eventos con sistemas que ya hablan por bus. **Scope:** consumidor y publicador CloudEvents, con claim-check para los archivos.
 ## VRT-50 — Salida renderizable (A2UI)

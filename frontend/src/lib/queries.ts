@@ -5,6 +5,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from '@/lib/apiClient'
 import { getToken } from '@/lib/auth'
 import type {
+  BulkJobDetail,
+  BulkJobSummary,
   AppUser,
   AuditLogResponse,
   BatchCreateResponse,
@@ -835,5 +837,38 @@ export function useOpenUploadSession() {
   return useMutation({
     mutationFn: async (body: { profile: string; external_ref?: string; case_id?: string }) =>
       (await apiClient.post<{ id: string; token: string; upload_url: string; expires_at: string }>('/v1/upload-sessions', body)).data,
+  })
+}
+
+// --- Bulk jobs (VRT-48) --------------------------------------------------------
+
+export function useBulkJobs() {
+  return useQuery({
+    queryKey: ['bulk-jobs'],
+    queryFn: async () => (await apiClient.get<BulkJobSummary[]>('/v1/bulk-jobs')).data,
+    refetchInterval: (query) => (query.state.data?.some((j) => !j.finished_at) ? 3_000 : 15_000),
+  })
+}
+
+export function useBulkJob(jobId: string | undefined) {
+  return useQuery({
+    queryKey: ['bulk-jobs', jobId],
+    enabled: !!jobId,
+    queryFn: async () => (await apiClient.get<BulkJobDetail>(`/v1/bulk-jobs/${jobId}`)).data,
+    refetchInterval: (query) => (query.state.data && !query.state.data.finished_at ? 3_000 : false),
+  })
+}
+
+export function useSubmitBulkJob() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ archive, profile, name }: { archive: File; profile: string; name: string }) => {
+      const form = new FormData()
+      form.append('archive', archive)
+      if (profile) form.append('profile', profile)
+      if (name) form.append('name', name)
+      return (await apiClient.post<{ id: string; cases: number; skipped: BulkJobSummary['skipped'] }>('/v1/bulk-jobs', form)).data
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['bulk-jobs'] }),
   })
 }

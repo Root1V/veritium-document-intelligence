@@ -92,8 +92,10 @@ class CaseRepository:
         channel: str = "backoffice",
         idempotency_key: str | None = None,
         idempotency_fingerprint: str | None = None,
+        bulk_job_id: uuid.UUID | None = None,
     ) -> Case:
         case = Case(
+            bulk_job_id=bulk_job_id,
             tenant=tenant,
             request_input_payload=request_input_payload,
             profile_version_id=profile_version_id,
@@ -165,7 +167,7 @@ class CaseRunRepository:
         return await self._session.get(CaseRun, run_id)
 
     async def has_active_run(self, case_id: uuid.UUID) -> bool:
-        stmt = select(func.count()).select_from(CaseRun).where(CaseRun.case_id == case_id, CaseRun.status.in_(("pending", "running")))
+        stmt = select(func.count()).select_from(CaseRun).where(CaseRun.case_id == case_id, CaseRun.status.in_(("queued", "pending", "running")))
         return bool(await self._session.scalar(stmt))
 
     async def list_unfinished_with_ref(self) -> list[CaseRun]:

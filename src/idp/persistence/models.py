@@ -73,6 +73,8 @@ class Case(Base):
     verdict: Mapped[str | None] = mapped_column(String(32), nullable=True)  # continue|human_review|return_to_client (VRT-27)
     verdict_reasons: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     verdict_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # The bulk job it came in (VRT-48), if any.
+    bulk_job_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("bulk_jobs.id", ondelete="SET NULL"), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     documents: Mapped[list["Document"]] = relationship(back_populates="case", cascade="all, delete-orphan")
@@ -98,7 +100,8 @@ class CaseRun(Base):
     # What a reprocess run redoes (domain/reprocess.py::ReprocessScope);
     # None for a run that processes the whole case.
     scope: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
-    status: Mapped[str] = mapped_column(String(16), default="pending", server_default="pending", nullable=False)  # pending|running|completed|failed
+    # queued (a bulk job's run waiting for room in its lane, VRT-48) | pending | running | completed | failed
+    status: Mapped[str] = mapped_column(String(16), default="pending", server_default="pending", nullable=False)
     profile_version_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("process_profile_versions.id"), nullable=True)
     provenance: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     execution_ref: Mapped[str | None] = mapped_column(String(256), nullable=True)
@@ -761,6 +764,29 @@ class PromptEdit(Base):
     # The evaluation run that tried this text before it was published.
     evaluation_run_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("eval_runs.id", ondelete="SET NULL"), nullable=True)
     retired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class BulkJob(Base):
+    """Many cases handed over at once (VRT-48): an archive with one folder
+    per case. Its cases run in the ``bulk`` lane and are released a few at a
+    time, so a large job never crowds out online work. Done when none of its
+    runs is left queued or in progress."""
+
+    __tablename__ = "bulk_jobs"
+    __table_args__ = (UniqueConstraint("tenant", "idempotency_key", name="uq_bulk_jobs_tenant_idempotency_key"),)
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    tenant: Mapped[str] = mapped_column(String(64), default="default", nullable=False)
+    name: Mapped[str] = mapped_column(String(256), nullable=False)
+    idempotency_key: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    archive_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    # What in the archive did not become a case, and why: [{reference, reason}].
+    skipped: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    created_by: Mapped[str] = mapped_column(String(256), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    cases: Mapped[list["Case"]] = relationship(order_by="Case.external_ref")
 
 
 class UploadSession(Base):

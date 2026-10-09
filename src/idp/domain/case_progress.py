@@ -78,7 +78,7 @@ def progress(case_status: str, run_status: str | None, document_statuses: list[s
         current = "Decidiendo el veredicto"
     elif decision == "done":
         current = "Terminado"
-    elif not current and run_status in ("pending", None) and total:
+    elif not current and run_status in ("queued", "pending", None) and total:
         current = "En cola"
     if failed and decision != "failed":
         current += f" · {failed} {'documento' if failed == 1 else 'documentos'} con error"

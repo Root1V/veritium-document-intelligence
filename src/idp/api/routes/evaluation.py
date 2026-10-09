@@ -23,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from idp.api.case_service import read_uploads
 from idp.api.deps import get_app_settings, get_current_user, get_db_session, get_object_store, require_role
 from idp.config import Settings
+from idp.domain.tables import read_table
 from idp.domain.evaluation import RunComparison, compare_runs, parse_table, template_rows
 from idp.evaluation.runner import is_active, outcome_of, run_evaluation
 from idp.persistence.models import EvalCase, EvalRun, EvalSuite, User
@@ -135,21 +136,10 @@ def _suite_detail(suite: EvalSuite) -> SuiteDetail:
 
 
 def _read_table(table: UploadFile, content: bytes) -> list[dict[str, Any]]:
-    name = (table.filename or "").lower()
-    if name.endswith(".xlsx"):
-        from openpyxl import load_workbook
-
-        sheet = load_workbook(io.BytesIO(content), read_only=True, data_only=True).worksheets[0]
-        rows = list(sheet.iter_rows(values_only=True))
-        if not rows:
-            return []
-        header = [str(h).strip() if h is not None else "" for h in rows[0]]
-        return [{h: v for h, v in zip(header, row, strict=False) if h} for row in rows[1:]]
-    if name.endswith(".csv"):
-        text = content.decode("utf-8-sig")
-        dialect = csv.Sniffer().sniff(text.splitlines()[0] if text else ",", delimiters=",;")
-        return list(csv.DictReader(io.StringIO(text), dialect=dialect))
-    raise HTTPException(status_code=_unprocessable, detail="la tabla debe ser .csv o .xlsx")
+    try:
+        return read_table(table.filename or "", content)
+    except ValueError as exc:
+        raise HTTPException(status_code=_unprocessable, detail=str(exc)) from exc
 
 
 async def _suite_or_404(session: AsyncSession, suite_id: uuid.UUID) -> EvalSuite:

@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from opentelemetry import trace
 
-from idp.api.routes import audit, auth, batches, calibration, cases, document_types, documents, evaluation, lenses, profiles, prompts, simulations, upload_sessions, review, semantic_catalog, type_suggestions, users, validation, validation_rules, webhooks
+from idp.api.routes import audit, auth, batches, bulk_jobs, calibration, cases, document_types, documents, evaluation, lenses, profiles, prompts, simulations, upload_sessions, review, semantic_catalog, type_suggestions, users, validation, validation_rules, webhooks
 from idp.config import get_settings
 from idp.llm.port import inference_lifespan
 from idp.llm.prompts import current as current_prompts
@@ -20,6 +20,7 @@ from idp.observability.otel import setup_tracing
 from idp.persistence.db import get_session_factory
 from idp.persistence.repositories import DocumentTypeRepository, LensRepository, ProcessProfileRepository, PromptEditRepository, PromptRepository, SemanticCatalogRepository
 from idp.storage.object_store import S3ObjectStore
+from idp.pipeline import bulk
 from idp.webhooks import dispatcher
 
 
@@ -41,9 +42,11 @@ def create_app() -> FastAPI:
             set_published(await PromptEditRepository(session).published_texts())
         stop = asyncio.Event()
         task = asyncio.create_task(dispatcher.run(settings, stop)) if settings.webhook_dispatcher_enabled else None
+        feeder = asyncio.create_task(bulk.run(settings, stop))  # releases bulk jobs' cases a few at a time (VRT-48)
         async with inference_lifespan(settings):  # the in-process executor and rule drafting call models
             yield
         stop.set()
+        await feeder
         if task is not None:
             await task
         # BatchSpanProcessor buffers spans and exports on a timer — without
@@ -80,6 +83,7 @@ def create_app() -> FastAPI:
     app.include_router(lenses.router)
     app.include_router(prompts.router)
     app.include_router(upload_sessions.router)
+    app.include_router(bulk_jobs.router)
 
     @app.get("/health")
     async def health() -> dict:

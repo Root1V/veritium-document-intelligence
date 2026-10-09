@@ -12,6 +12,7 @@ import { DocumentTypesPage } from '@/pages/DocumentTypes'
 import { NewDocumentTypePage } from '@/pages/NewDocumentType'
 import { SemanticCatalogPage } from '@/pages/SemanticCatalog'
 import { ProfilesPage } from '@/pages/Profiles'
+import { BulkJobDetailPage, BulkJobsPage } from '@/pages/BulkJobs'
 import { CasesPage } from '@/pages/Cases'
 import { CaseDetailPage } from '@/pages/CaseDetail'
 import { ProfileEditorPage } from '@/pages/ProfileEditor'
@@ -123,6 +124,22 @@ export default function App() {
         element={
           <ProtectedRoute>
             <CaseDetailPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/bulk"
+        element={
+          <ProtectedRoute>
+            <BulkJobsPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/bulk/:jobId"
+        element={
+          <ProtectedRoute>
+            <BulkJobDetailPage />
           </ProtectedRoute>
         }
       />

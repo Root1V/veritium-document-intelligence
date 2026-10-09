@@ -80,7 +80,7 @@ function ConditionRow({ caseId, condition }: { caseId: string; condition: CaseCo
   )
 }
 
-const RUN_STATUS: Record<string, string> = { pending: 'en cola', running: 'en curso', completed: 'terminada', failed: 'con error' }
+const RUN_STATUS: Record<string, string> = { queued: 'en espera', pending: 'en cola', running: 'en curso', completed: 'terminada', failed: 'con error' }
 
 const SCOPE_LABEL: Record<ReprocessScope['kind'], string> = { case: 'expediente', document: 'documento', rule: 'regla', attribute: 'atributo' }
 

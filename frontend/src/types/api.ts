@@ -913,3 +913,22 @@ export interface PromptView {
   evaluated: boolean
   draft: PromptDraft | null
 }
+
+// --- Bulk jobs (VRT-48) --------------------------------------------------------
+
+export type BulkOutcome = VerdictDecision | 'failed' | 'pending'
+
+export interface BulkJobSummary {
+  id: string
+  name: string
+  created_by: string
+  created_at: string
+  finished_at: string | null
+  cases: number
+  outcomes: Partial<Record<BulkOutcome, number>>
+  skipped: { reference: string | null; reason: string }[]
+}
+
+export interface BulkJobDetail extends BulkJobSummary {
+  items: { id: string; external_ref: string | null; profile: string | null; outcome: BulkOutcome; progress: CaseProgress }[]
+}
