@@ -49,6 +49,15 @@ class S3ObjectStore:
         resp = self._client.get_object(Bucket=self._bucket, Key=key)
         return resp["Body"].read()
 
+    def get_at(self, bucket: str, key: str, *, max_bytes: int) -> bytes:
+        """An object in any bucket these credentials can read (claim-check, VRT-49).
+        Raises ValueError when it is larger than ``max_bytes``."""
+        resp = self._client.get_object(Bucket=bucket, Key=key)
+        if resp.get("ContentLength", 0) > max_bytes:
+            resp["Body"].close()
+            raise ValueError(f"pesa más de {max_bytes // (1024 * 1024)} MB")
+        return resp["Body"].read()
+
     def key_for(self, *, tenant: str, case_id: str, document_id: str, filename: str) -> str:
         # `tenant` costs nothing to include now and avoids a storage-key
         # migration when multi-tenancy lands (roadmap Fase 1+ item 5).

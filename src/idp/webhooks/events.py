@@ -22,9 +22,12 @@ CASE_RUN_COMPLETED = "pe.veritium.case.run.completed"
 CASE_RUN_FAILED = "pe.veritium.case.run.failed"
 CASE_VERDICT_CHANGED = "pe.veritium.case.verdict.changed"
 BULK_JOB_COMPLETED = "pe.veritium.bulk_job.completed"
+# The answer to a command received as an event (VRT-49): it was taken, or why not.
+COMMAND_ACCEPTED = "pe.veritium.command.accepted"
+COMMAND_REJECTED = "pe.veritium.command.rejected"
 WEBHOOK_TEST = "pe.veritium.webhook.test"
 
-EVENT_TYPES = (CASE_RUN_COMPLETED, CASE_RUN_FAILED, CASE_VERDICT_CHANGED, BULK_JOB_COMPLETED, WEBHOOK_TEST)
+EVENT_TYPES = (CASE_RUN_COMPLETED, CASE_RUN_FAILED, CASE_VERDICT_CHANGED, BULK_JOB_COMPLETED, COMMAND_ACCEPTED, COMMAND_REJECTED, WEBHOOK_TEST)
 
 
 def _links(case_id: Any) -> dict[str, str]:
@@ -86,6 +89,19 @@ def emit_bulk_job_completed(session: AsyncSession, job: BulkJob, *, outcomes: di
             "links": {"bulk_job": f"/v1/bulk-jobs/{job.id}", "results": f"/v1/bulk-jobs/{job.id}/results"},
         },
     )
+
+
+def emit_command_answer(
+    session: AsyncSession, *, tenant: str, command: dict[str, Any], case: Case | None = None, run_number: int | None = None, reason: str | None = None
+) -> OutboxEvent:
+    """``command``: the CloudEvent received; the answer quotes its id and
+    source, so the sender can match it. Accepted when ``case`` is given."""
+    data: dict[str, Any] = {"command_id": command.get("id"), "command_source": command.get("source"), "command_type": command.get("type")}
+    if case is not None:
+        data |= {"case_id": str(case.id), "external_ref": case.external_ref, "run_number": run_number, "links": _links(case.id)}
+        return _emit(session, tenant=tenant, type_=COMMAND_ACCEPTED, subject=str(case.id), data=data)
+    data |= {"external_ref": (command.get("data") or {}).get("external_ref") if isinstance(command.get("data"), dict) else None, "reason": reason}
+    return _emit(session, tenant=tenant, type_=COMMAND_REJECTED, subject=data["external_ref"] or command.get("id"), data=data)
 
 
 def cloudevent(event: OutboxEvent) -> dict[str, Any]:

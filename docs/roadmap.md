@@ -315,7 +315,10 @@ Veritium pasa de "subir documentos sueltos" a ser una **capacidad de decisión d
 - Carril `bulk`: las corridas esperan `queued` y se liberan de a pocas (`bulk_max_in_flight`), sea cual sea el ejecutor.
 - Avance y resultado por expediente (pantalla y CSV) y evento `bulk_job.completed`. Fuera: carga por URL o almacenamiento externo (VRT-49).
 ## VRT-49 — Eventos CloudEvents
-**Why:** integración por eventos con sistemas que ya hablan por bus. **Scope:** consumidor y publicador CloudEvents, con claim-check para los archivos.
+**Why:** integración por eventos con sistemas que ya hablan por bus. **Scope:**
+- Bus con protocolo Kafka (Redpanda en local, `EVENT_BUS_BROKERS`): el outbox se publica completo (CloudEvents estructurado, clave = expediente, `acks=all`, productor idempotente).
+- Comandos `case.submit` y `case.documents.add` por el bus o por `POST /v1/events` (modos estructurado y binario), respondidos con `command.accepted` / `.rejected`; un comando repetido (mismo `source` + `id`) recibe la misma respuesta sin repetir nada.
+- Claim-check: los documentos llegan por referencia `s3://` o `https://`, solo desde prefijos permitidos (anti-SSRF). Fuera: esquemas registrados (schema registry) y otros buses nativos.
 ## VRT-50 — Salida renderizable (A2UI)
 **Why:** que otros front-ends muestren el resultado sin conocer el dominio. **Scope:** capa A2UI v0.9 sobre el contrato canónico.
 ## VRT-65 — Credenciales de sistema

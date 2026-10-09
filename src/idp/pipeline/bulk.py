@@ -13,23 +13,17 @@ import logging
 from collections import Counter
 from datetime import UTC, datetime
 
-from fastapi import BackgroundTasks
 from sqlalchemy import exists, func, select
 
 from idp.config import Settings
-from idp.execution.port import executor_for
+from idp.execution.handover import hand_over
 from idp.persistence.db import get_session_factory
 from idp.persistence.models import BulkJob, Case, CaseRun
-from idp.pipeline.orchestrator import fail_run
 from idp.webhooks.events import emit_bulk_job_completed
 
 log = logging.getLogger(__name__)
 
 _ACTIVE = ("queued", "pending", "running")
-# In-process runs started by the feeder: kept so they are not garbage-collected mid-run.
-_tasks: set[asyncio.Task] = set()
-
-
 def outcome(case: Case) -> str:
     """What a bulk job's case came to: its verdict, ``failed``, or ``pending`` while it runs."""
     if case.status == "failed":
@@ -60,23 +54,7 @@ async def release(settings: Settings) -> int:
         released = [(run.case_id, run.id) for run in runs]
         await session.commit()
 
-    background = BackgroundTasks()
-    for case_id, run_id in released:
-        try:
-            ref = await executor_for(settings).submit(case_id=case_id, run_id=run_id, channel="bulk", background=background)
-        except Exception as exc:
-            await fail_run(settings, case_id, run_id, f"no se pudo iniciar la corrida: {type(exc).__name__}: {exc}")
-            continue
-        if ref is not None:
-            async with get_session_factory(settings)() as session:
-                run = await session.get(CaseRun, run_id)
-                if run is not None:
-                    run.execution_ref = ref
-                    await session.commit()
-    if background.tasks:  # the in-process executor: run them here, without blocking the feeder
-        task = asyncio.create_task(background())
-        _tasks.add(task)
-        task.add_done_callback(_tasks.discard)
+    await hand_over(settings, released, channel="bulk")
     return len(released)
 
 

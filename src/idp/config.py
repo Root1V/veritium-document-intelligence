@@ -150,6 +150,21 @@ class Settings(BaseSettings):
     webhook_dispatch_interval_seconds: float = 2.0
     webhook_request_timeout_seconds: float = 10.0
 
+    # --- Event bus (VRT-49) ---
+    # Kafka protocol (Redpanda in development: docker compose up -d redpanda).
+    # Unset = no bus: events still go out by webhook, commands come in by
+    # POST /v1/events. Out: every outbox event, CloudEvents structured mode,
+    # keyed by case. In: commands (pe.veritium.case.submit / .documents.add).
+    event_bus_brokers: str | None = None
+    event_bus_out_topic: str = "veritium.case-events.v1"
+    event_bus_in_topic: str = "veritium.case-requests.v1"
+    event_bus_group: str = "veritium"
+    event_bus_publish_interval_seconds: float = 1.0
+    # Claim-check: a command names its documents by reference, never inline.
+    # Only these prefixes are fetched (s3://bucket/prefix/ or https://host/path/).
+    claim_check_allowed_prefixes: list[str] = []
+    claim_check_max_file_mb: int = 25
+
     @model_validator(mode="after")
     def _real_secret_outside_dev(self) -> Settings:
         # Anyone who knows the default could sign a token for any user or system (VRT-65).

@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from opentelemetry import trace
 
-from idp.api.routes import api_clients, audit, auth, batches, bulk_jobs, calibration, cases, document_types, documents, evaluation, lenses, profiles, prompts, simulations, upload_sessions, review, semantic_catalog, type_suggestions, users, validation, validation_rules, webhooks
+from idp.api.routes import api_clients, audit, auth, batches, bulk_jobs, events, calibration, cases, document_types, documents, evaluation, lenses, profiles, prompts, simulations, upload_sessions, review, semantic_catalog, type_suggestions, users, validation, validation_rules, webhooks
 from idp.config import get_settings
 from idp.llm.port import inference_lifespan
 from idp.llm.prompts import current as current_prompts
@@ -20,6 +20,7 @@ from idp.observability.otel import setup_tracing
 from idp.persistence.db import get_session_factory
 from idp.persistence.repositories import DocumentTypeRepository, LensRepository, ProcessProfileRepository, PromptEditRepository, PromptRepository, SemanticCatalogRepository
 from idp.storage.object_store import S3ObjectStore
+from idp.events import bus
 from idp.pipeline import bulk
 from idp.webhooks import dispatcher
 
@@ -43,10 +44,14 @@ def create_app() -> FastAPI:
         stop = asyncio.Event()
         task = asyncio.create_task(dispatcher.run(settings, stop)) if settings.webhook_dispatcher_enabled else None
         feeder = asyncio.create_task(bulk.run(settings, stop))  # releases bulk jobs' cases a few at a time (VRT-48)
+        # The event bus, when configured: outbox out, commands in (VRT-49).
+        events = asyncio.create_task(bus.run(settings, stop)) if settings.event_bus_brokers else None
         async with inference_lifespan(settings):  # the in-process executor and rule drafting call models
             yield
         stop.set()
         await feeder
+        if events is not None:
+            await events
         if task is not None:
             await task
         # BatchSpanProcessor buffers spans and exports on a timer — without
@@ -85,6 +90,7 @@ def create_app() -> FastAPI:
     app.include_router(upload_sessions.router)
     app.include_router(bulk_jobs.router)
     app.include_router(api_clients.router)
+    app.include_router(events.router)
 
     @app.get("/health")
     async def health() -> dict:

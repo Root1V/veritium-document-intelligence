@@ -20,6 +20,7 @@ from idp.config import Settings
 from idp.persistence.db import get_session_factory
 from idp.persistence.models import BulkJob, Case, CaseRun, OutboxEvent
 from idp.persistence.repositories import UserRepository
+from idp.execution import handover
 from idp.pipeline import bulk, orchestrator
 
 pytestmark = [pytest.mark.usefixtures("require_postgres", "require_minio")]
@@ -52,8 +53,8 @@ def no_pipeline(monkeypatch):
 
 
 async def _drain() -> None:
-    while bulk._tasks:
-        await asyncio.gather(*list(bulk._tasks))
+    while handover.tasks:
+        await asyncio.gather(*list(handover.tasks))
 
 
 @pytest.mark.asyncio

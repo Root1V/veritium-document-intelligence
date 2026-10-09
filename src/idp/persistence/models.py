@@ -473,7 +473,10 @@ class OutboxEvent(Base):
     once the event has been fanned out into deliveries."""
 
     __tablename__ = "outbox_events"
-    __table_args__ = (Index("ix_outbox_events_undispatched", "created_at", postgresql_where=text("dispatched_at IS NULL")),)
+    __table_args__ = (
+        Index("ix_outbox_events_undispatched", "created_at", postgresql_where=text("dispatched_at IS NULL")),
+        Index("ix_outbox_events_unpublished", "created_at", postgresql_where=text("published_at IS NULL")),
+    )
 
     id: Mapped[uuid.UUID] = _uuid_pk()
     tenant: Mapped[str] = mapped_column(String(64), default="default", nullable=False)
@@ -482,6 +485,8 @@ class OutboxEvent(Base):
     data: Mapped[dict] = mapped_column(JSONB, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     dispatched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Set once published on the event bus (VRT-49); stays null while there is no bus.
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class WebhookEndpoint(Base):
