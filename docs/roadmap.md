@@ -288,10 +288,11 @@ Veritium pasa de "subir documentos sueltos" a ser una **capacidad de decisión d
 ## VRT-63 — Edición gobernada de prompts
 **Why:** un perfil técnico debe poder mejorar las instrucciones sin desplegar código, y un cambio de prompt afecta a todos los expedientes desde ese momento.
 **Scope:**
-- Rol nuevo «Especialista IA» (aparte de admin) que edita; el resto solo consulta.
-- Borrador con motivo; debe conservar las variables que completa la plataforma.
-- Evaluación obligatoria contra la versión en uso (VRT-42) y, si influye en el veredicto, simulación con expedientes pasados (VRT-44); publicar, auditar y volver atrás en un clic.
-- Un proveedor de prompts desde la BD delante del texto del código (registro encadenado de synaptum); la versión sigue siendo la huella del texto.
+- Rol «Especialista IA» (aparte de admin): edita instrucciones y crea y corre evaluaciones; el resto solo consulta (`/prompts`).
+- Borrador con motivo que debe conservar los datos que la plataforma completa (cada prompt los declara al registrarse); diferencias línea por línea con el texto en uso.
+- Una evaluación puede probar borradores solo para esa corrida; publicar exige una evaluación terminada con el borrador, o una confirmación explícita para instrucciones que ninguna evaluación ejercita. Vuelta a cualquier versión anterior o al texto del código en un clic.
+- Texto en vigor: borrador en prueba > publicado (BD, tabla `prompt_edits` con la auditoría) > código; la API lo aplica al publicar y el worker en el siguiente ciclo (~30 s). La versión sigue siendo la huella del texto efectivo.
+- Fuera: simular con expedientes pasados un cambio de prompt que influye en el veredicto, y aprobación por una segunda persona.
 
 ## F5 — Canales
 ## VRT-47 — Sesión de carga + verificación rápida

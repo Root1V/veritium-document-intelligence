@@ -18,7 +18,7 @@ from idp.persistence.repositories import UserRepository
 
 router = APIRouter(prefix="/users", tags=["users"], dependencies=[Depends(require_role("admin"))])
 
-ROLES = {"admin", "operador", "visor", "integracion"}
+ROLES = {"admin", "operador", "visor", "integracion", "especialista_ia"}
 
 
 class UserResponse(BaseModel):

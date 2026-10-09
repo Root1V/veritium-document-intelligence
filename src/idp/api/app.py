@@ -15,9 +15,10 @@ from idp.api.routes import audit, auth, batches, calibration, cases, document_ty
 from idp.config import get_settings
 from idp.llm.port import inference_lifespan
 from idp.llm.prompts import current as current_prompts
+from idp.llm.prompts import set_published
 from idp.observability.otel import setup_tracing
 from idp.persistence.db import get_session_factory
-from idp.persistence.repositories import DocumentTypeRepository, LensRepository, ProcessProfileRepository, PromptRepository, SemanticCatalogRepository
+from idp.persistence.repositories import DocumentTypeRepository, LensRepository, ProcessProfileRepository, PromptEditRepository, PromptRepository, SemanticCatalogRepository
 from idp.storage.object_store import S3ObjectStore
 from idp.webhooks import dispatcher
 
@@ -34,8 +35,10 @@ def create_app() -> FastAPI:
             await ProcessProfileRepository(session).ensure_seed()
             await DocumentTypeRepository(session).ensure_seed()
             await LensRepository(session).ensure_seed()
-            # Keep the text of the prompts this code runs with (VRT-46).
-            await PromptRepository(session).record([(p.name, p.version, p.text) for p in current_prompts()])
+            # Keep the text of the prompts this code runs with (VRT-46), and
+            # put in effect the ones AI specialists published (VRT-63).
+            await PromptRepository(session).record([(p.name, p.code_version, p.text) for p in current_prompts()])
+            set_published(await PromptEditRepository(session).published_texts())
         stop = asyncio.Event()
         task = asyncio.create_task(dispatcher.run(settings, stop)) if settings.webhook_dispatcher_enabled else None
         async with inference_lifespan(settings):  # the in-process executor and rule drafting call models

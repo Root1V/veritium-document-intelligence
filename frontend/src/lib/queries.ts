@@ -674,8 +674,13 @@ export function useCreateGoldenSet() {
 export function useRunEvalSuite() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async ({ suiteId, semanticGrounding }: { suiteId: string; semanticGrounding?: boolean }) =>
-      (await apiClient.post<EvalRunSummary>(`/v1/eval-suites/${suiteId}/runs`, semanticGrounding === undefined ? {} : { semantic_grounding: semanticGrounding })).data,
+    mutationFn: async ({ suiteId, semanticGrounding, promptDrafts }: { suiteId: string; semanticGrounding?: boolean; promptDrafts?: string[] }) =>
+      (
+        await apiClient.post<EvalRunSummary>(`/v1/eval-suites/${suiteId}/runs`, {
+          ...(semanticGrounding === undefined ? {} : { semantic_grounding: semanticGrounding }),
+          ...(promptDrafts?.length ? { prompt_drafts: promptDrafts } : {}),
+        })
+      ).data,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['eval-suites'] }),
   })
 }
@@ -789,3 +794,25 @@ export function useSaveLens() {
 export function usePrompts() {
   return useQuery({ queryKey: ['prompts'], queryFn: async () => (await apiClient.get<PromptView[]>('/v1/prompts')).data })
 }
+
+// --- Governed prompt editing (VRT-63) ----------------------------------------
+
+function usePromptAction<V>(call: (v: V) => Promise<PromptView>) {
+  const queryClient = useQueryClient()
+  return useMutation({ mutationFn: call, onSuccess: () => queryClient.invalidateQueries({ queryKey: ['prompts'] }) })
+}
+
+export const useSavePromptDraft = () =>
+  usePromptAction(async ({ name, text, reason }: { name: string; text: string; reason: string }) => (await apiClient.put<PromptView>(`/v1/prompts/${name}/draft`, { text, reason })).data)
+
+export const useDiscardPromptDraft = () => usePromptAction(async (name: string) => (await apiClient.delete<PromptView>(`/v1/prompts/${name}/draft`)).data)
+
+export const usePublishPromptDraft = () =>
+  usePromptAction(async ({ name, acknowledge }: { name: string; acknowledge: boolean }) =>
+    (await apiClient.post<PromptView>(`/v1/prompts/${name}/draft/publish`, { acknowledge_no_evaluation: acknowledge })).data,
+  )
+
+export const useRestorePrompt = () =>
+  usePromptAction(async ({ name, version, reason }: { name: string; version: string; reason: string }) =>
+    (await apiClient.post<PromptView>(`/v1/prompts/${name}/restore`, { version, reason })).data,
+  )

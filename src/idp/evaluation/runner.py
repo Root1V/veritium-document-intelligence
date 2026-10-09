@@ -26,7 +26,8 @@ from idp.extraction.agentic.loop import ExtractionIncomplete
 from idp.parsing.normalize import slice_by_pages
 from idp.persistence.db import get_session_factory
 from idp.persistence.models import EvalCase, EvalResult
-from idp.persistence.repositories import DocumentTypeRepository, EvaluationRepository
+from idp.llm.prompts import trial
+from idp.persistence.repositories import DocumentTypeRepository, EvaluationRepository, PromptEditRepository
 from idp.pipeline.orchestrator import extraction_grounding, parse_example
 from idp.pipeline.provenance import build_provenance
 from idp.pipeline.stages import classify_document, extract_document
@@ -87,6 +88,18 @@ async def _evaluate(settings: Settings, case: EvalCase, run_id: uuid.UUID, catal
 
 
 async def run_evaluation(settings: Settings, run_id: uuid.UUID) -> None:
+    """Runs a suite; drafts of prompts the run tries (VRT-63) are in effect
+    for this run only."""
+    async with get_session_factory(settings)() as session:
+        run = await EvaluationRepository(session).get_run(run_id)
+        draft_ids = [uuid.UUID(i) for i in ((run.options or {}).get("prompt_drafts") or [])] if run else []
+        repo = PromptEditRepository(session)
+        texts = {e.name: e.text for i in draft_ids if (e := await repo.get(i)) is not None}
+    with trial(texts):
+        await _run_evaluation(settings, run_id)
+
+
+async def _run_evaluation(settings: Settings, run_id: uuid.UUID) -> None:
     if run_id in _active:
         return
     _active.add(run_id)

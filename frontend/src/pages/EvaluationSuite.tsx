@@ -10,10 +10,10 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { errorDetail } from '@/lib/apiErrors'
-import { canExecute } from '@/lib/auth'
+import { canExecute, isAISpecialist } from '@/lib/auth'
 import { configChanges, percent, show } from '@/lib/evaluation'
 import { humanizeFieldName } from '@/lib/extraction'
-import { useDocumentTypeCatalog, useEvalRun, useEvalSuite, useRunEvalSuite } from '@/lib/queries'
+import { useDocumentTypeCatalog, useEvalRun, useEvalSuite, usePrompts, useRunEvalSuite } from '@/lib/queries'
 import type { EvalChange, EvalRunDetail, EvalRunSummary } from '@/types/api'
 
 function Metric({ label, value, hint }: { label: string; value: string; hint?: string }) {
@@ -171,6 +171,9 @@ export function EvaluationSuitePage() {
   const runSuite = useRunEvalSuite()
   const [selected, setSelected] = useState<string | null>(null)
   const [withMeaning, setWithMeaning] = useState(false)
+  const { data: prompts } = usePrompts()
+  const drafts = (prompts ?? []).filter((p) => p.draft)
+  const [chosenDrafts, setChosenDrafts] = useState<string[]>([])
   if (isLoading || !suite) return <Loader2 className="size-6 animate-spin text-muted-foreground" />
 
   const runs = suite.runs
@@ -189,12 +192,12 @@ export function EvaluationSuitePage() {
             {suite.created_by}
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          {canExecute() && (
+        <div className="flex flex-wrap items-center gap-3">
+          {(canExecute() || isAISpecialist()) && (
             <Button
               disabled={busy || runSuite.isPending}
               onClick={() =>
-                runSuite.mutate({ suiteId: suite.id, semanticGrounding: withMeaning || undefined }, {
+                runSuite.mutate({ suiteId: suite.id, semanticGrounding: withMeaning || undefined, promptDrafts: chosenDrafts }, {
                   onSuccess: (r) => {
                     setSelected(r.id)
                     toast.success('Corrida en curso.')
@@ -206,12 +209,23 @@ export function EvaluationSuitePage() {
               {busy ? <Loader2 className="size-4 animate-spin" /> : <Play className="size-4" />} Correr con la configuración actual
             </Button>
           )}
-          {canExecute() && (
+          {(canExecute() || isAISpecialist()) && (
             <label className="flex items-center gap-2 text-sm" title="Le dice al modelo qué significa cada campo para el negocio, según el catálogo semántico.">
               <input type="checkbox" checked={withMeaning} onChange={(e) => setWithMeaning(e.target.checked)} />
               Probar con el significado de negocio de cada campo
             </label>
           )}
+          {(canExecute() || isAISpecialist()) &&
+            drafts.map((p) => (
+              <label key={p.draft!.id} className="flex items-center gap-2 text-sm" title={`Motivo: ${p.draft!.reason}`}>
+                <input
+                  type="checkbox"
+                  checked={chosenDrafts.includes(p.draft!.id)}
+                  onChange={(e) => setChosenDrafts((c) => (e.target.checked ? [...c, p.draft!.id] : c.filter((id) => id !== p.draft!.id)))}
+                />
+                Probar con el borrador de «{p.label}»
+              </label>
+            ))}
           <Link to="/evaluation" className="text-sm underline">
             Volver
           </Link>
@@ -224,6 +238,7 @@ export function EvaluationSuitePage() {
             <Button key={r.id} size="sm" variant={r.id === current?.id ? 'default' : 'outline'} onClick={() => setSelected(r.id)}>
               {new Date(r.created_at).toLocaleString()} · {r.status === 'completed' ? percent(r.metrics?.fields) : r.status}
               {r.provenance?.semantic_grounding && ' · con significado'}
+              {r.options?.prompt_drafts?.length ? ' · con borrador' : ''}
             </Button>
           ))}
         </div>

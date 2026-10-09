@@ -733,3 +733,31 @@ class PromptVersionRecord(Base):
     text: Mapped[str] = mapped_column(Text, nullable=False)
     source: Mapped[str] = mapped_column(String(16), default="code", server_default="code", nullable=False)
     first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class PromptEdit(Base):
+    """A change to a prompt made by an AI specialist (VRT-63), and its audit
+    trail: why, by whom, which evaluation backed it, when it was published.
+    Lifecycle: draft -> published -> retired, or draft -> discarded. At most
+    one draft and one published edit per prompt; with none published, the
+    code's text is in effect."""
+
+    __tablename__ = "prompt_edits"
+    __table_args__ = (
+        Index("ix_prompt_edits_one_draft", "name", unique=True, postgresql_where=text("status = 'draft'")),
+        Index("ix_prompt_edits_one_published", "name", unique=True, postgresql_where=text("status = 'published'")),
+    )
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    name: Mapped[str] = mapped_column(String(64), nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    version: Mapped[str] = mapped_column(String(16), nullable=False)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String(16), default="draft", server_default="draft", nullable=False)
+    created_by: Mapped[str] = mapped_column(String(256), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    published_by: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # The evaluation run that tried this text before it was published.
+    evaluation_run_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("eval_runs.id", ondelete="SET NULL"), nullable=True)
+    retired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

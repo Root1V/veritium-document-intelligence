@@ -38,7 +38,7 @@ _SUMMARY = prompt("lens_summary", _COMMON + """
 Eres analista del area de {area}. {instructions}
 Responde con un titular de una o dos frases, de 3 a 8 puntos clave con sus referencias, y en `attention` como \
 maximo 4 alertas que un analista debe revisar en ESTE expediente: datos que no coinciden, montos que no cuadran o \
-datos clave que faltan. No incluyas generalidades que valdrian para cualquier expediente.""")
+datos clave que faltan. No incluyas generalidades que valdrian para cualquier expediente.""", filled=("area", "instructions"))
 
 _PLAYBOOK = prompt("lens_playbook", _COMMON + """
 
@@ -52,7 +52,7 @@ trata) o "dudoso" (no se puede decidir con lo que dice).
 Agrega un titular de una frase con la conclusion general.
 
 Playbook:
-{playbook}""")
+{playbook}""", filled=("area", "playbook"))
 
 
 async def lens_documents(settings: Settings, session: AsyncSession, case: Case, lens: LensDefinition) -> list[LensDocument]:

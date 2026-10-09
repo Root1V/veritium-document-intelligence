@@ -96,7 +96,7 @@ corresponde (p. ej. el DNI del titular del recibo -> persona.dni con rol titular
 Atributos:
 {attributes}
 Roles:
-{roles}""")
+{roles}""", filled=('types', 'attributes', 'roles'))
 
 
 def propose_type_from_example(

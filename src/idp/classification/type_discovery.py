@@ -46,7 +46,7 @@ amerita un tipo propio y en que se distingue de los tipos ya conocidos, y una li
 propuestos (nombre en snake_case ingles, tipo, descripcion EXPLICITA en español de que representa y \
 de donde se extrae, y si es consistentemente requerido u opcional).
 
-3. Si is_promotable es False: deja rationale explicando por que, y fields vacio.""")
+3. Si is_promotable es False: deja rationale explicando por que, y fields vacio.""", filled=('known_types',))
 
 
 def suggest_document_type(settings: Settings, generic_result: GenericSchema, catalog: DocumentTypeCatalog) -> DocumentTypeProposal:

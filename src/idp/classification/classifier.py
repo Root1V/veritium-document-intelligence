@@ -24,7 +24,7 @@ extraido de un documento, determina su tipo. Los tipos validos son:
 {types}
 
 Si el documento no encaja claramente en ninguno de los tipos especificos, clasifica como generic.
-Responde con el tipo, tu confianza (0-1) y una breve justificacion.""")
+Responde con el tipo, tu confianza (0-1) y una breve justificacion.""", filled=('types',))
 
 
 class ClassificationResult(BaseModel):

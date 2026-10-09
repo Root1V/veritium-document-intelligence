@@ -8,6 +8,8 @@ const ROLE_LABEL: Record<string, string> = {
   admin: 'Admin',
   operador: 'Operador',
   visor: 'Visor',
+  integracion: 'Integración',
+  especialista_ia: 'Especialista IA',
 }
 
 const NAV_ITEMS = [

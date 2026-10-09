@@ -12,7 +12,7 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { errorDetail } from '@/lib/apiErrors'
-import { canExecute } from '@/lib/auth'
+import { canExecute, isAISpecialist } from '@/lib/auth'
 import { percent } from '@/lib/evaluation'
 import { downloadFile, useCreateEvalSuite, useCreateGoldenSet, useDocumentTypeCatalog, useEvalSuites } from '@/lib/queries'
 
@@ -169,7 +169,7 @@ export function EvaluationPage() {
         </Table>
       )}
 
-      {canExecute() && (
+      {(canExecute() || isAISpecialist()) && (
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
           <FromTable />
           <FromCorrections />

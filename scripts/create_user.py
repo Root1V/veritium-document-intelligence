@@ -4,6 +4,7 @@ Once at least one "admin" user exists, further users can also be created
 from the "Usuarios" page in the UI — this script remains the way to
 bootstrap that first admin.
 Run: ``uv run python scripts/create_user.py --name "Victor Espiritu" --email victor@example.com --password secret123 --role admin``
+Local AI specialist (VRT-63): ``uv run python scripts/create_user.py --name "Especialista IA" --email especialista@example.com --password ia-28af10d1 --role especialista_ia``
 """
 
 from __future__ import annotations
@@ -16,7 +17,7 @@ from idp.config import get_settings
 from idp.persistence.db import get_session_factory
 from idp.persistence.repositories import UserRepository
 
-ROLES = {"admin", "operador", "visor"}
+ROLES = {"admin", "operador", "visor", "integracion", "especialista_ia"}
 
 
 async def run(name: str, email: str, password: str, role: str) -> None:

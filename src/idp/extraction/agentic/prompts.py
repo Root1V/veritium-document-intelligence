@@ -57,7 +57,7 @@ sin espacios sobrantes, sin el nombre de la etiqueta). "source_text" en cambio d
 tal como aparece en la region OCR, incluyendo cualquier separador o etiqueta — no los uniformes. \
 Ejemplo: si la region dice "Apellidos y Nombres : SALAS SIGUAS, KATERIN KAROLA", value debe ser \
 "SALAS SIGUAS, KATERIN KAROLA" (sin el ":" inicial) y source_text puede conservar el texto completo.
-""")
+""", filled=('hint', 'regions', 'schema', 'grounding'))
 
 
 def build_system_prompt(hint: str, schema_cls: type[BaseModel], parsed: ParsedDocument, grounding: dict[str, str] | None = None) -> PromptTemplate:

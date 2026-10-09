@@ -42,6 +42,7 @@ from idp.persistence.models import (
     OutboxEvent,
     ProcessProfile,
     ProcessProfileVersion,
+    PromptEdit,
     PromptVersionRecord,
     ReferenceEmployee,
     ReviewItem,
@@ -1338,14 +1339,17 @@ class PromptRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    async def record(self, prompts: list[tuple[str, str, str]]) -> None:
+    async def record(self, prompts: list[tuple[str, str, str]], *, source: str = "code", commit: bool = True) -> None:
         """(name, version, text) of the prompts in use; a version already
         kept keeps its first-seen date."""
         for name, version, content in prompts:
             await self._session.execute(
-                pg_insert(PromptVersionRecord).values(id=uuid.uuid4(), name=name, version=version, text=content).on_conflict_do_nothing(index_elements=["name", "version"])
+                pg_insert(PromptVersionRecord)
+                .values(id=uuid.uuid4(), name=name, version=version, text=content, source=source)
+                .on_conflict_do_nothing(index_elements=["name", "version"])
             )
-        await self._session.commit()
+        if commit:
+            await self._session.commit()
 
     async def history(self) -> list[PromptVersionRecord]:
         return list((await self._session.scalars(select(PromptVersionRecord).order_by(PromptVersionRecord.name, PromptVersionRecord.first_seen_at.desc()))).all())
@@ -1362,3 +1366,58 @@ class PromptRepository:
                 count, earliest = usage.get((name, version), (0, first))
                 usage[(name, version)] = (count + n, min(earliest, first))
         return usage
+
+
+class PromptEditRepository:
+    """AI specialists' edits to prompts (VRT-63)."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def published_texts(self) -> dict[str, str]:
+        rows = await self._session.scalars(select(PromptEdit).where(PromptEdit.status == "published"))
+        return {r.name: r.text for r in rows}
+
+    async def for_prompt(self, name: str) -> list[PromptEdit]:
+        stmt = select(PromptEdit).where(PromptEdit.name == name).order_by(PromptEdit.created_at.desc())
+        return list((await self._session.scalars(stmt)).all())
+
+    async def open_drafts(self) -> list[PromptEdit]:
+        return list((await self._session.scalars(select(PromptEdit).where(PromptEdit.status == "draft"))).all())
+
+    async def get(self, edit_id: uuid.UUID) -> PromptEdit | None:
+        return await self._session.get(PromptEdit, edit_id)
+
+    async def save_draft(self, *, name: str, text: str, version: str, reason: str, by: str) -> PromptEdit:
+        """A prompt has one draft: a new one replaces it."""
+        await self._session.execute(update(PromptEdit).where(PromptEdit.name == name, PromptEdit.status == "draft").values(status="discarded"))
+        await self._session.flush()
+        edit = PromptEdit(name=name, text=text, version=version, reason=reason, created_by=by)
+        self._session.add(edit)
+        await self._session.flush()
+        return edit
+
+    async def publish(self, edit: PromptEdit, *, by: str, evaluation_run_id: uuid.UUID | None) -> None:
+        now = datetime.now(UTC)
+        await self._session.execute(
+            update(PromptEdit).where(PromptEdit.name == edit.name, PromptEdit.status == "published").values(status="retired", retired_at=now)
+        )
+        await self._session.flush()
+        edit.status, edit.published_by, edit.published_at, edit.evaluation_run_id = "published", by, now, evaluation_run_id
+        await self._session.flush()
+        await PromptRepository(self._session).record([(edit.name, edit.version, edit.text)], source="edited", commit=False)
+
+    async def back_to_code(self, name: str) -> None:
+        await self._session.execute(
+            update(PromptEdit).where(PromptEdit.name == name, PromptEdit.status == "published").values(status="retired", retired_at=datetime.now(UTC))
+        )
+
+    async def runs_with_draft(self, edit_id: uuid.UUID) -> list[EvalRun]:
+        """Evaluation runs that tried this draft."""
+        stmt = (
+            select(EvalRun)
+            .where(EvalRun.options["prompt_drafts"].contains([str(edit_id)]))
+            .options(selectinload(EvalRun.suite))
+            .order_by(EvalRun.created_at.desc())
+        )
+        return list((await self._session.scalars(stmt)).all())

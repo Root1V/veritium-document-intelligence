@@ -41,3 +41,37 @@ def test_a_field_means_what_its_attribute_says() -> None:
     meanings = field_meanings(seed_catalog(), "payslip")
     assert meanings["employee_code"].startswith("Código de empleado del titular: Código del trabajador")
     assert "period" not in meanings, "an unmapped field has no business meaning to add"
+
+
+def test_the_text_in_effect_is_a_trial_then_the_published_then_the_code() -> None:
+    from idp.llm.prompts import set_published, trial
+
+    p = prompt("test_effect", "codigo {x}", filled=("x",))
+    try:
+        assert p.effective == "codigo {x}" and p.version == p.code_version
+        set_published({"test_effect": "publicado {x}"})
+        assert p.effective == "publicado {x}" and p.render(x="1").render() == "publicado 1"
+        with trial({"test_effect": "borrador {x}"}):
+            assert p.effective == "borrador {x}"
+        assert p.effective == "publicado {x}", "a trial ends with its context"
+    finally:
+        set_published({})
+        from idp.llm import prompts as registry
+
+        registry._REGISTRY.pop("test_effect")
+
+
+def test_a_draft_keeps_the_values_the_platform_fills_in() -> None:
+    from idp.llm.prompts import Prompt, draft_problems
+
+    p = Prompt("t", "Tipos: {types}. Responde en JSON {{...}}.", filled=("types",))
+    assert draft_problems(p, "Tipos: {types}. Breve.") == []
+    assert draft_problems(p, "Sin tipos.") == ["falta {types}, que la plataforma completa en cada uso"]
+    assert draft_problems(p, "Tipos: {types} {otro}") == ["{otro} no es un dato que la plataforma complete aquí"]
+    assert "llaves mal cerradas" in draft_problems(p, "Tipos: {types} {")[0]
+    assert draft_problems(Prompt("t", "Sin variables {literal}"), "Otro texto con {llaves}") == [], "never filled in: braces are literal"
+
+
+def test_a_prompt_declares_exactly_the_values_its_text_uses() -> None:
+    with pytest.raises(ValueError, match="declara"):
+        prompt("test_mismatch", "Hola {a}", filled=("b",))

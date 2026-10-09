@@ -303,7 +303,7 @@ export interface LoginRequest {
   password: string
 }
 
-export type UserRole = 'admin' | 'operador' | 'visor'
+export type UserRole = 'admin' | 'operador' | 'visor' | 'integracion' | 'especialista_ia'
 
 export interface LoginResponse {
   access_token: string
@@ -636,7 +636,7 @@ export interface EvalRunSummary {
   finished_at: string | null
   error: string | null
   metrics: EvalMetrics | null
-  options: { semantic_grounding?: boolean } | null
+  options: { semantic_grounding?: boolean; prompt_drafts?: string[] } | null
   provenance: {
     models?: Record<string, string>
     code_version?: string
@@ -865,6 +865,18 @@ export interface PromptVersionView {
   text: string
   first_seen_at: string | null
   runs: number
+  published_by: string | null
+  reason: string | null
+}
+
+export interface PromptDraft {
+  id: string
+  text: string
+  version: string
+  reason: string
+  created_by: string
+  created_at: string
+  evaluations: { run_id: string; suite_id: string; suite_name: string; status: string; fields: EvalRate | null; created_at: string }[]
 }
 
 export interface PromptView {
@@ -877,4 +889,11 @@ export interface PromptView {
   since: string | null
   runs: number
   earlier: PromptVersionView[]
+  source: 'code' | 'edited'
+  code_version: string
+  published_by: string | null
+  published_at: string | null
+  published_reason: string | null
+  evaluated: boolean
+  draft: PromptDraft | null
 }

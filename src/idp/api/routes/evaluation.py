@@ -30,7 +30,8 @@ from idp.persistence.repositories import DocumentTypeRepository, EvaluationRepos
 from idp.storage.object_store import S3ObjectStore
 
 router = APIRouter(prefix="/v1", tags=["evaluation"], dependencies=[Depends(get_current_user)])
-_can_run = [Depends(require_role("operador", "admin"))]
+# An AI specialist tries prompt drafts here before publishing them (VRT-63).
+_can_run = [Depends(require_role("operador", "admin", "especialista_ia"))]
 _unprocessable = status.HTTP_422_UNPROCESSABLE_ENTITY
 
 
@@ -97,6 +98,7 @@ class RunOptions(BaseModel):
     semantic_grounding: bool | None = Field(
         default=None, description="Probar con (true) o sin (false) el significado de negocio de cada campo; si falta, como está configurado."
     )
+    prompt_drafts: list[uuid.UUID] | None = Field(default=None, description="Borradores de instrucciones a probar en esta corrida (VRT-63).")
 
 
 class GoldenSetRequest(BaseModel):
@@ -254,7 +256,7 @@ async def start_run(
     repo = EvaluationRepository(session)
     run = await repo.unfinished_run(suite.id)
     if run is None:
-        chosen = options.model_dump(exclude_none=True) if options else {}
+        chosen = options.model_dump(mode="json", exclude_none=True) if options else {}
         run = EvalRun(suite_id=suite.id, created_by=user.name, options=chosen or None)
         session.add(run)
         await session.commit()

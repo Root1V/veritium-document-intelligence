@@ -15,6 +15,8 @@ const ROLE_LABEL: Record<UserRole, string> = {
   admin: 'Admin',
   operador: 'Operador',
   visor: 'Visor',
+  integracion: 'Integración',
+  especialista_ia: 'Especialista IA',
 }
 
 function CreateUserDialog() {
@@ -77,6 +79,7 @@ function CreateUserDialog() {
               <SelectContent>
                 <SelectItem value="visor">Visor — solo lectura</SelectItem>
                 <SelectItem value="operador">Operador — puede ejecutar acciones</SelectItem>
+                <SelectItem value="especialista_ia">Especialista IA — edita las instrucciones al modelo</SelectItem>
                 <SelectItem value="admin">Admin — todo, incluida gestión de usuarios</SelectItem>
               </SelectContent>
             </Select>

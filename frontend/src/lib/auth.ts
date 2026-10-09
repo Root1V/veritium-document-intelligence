@@ -47,3 +47,8 @@ export function canExecute(): boolean {
 export function isAdmin(): boolean {
   return getUserRole() === 'admin'
 }
+
+/** Edits the instructions to the model and tries them in evaluations (VRT-63). */
+export function isAISpecialist(): boolean {
+  return getUserRole() === 'especialista_ia'
+}

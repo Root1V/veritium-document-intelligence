@@ -22,8 +22,9 @@ from idp.config import Settings, get_settings
 from idp.execution.aeon import LANE_QUEUES, run_status
 from idp.llm.port import inference_lifespan
 from idp.llm.prompts import current as current_prompts
+from idp.llm.prompts import fingerprint, set_published
 from idp.persistence.db import get_session_factory
-from idp.persistence.repositories import CaseRunRepository, PromptRepository
+from idp.persistence.repositories import CaseRunRepository, PromptEditRepository, PromptRepository
 from idp.pipeline.orchestrator import fail_run
 from idp.worker.activities import CaseActivities
 
@@ -55,6 +56,7 @@ async def reconcile(settings: Settings, client: httpx.AsyncClient) -> int:
 
 
 async def _reconcile_loop(settings: Settings, stop: asyncio.Event) -> None:
+    published_now: dict[str, str] | None = None
     async with httpx.AsyncClient() as client:
         while not stop.is_set():
             try:
@@ -62,6 +64,16 @@ async def _reconcile_loop(settings: Settings, stop: asyncio.Event) -> None:
                     log.info("reconcile: %d corrida(s) marcadas como fallidas", failed)
             except Exception:
                 log.exception("reconcile tick failed")
+            try:
+                # Prompts an AI specialist published reach the worker within a tick (VRT-63).
+                async with get_session_factory(settings)() as session:
+                    published = await PromptEditRepository(session).published_texts()
+                if published != published_now:
+                    set_published(published)
+                    published_now = published
+                    log.info("instrucciones publicadas en uso: %s", {name: fingerprint(text) for name, text in published.items()} or "las del código")
+            except Exception:
+                log.exception("prompt refresh failed")
             with contextlib.suppress(TimeoutError):
                 await asyncio.wait_for(stop.wait(), timeout=settings.worker_reconcile_interval_seconds)
 
@@ -77,7 +89,7 @@ async def main() -> None:
 
     async with get_session_factory(settings)() as session:
         # The worker runs the prompts too: keep their text (VRT-46).
-        await PromptRepository(session).record([(p.name, p.version, p.text) for p in current_prompts()])
+        await PromptRepository(session).record([(p.name, p.code_version, p.text) for p in current_prompts()])
 
     async with contextlib.AsyncExitStack() as stack:
         await stack.enter_async_context(inference_lifespan(settings))
