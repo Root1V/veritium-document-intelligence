@@ -8,6 +8,7 @@ import { Link, useParams } from 'react-router-dom'
 import { CheckCircle2, CircleAlert, Download, Loader2, RefreshCw } from 'lucide-react'
 import { toast } from 'sonner'
 import { LensesCard } from '@/components/cases/LensesCard'
+import { ProgressFunnel } from '@/components/cases/ProgressFunnel'
 import { EvidenceViewer } from '@/components/documents/EvidenceViewer'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -16,7 +17,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Input } from '@/components/ui/input'
 import { errorDetail } from '@/lib/apiErrors'
 import { canExecute } from '@/lib/auth'
-import { downloadCaseResult, useCaseResult, useDocumentTypeCatalog, useReprocessCase, useWaiveCondition, type CaseExportFormat } from '@/lib/queries'
+import { downloadCaseResult, useCaseProgress, useCaseResult, useDocumentTypeCatalog, useReprocessCase, useWaiveCondition, type CaseExportFormat } from '@/lib/queries'
 import { VERDICT_LABEL, VERDICT_VARIANT } from '@/lib/verdict'
 import type { CaseCondition, CaseResult, ReprocessScope } from '@/types/api'
 
@@ -78,6 +79,8 @@ function ConditionRow({ caseId, condition }: { caseId: string; condition: CaseCo
     </div>
   )
 }
+
+const RUN_STATUS: Record<string, string> = { pending: 'en cola', running: 'en curso', completed: 'terminada', failed: 'con error' }
 
 const SCOPE_LABEL: Record<ReprocessScope['kind'], string> = { case: 'expediente', document: 'documento', rule: 'regla', attribute: 'atributo' }
 
@@ -170,6 +173,7 @@ function fieldEvidence(result: CaseResult, documentId: string, fieldPath: string
 export function CaseDetailPage() {
   const { caseId } = useParams<{ caseId: string }>()
   const { data: result, isLoading } = useCaseResult(caseId)
+  const { data: summary } = useCaseProgress(caseId)
   const { data: types } = useDocumentTypeCatalog()
   const [evidence, setEvidence] = useState<Evidence | null>(null)
   const viewerRef = useRef<HTMLDivElement>(null)
@@ -203,10 +207,10 @@ export function CaseDetailPage() {
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="text-xl font-semibold tracking-tight">{result.case.external_ref ?? result.case.id.slice(0, 8)}</h1>
         {decision && <Badge variant={VERDICT_VARIANT[decision]}>{VERDICT_LABEL[decision]}</Badge>}
-        <Badge variant="outline">{result.case.status}</Badge>
+        <Badge variant="outline">{summary?.progress.status_label ?? result.case.status}</Badge>
         <span className="text-xs text-muted-foreground">
           {result.case.profile ? `perfil ${result.case.profile.key} v${result.case.profile.version} · catálogo v${result.case.profile.semantic_catalog_version}` : 'sin perfil'} · canal {result.case.channel}
-          {result.run && ` · corrida ${result.run.run_number} (${result.run.status})${runLabel(result.run)}`}
+          {result.run && ` · corrida ${result.run.run_number} (${RUN_STATUS[result.run.status] ?? result.run.status})${runLabel(result.run)}`}
         </span>
         <ReprocessButton caseId={result.case.id} scope={{ kind: 'case' }} label="Reprocesar expediente" busy={busy} />
         <ExportMenu caseId={result.case.id} />
@@ -219,6 +223,14 @@ export function CaseDetailPage() {
           Volver a expedientes
         </Link>
       </div>
+
+      {summary && (
+        <Card>
+          <CardContent className="py-4">
+            <ProgressFunnel progress={summary.progress} />
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,560px)]">
         <div className="flex min-w-0 flex-col gap-4">

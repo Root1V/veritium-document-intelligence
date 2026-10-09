@@ -250,6 +250,13 @@ Veritium pasa de "subir documentos sueltos" a ser una **capacidad de decisión d
 - La vista del expediente tiene un menú «Exportar».
 - Fuera: plantillas de informe por cliente o marca, y firma del PDF.
 
+## VRT-64 — Avance del expediente por etapas
+**Why:** mientras un expediente se procesa no se veía en qué etapa iba; «processing» no le dice nada a un operario.
+**Scope:**
+- `progress` en la lista y el resumen de cada expediente (`domain/case_progress.py`): seis etapas (Recibido, Lectura, Clasificación, Extracción de datos, Validación, Decisión), cada una hecha / en curso / pendiente / con error, con cuántos documentos van, derivado del estado de cada documento y de la última corrida.
+- Embudo compacto en Expedientes (se refresca cada 3 s mientras hay expedientes en proceso) y completo en el expediente; estados en español.
+- Fuera: tiempos por etapa y avance dentro de una etapa (p. ej. página por página).
+
 ## F4 — Calidad y comprensión
 ## VRT-42 — Suites de evaluación
 **Why:** sin evaluación no se puede cambiar un modelo, prompt o tipo documental con seguridad.

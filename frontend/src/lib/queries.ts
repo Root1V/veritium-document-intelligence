@@ -36,6 +36,7 @@ import type {
   ReviewCorrectionResponse,
   CalibrationDetail,
   CaseLens,
+  CaseProgress,
   LensDefinition,
   LensResultView,
   CalibrationSummary,
@@ -307,7 +308,18 @@ export function useCases() {
       const { data } = await apiClient.get<CaseListItem[]>('/v1/cases')
       return data
     },
-    refetchInterval: 10_000,
+    // Faster while a case is moving through its steps (VRT-64).
+    refetchInterval: (query) => (query.state.data?.some((c) => c.status === 'processing' || c.status === 'uploaded') ? 3_000 : 10_000),
+  })
+}
+
+/** A case's progress through its steps (VRT-64), refreshed while it moves. */
+export function useCaseProgress(caseId: string | undefined) {
+  return useQuery({
+    queryKey: ['cases', caseId, 'progress'],
+    enabled: !!caseId,
+    queryFn: async () => (await apiClient.get<{ status: string; progress: CaseProgress }>(`/v1/cases/${caseId}`)).data,
+    refetchInterval: (query) => (query.state.data && ['processing', 'uploaded'].includes(query.state.data.status) ? 3_000 : false),
   })
 }
 

@@ -29,6 +29,7 @@ from idp.api.case_contract import CaseResultV1, ConditionResult, ProfileRef, Ver
 from idp.api.case_service import dispatch_run, open_reprocess_run, open_run, read_uploads, request_fingerprint, resolve_profile_version, store_uploads
 from idp.api.deps import get_app_settings, get_current_user, get_db_session, get_object_store, require_role
 from idp.config import Settings
+from idp.domain.case_progress import Progress, progress
 from idp.domain.reprocess import ReprocessScope
 from idp.export.case_result import EXTENSIONS, MEDIA_TYPES, ExportFormat, ExportLabels, render
 from idp.domain.verdict import VerdictReason
@@ -87,6 +88,7 @@ class CaseSummary(BaseModel):
     created_at: datetime
     documents: list[DocumentBrief]
     runs: list[RunBrief]
+    progress: Progress
     links: CaseLinks
 
 
@@ -98,6 +100,13 @@ class CaseListItem(BaseModel):
     profile: ProfileRef | None
     verdict: str | None
     created_at: datetime
+    # Where it is in its processing, step by step (VRT-64).
+    progress: Progress
+
+
+def _progress(case: Case) -> Progress:
+    run = latest_run(case)
+    return progress(case.status, run.status if run else None, [d.status for d in case.documents])
 
 
 def _links(case_id: uuid.UUID) -> CaseLinks:
@@ -257,7 +266,8 @@ async def list_cases(
     cases = await CaseRepository(session).list(external_ref=external_ref, limit=min(limit, 200), offset=offset)
     return [
         CaseListItem(
-            id=c.id, external_ref=c.external_ref, channel=c.channel, status=c.status, profile=profile_ref(c), verdict=c.verdict, created_at=c.created_at
+            id=c.id, external_ref=c.external_ref, channel=c.channel, status=c.status, profile=profile_ref(c), verdict=c.verdict, created_at=c.created_at,
+            progress=_progress(c),
         )
         for c in cases
     ]
@@ -283,6 +293,7 @@ async def get_case(case_id: uuid.UUID, response: Response, session: AsyncSession
             for d in sorted(case.documents, key=lambda d: d.created_at)
         ],
         runs=[RunBrief(run_number=r.run_number, trigger=r.trigger, scope=r.scope, status=r.status, started_at=r.started_at, finished_at=r.finished_at) for r in case.runs],
+        progress=_progress(case),
         links=_links(case.id),
     )
 

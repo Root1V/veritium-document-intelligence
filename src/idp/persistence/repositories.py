@@ -131,7 +131,12 @@ class CaseRepository:
         return await self.get(case_id) if case_id is not None else None
 
     async def list(self, *, external_ref: str | None = None, limit: int = 50, offset: int = 0) -> list[Case]:
-        stmt = select(Case).options(selectinload(Case.profile_version).selectinload(ProcessProfileVersion.profile))
+        stmt = select(Case).options(
+            selectinload(Case.profile_version).selectinload(ProcessProfileVersion.profile),
+            # what the list shows of each case's progress (VRT-64)
+            selectinload(Case.documents),
+            selectinload(Case.runs),
+        )
         if external_ref is not None:
             stmt = stmt.where(Case.external_ref == external_ref)
         stmt = stmt.order_by(Case.created_at.desc()).limit(limit).offset(offset)

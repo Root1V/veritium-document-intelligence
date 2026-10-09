@@ -499,6 +499,21 @@ export interface ProfileLibrary {
 
 export type VerdictDecision = 'continue' | 'human_review' | 'return_to_client'
 
+export interface CaseProgressStep {
+  key: string
+  label: string
+  state: 'done' | 'running' | 'pending' | 'failed'
+  done: number
+  total: number
+}
+
+export interface CaseProgress {
+  status_label: string
+  steps: CaseProgressStep[]
+  current: string
+  failed_documents: number
+}
+
 export interface CaseListItem {
   id: string
   external_ref: string | null
@@ -507,6 +522,7 @@ export interface CaseListItem {
   profile: { key: string; version: number } | null
   verdict: VerdictDecision | null
   created_at: string
+  progress: CaseProgress
 }
 
 export interface EvidenceSource {

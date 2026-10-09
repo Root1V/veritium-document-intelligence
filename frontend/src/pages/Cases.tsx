@@ -6,6 +6,7 @@ import { useCases } from '@/lib/queries'
 import { VERDICT_LABEL, VERDICT_VARIANT } from '@/lib/verdict'
 import { canExecute } from '@/lib/auth'
 import { UploadLinkDialog } from '@/components/cases/UploadLinkDialog'
+import { ProgressFunnel } from '@/components/cases/ProgressFunnel'
 
 export function CasesPage() {
   const { data: cases, isLoading } = useCases()
@@ -28,7 +29,7 @@ export function CasesPage() {
               <TableHead>Expediente</TableHead>
               <TableHead>Perfil</TableHead>
               <TableHead>Canal</TableHead>
-              <TableHead>Estado</TableHead>
+              <TableHead>Avance</TableHead>
               <TableHead>Veredicto</TableHead>
               <TableHead>Creado</TableHead>
             </TableRow>
@@ -44,9 +45,18 @@ export function CasesPage() {
                 <TableCell className="text-sm">{c.profile ? `${c.profile.key} v${c.profile.version}` : '—'}</TableCell>
                 <TableCell className="text-sm">{c.channel}</TableCell>
                 <TableCell>
-                  <Badge variant="outline">{c.status}</Badge>
+                  <div className="flex flex-col gap-1">
+                    <span className="text-sm">{c.progress.status_label}</span>
+                    {c.status !== 'completed' || c.progress.failed_documents ? <ProgressFunnel progress={c.progress} compact /> : null}
+                  </div>
                 </TableCell>
-                <TableCell>{c.verdict ? <Badge variant={VERDICT_VARIANT[c.verdict]}>{VERDICT_LABEL[c.verdict]}</Badge> : '—'}</TableCell>
+                <TableCell>
+                  {c.verdict ? (
+                    <Badge variant={VERDICT_VARIANT[c.verdict]}>{VERDICT_LABEL[c.verdict]}</Badge>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">{c.status === 'processing' || c.status === 'uploaded' ? 'en curso' : '—'}</span>
+                  )}
+                </TableCell>
                 <TableCell className="text-sm text-muted-foreground">{new Date(c.created_at).toLocaleString()}</TableCell>
               </TableRow>
             ))}

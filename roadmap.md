@@ -63,6 +63,7 @@ Estados: `done` · `todo` · `blocked` (espera a otro equipo) · `superseded` (a
 | VRT-39 | Corrección con motivo y sustento | done | Código de motivo obligatorio + sustento libre en cada corrección. |
 | VRT-40 | Reproceso selectivo | done | Reprocesar un atributo, documento, regla o el expediente, según el grafo de dependencias. |
 | VRT-41 | Exportes | done | PDF / JSON / YAML / Markdown desde el resultado canónico. |
+| VRT-64 | Avance del expediente por etapas | todo | Embudo Recibido → Lectura → Clasificación → Extracción → Validación → Decisión, en la lista y en el expediente. |
 
 ## F4 — Calidad y comprensión
 
