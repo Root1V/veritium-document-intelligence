@@ -53,7 +53,7 @@ Estados: `done` · `todo` · `blocked` (espera a otro equipo) · `superseded` (a
 | VRT-34 | UI del catálogo semántico | done | Gestionar entidades, atributos, roles y mapeos desde la web. |
 | VRT-35 | Validadores intrínsecos por atributo | done | Formato y validación definidos una sola vez por atributo, no por tipo de documento. |
 | VRT-36 | Biblioteca de reglas sobre atributos | done | Lenguaje natural → CEL o procedimiento, con resultado `AMBIGUA` y casos de prueba. |
-| VRT-37 | Diseñador de perfiles | todo | Armar procesos desde la biblioteca, con sugerencias de reutilización. |
+| VRT-37 | Diseñador de perfiles | done | Armar procesos desde la biblioteca, con sugerencias de reutilización. |
 
 ## F3 — Expediente y revisión
 
