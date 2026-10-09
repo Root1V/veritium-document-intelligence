@@ -29,6 +29,10 @@ from idp.persistence.models import (
     DocumentTypeRecord,
     DocumentTypeSuggestion,
     DocumentTypeVersion,
+    EvalCase,
+    EvalResult,
+    EvalRun,
+    EvalSuite,
     Extraction,
     OutboxEvent,
     ProcessProfile,
@@ -1135,3 +1139,72 @@ class WebhookDeliveryRepository:
         )
         return list((await self._session.scalars(stmt)).all())
 
+
+
+class EvaluationRepository:
+    """Evaluation suites, their runs and results (VRT-42)."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def create_suite(
+        self, *, name: str, description: str | None, source: str, created_by: str, cases: list[EvalCase], suite_id: uuid.UUID | None = None
+    ) -> EvalSuite:
+        suite = EvalSuite(id=suite_id or uuid.uuid4(), name=name, description=description, source=source, created_by=created_by, cases=cases)
+        self._session.add(suite)
+        await self._session.flush()
+        return suite
+
+    async def list_suites(self) -> list[EvalSuite]:
+        stmt = select(EvalSuite).options(selectinload(EvalSuite.cases), selectinload(EvalSuite.runs)).order_by(EvalSuite.created_at.desc())
+        return list((await self._session.scalars(stmt)).all())
+
+    async def get_suite(self, suite_id: uuid.UUID) -> EvalSuite | None:
+        stmt = (
+            select(EvalSuite)
+            .where(EvalSuite.id == suite_id)
+            .options(selectinload(EvalSuite.cases), selectinload(EvalSuite.runs))
+            .execution_options(populate_existing=True)
+        )
+        return await self._session.scalar(stmt)
+
+    async def get_run(self, run_id: uuid.UUID) -> EvalRun | None:
+        stmt = (
+            select(EvalRun)
+            .where(EvalRun.id == run_id)
+            .options(selectinload(EvalRun.results), selectinload(EvalRun.suite).selectinload(EvalSuite.cases))
+            .execution_options(populate_existing=True)
+        )
+        return await self._session.scalar(stmt)
+
+    async def unfinished_run(self, suite_id: uuid.UUID) -> EvalRun | None:
+        stmt = select(EvalRun).where(EvalRun.suite_id == suite_id, EvalRun.status.in_(("pending", "running")))
+        return await self._session.scalar(stmt)
+
+    async def save_result(self, result: EvalResult) -> None:
+        # One result per case and run: a resumed run never writes a case twice.
+        values = {c.name: getattr(result, c.name) for c in EvalResult.__table__.columns if c.name not in ("id", "created_at")}
+        await self._session.execute(pg_insert(EvalResult).values(id=uuid.uuid4(), **values).on_conflict_do_nothing(index_elements=["run_id", "case_id"]))
+
+    async def corrected_documents(self) -> list[tuple[Document, dict[str, Any]]]:
+        """Documents with human corrections and, per top-level field, the
+        latest corrected value — the material of a golden set. A business
+        override is left out: it is a decision, not what the document says."""
+        stmt = (
+            select(Document, ReviewItem.field_path, AuditLogEntry.corrected_value)
+            .join(ReviewItem, ReviewItem.document_id == Document.id)
+            .join(AuditLogEntry, AuditLogEntry.review_item_id == ReviewItem.id)
+            .where(
+                ReviewItem.status == "resolved",
+                Document.document_type.is_not(None),
+                Document.document_type != "generic",
+                or_(AuditLogEntry.reason_code.is_(None), AuditLogEntry.reason_code != "business_override"),
+            )
+            .order_by(Document.created_at, AuditLogEntry.timestamp)
+        )
+        by_document: dict[uuid.UUID, tuple[Document, dict[str, Any]]] = {}
+        for document, field_path, corrected in (await self._session.execute(stmt)).all():
+            if "[" in field_path or "." in field_path:
+                continue  # list items are not evaluated
+            by_document.setdefault(document.id, (document, {}))[1][field_path] = (corrected or {}).get("value")
+        return list(by_document.values())

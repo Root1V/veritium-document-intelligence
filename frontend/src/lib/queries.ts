@@ -34,6 +34,10 @@ import type {
   ManualRuleRequest,
   ReviewCorrectionRequest,
   ReviewCorrectionResponse,
+  EvalRunDetail,
+  EvalRunSummary,
+  EvalSuiteDetail,
+  EvalSuiteSummary,
   ReprocessScope,
   ReviewItem,
   ToggleRule,
@@ -326,9 +330,14 @@ export function useWaiveCondition() {
 export type CaseExportFormat = 'json' | 'yaml' | 'markdown' | 'pdf'
 
 /** Downloads an export of the case result (VRT-41) under the name the API gives it. */
-export async function downloadCaseResult(caseId: string, format: CaseExportFormat): Promise<void> {
-  const response = await apiClient.get<Blob>(`/v1/cases/${caseId}/result`, { params: { format }, responseType: 'blob' })
-  const name = /filename="([^"]+)"/.exec(String(response.headers['content-disposition'] ?? ''))?.[1] ?? `expediente.${format}`
+export function downloadCaseResult(caseId: string, format: CaseExportFormat): Promise<void> {
+  return downloadFile(`/v1/cases/${caseId}/result`, { format }, `expediente.${format}`)
+}
+
+/** Saves what an authenticated GET returns, under the name in its Content-Disposition. */
+export async function downloadFile(path: string, params: Record<string, string>, fallbackName: string): Promise<void> {
+  const response = await apiClient.get<Blob>(path, { params, responseType: 'blob' })
+  const name = /filename="([^"]+)"/.exec(String(response.headers['content-disposition'] ?? ''))?.[1] ?? fallbackName
   const url = URL.createObjectURL(response.data)
   const link = document.createElement('a')
   link.href = url
@@ -598,5 +607,66 @@ export function useSetRuleToggle() {
       return data
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['validation-rule-toggles'] }),
+  })
+}
+
+// --- Evaluation suites (VRT-42) ----------------------------------------------
+
+const unfinished = (run: EvalRunSummary | null | undefined) => run?.status === 'pending' || run?.status === 'running'
+
+export function useEvalSuites() {
+  return useQuery({
+    queryKey: ['eval-suites'],
+    queryFn: async () => (await apiClient.get<EvalSuiteSummary[]>('/v1/eval-suites')).data,
+    refetchInterval: (query) => (query.state.data?.some((s) => unfinished(s.latest_run)) ? 4_000 : false),
+  })
+}
+
+export function useEvalSuite(suiteId: string | undefined) {
+  return useQuery({
+    queryKey: ['eval-suites', suiteId],
+    enabled: !!suiteId,
+    queryFn: async () => (await apiClient.get<EvalSuiteDetail>(`/v1/eval-suites/${suiteId}`)).data,
+    refetchInterval: (query) => (query.state.data?.runs.some(unfinished) ? 4_000 : false),
+  })
+}
+
+export function useEvalRun(runId: string | undefined, baselineId: string | undefined) {
+  return useQuery({
+    queryKey: ['eval-runs', runId, baselineId],
+    enabled: !!runId,
+    queryFn: async () => (await apiClient.get<EvalRunDetail>(`/v1/eval-runs/${runId}`, { params: baselineId ? { baseline: baselineId } : {} })).data,
+    refetchInterval: (query) => (unfinished(query.state.data) ? 4_000 : false),
+  })
+}
+
+export function useCreateEvalSuite() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ name, description, table, files }: { name: string; description: string; table: File; files: File[] }) => {
+      const form = new FormData()
+      form.append('name', name)
+      if (description) form.append('description', description)
+      form.append('table', table)
+      files.forEach((f) => form.append('files', f))
+      return (await apiClient.post<EvalSuiteDetail>('/v1/eval-suites', form)).data
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['eval-suites'] }),
+  })
+}
+
+export function useCreateGoldenSet() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (body: { name: string; description?: string }) => (await apiClient.post<EvalSuiteDetail>('/v1/eval-suites/from-corrections', body)).data,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['eval-suites'] }),
+  })
+}
+
+export function useRunEvalSuite() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (suiteId: string) => (await apiClient.post<EvalRunSummary>(`/v1/eval-suites/${suiteId}/runs`)).data,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['eval-suites'] }),
   })
 }

@@ -20,6 +20,8 @@ import { DocumentsPage } from '@/pages/Documents'
 import { UsersPage } from '@/pages/Users'
 import { ValidationPage } from '@/pages/Validation'
 import { ValidationRulesPage } from '@/pages/ValidationRules'
+import { EvaluationPage } from '@/pages/Evaluation'
+import { EvaluationSuitePage } from '@/pages/EvaluationSuite'
 
 export default function App() {
   return (
@@ -150,6 +152,22 @@ export default function App() {
         element={
           <ProtectedRoute>
             <SemanticCatalogPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/evaluation"
+        element={
+          <ProtectedRoute>
+            <EvaluationPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/evaluation/:suiteId"
+        element={
+          <ProtectedRoute>
+            <EvaluationSuitePage />
           </ProtectedRoute>
         }
       />

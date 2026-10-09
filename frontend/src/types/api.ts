@@ -602,3 +602,91 @@ export interface CorrectionSummaryRow {
   count: number
 }
 
+
+// --- Evaluation suites (VRT-42) ----------------------------------------------
+
+export interface EvalRate {
+  evaluated: number
+  correct: number
+  accuracy: number | null
+}
+
+export interface EvalMetrics {
+  cases: number
+  failed: number
+  classification: EvalRate
+  fields: EvalRate
+  by_field: Record<string, EvalRate>
+}
+
+export interface EvalRunSummary {
+  id: string
+  status: 'pending' | 'running' | 'completed' | 'failed'
+  created_by: string
+  created_at: string
+  finished_at: string | null
+  error: string | null
+  metrics: EvalMetrics | null
+  provenance: { models?: Record<string, string>; code_version?: string; document_types?: Record<string, number> } | null
+}
+
+export interface EvalSuiteSummary {
+  id: string
+  name: string
+  description: string | null
+  source: 'table' | 'corrections'
+  created_by: string
+  created_at: string
+  case_count: number
+  latest_run: EvalRunSummary | null
+}
+
+export interface EvalCase {
+  id: string
+  filename: string
+  page_start: number | null
+  page_end: number | null
+  expected_document_type: string | null
+  expected_fields: Record<string, unknown>
+  source_document_id: string | null
+}
+
+export interface EvalSuiteDetail extends EvalSuiteSummary {
+  cases: EvalCase[]
+  runs: EvalRunSummary[]
+}
+
+export interface EvalFieldResult {
+  field: string
+  expected: unknown
+  actual: unknown
+  confidence: number | null
+  match: boolean
+}
+
+export interface EvalChange {
+  case_id: string
+  field: string
+  expected: unknown
+  before: unknown
+  after: unknown
+}
+
+export interface EvalRunDetail extends EvalRunSummary {
+  suite_id: string
+  suite_name: string
+  case_count: number
+  results: {
+    case_id: string
+    filename: string
+    expected_document_type: string | null
+    predicted_document_type: string | null
+    classification_confidence: number | null
+    status: 'done' | 'failed'
+    error: string | null
+    duration_ms: number | null
+    fields: EvalFieldResult[]
+  }[]
+  baseline_id: string | null
+  comparison: { regressions: EvalChange[]; improvements: EvalChange[] } | null
+}

@@ -252,7 +252,11 @@ Veritium pasa de "subir documentos sueltos" a ser una **capacidad de decisión d
 
 ## F4 — Calidad y comprensión
 ## VRT-42 — Suites de evaluación
-**Why:** sin evaluación no se puede cambiar un modelo, prompt o regla con seguridad. **Scope:** casos desde CSV/Excel y golden sets armados con las correcciones.
+**Why:** sin evaluación no se puede cambiar un modelo, prompt o tipo documental con seguridad.
+**Scope:**
+- Suite = documentos con su tipo y valores esperados, desde una tabla CSV/Excel (`archivo`, `tipo`, `paginas`, un campo por columna; plantilla por tipo) o como golden set desde las correcciones (sin las decisiones de negocio).
+- Una corrida clasifica y extrae con la configuración del momento, sin crear expedientes, y guarda métricas (clasificación, campos, por campo) y procedencia; se compara con la corrida anterior (regresiones y mejoras). UI en `/evaluation`.
+- Fuera: evaluar reglas y veredictos (VRT-44), calibración (VRT-43), campos lista, curar casos desde la UI y correr sobre aeon (corre en la API, reanudable).
 ## VRT-43 — Exactitud por campo y calibración
 **Why:** una confianza mal calibrada deja pasar errores con confianza alta. **Scope:** métricas por campo y calibración que alimenta los umbrales del perfil.
 ## VRT-44 — Simulación *what-if* y modo sombra

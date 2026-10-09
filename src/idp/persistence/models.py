@@ -526,3 +526,87 @@ class WebhookDelivery(Base):
 
     event: Mapped["OutboxEvent"] = relationship()
     endpoint: Mapped["WebhookEndpoint"] = relationship()
+
+
+class EvalSuite(Base):
+    """A set of documents with the classification and field values they
+    should produce (VRT-42), from a CSV/Excel table or from the human
+    corrections (a golden set). Running it measures the current models,
+    prompts and document types against it."""
+
+    __tablename__ = "eval_suites"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    name: Mapped[str] = mapped_column(String(256), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source: Mapped[str] = mapped_column(String(16), nullable=False)  # table | corrections
+    created_by: Mapped[str] = mapped_column(String(256), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    cases: Mapped[list["EvalCase"]] = relationship(back_populates="suite", cascade="all, delete-orphan", order_by="EvalCase.position")
+    runs: Mapped[list["EvalRun"]] = relationship(back_populates="suite", cascade="all, delete-orphan", order_by="EvalRun.created_at.desc()")
+
+
+class EvalCase(Base):
+    """One document of a suite and what it should produce. Pages are
+    0-based and inclusive, for a logical document inside a larger file."""
+
+    __tablename__ = "eval_cases"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    suite_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("eval_suites.id", ondelete="CASCADE"), nullable=False)
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    filename: Mapped[str] = mapped_column(String(256), nullable=False)
+    storage_key: Mapped[str] = mapped_column(String(512), nullable=False)
+    page_start: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    page_end: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    expected_document_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    expected_fields: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    # The document a golden-set case came from (source="corrections").
+    source_document_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("documents.id", ondelete="SET NULL"), nullable=True)
+
+    suite: Mapped["EvalSuite"] = relationship(back_populates="cases")
+
+
+class EvalRun(Base):
+    """One measurement of a suite with the configuration of the moment,
+    recorded in ``provenance`` (models, code, document type versions).
+    Lifecycle: pending -> running -> completed | failed."""
+
+    __tablename__ = "eval_runs"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    suite_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("eval_suites.id", ondelete="CASCADE"), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), default="pending", server_default="pending", nullable=False)
+    provenance: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    metrics: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by: Mapped[str] = mapped_column(String(256), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    suite: Mapped["EvalSuite"] = relationship(back_populates="runs")
+    results: Mapped[list["EvalResult"]] = relationship(back_populates="run", cascade="all, delete-orphan")
+
+
+class EvalResult(Base):
+    """What one case produced in one run, field by field. Written once per
+    case, so a run interrupted mid-way resumes with the cases left."""
+
+    __tablename__ = "eval_results"
+    __table_args__ = (UniqueConstraint("run_id", "case_id"),)
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    run_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("eval_runs.id", ondelete="CASCADE"), nullable=False)
+    case_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("eval_cases.id", ondelete="CASCADE"), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)  # done | failed
+    predicted_document_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    classification_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # [{field, expected, actual, confidence, match}]
+    field_results: Mapped[list] = mapped_column(JSONB, nullable=False)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    run: Mapped["EvalRun"] = relationship(back_populates="results")
