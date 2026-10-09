@@ -12,6 +12,8 @@ import { DocumentTypesPage } from '@/pages/DocumentTypes'
 import { NewDocumentTypePage } from '@/pages/NewDocumentType'
 import { SemanticCatalogPage } from '@/pages/SemanticCatalog'
 import { ProfilesPage } from '@/pages/Profiles'
+import { CasesPage } from '@/pages/Cases'
+import { CaseDetailPage } from '@/pages/CaseDetail'
 import { ProfileEditorPage } from '@/pages/ProfileEditor'
 import { AuditPage } from '@/pages/Audit'
 import { DocumentsPage } from '@/pages/Documents'
@@ -96,6 +98,22 @@ export default function App() {
             <RequireRole roles={['admin']}>
               <NewDocumentTypePage />
             </RequireRole>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/cases"
+        element={
+          <ProtectedRoute>
+            <CasesPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/cases/:caseId"
+        element={
+          <ProtectedRoute>
+            <CaseDetailPage />
           </ProtectedRoute>
         }
       />

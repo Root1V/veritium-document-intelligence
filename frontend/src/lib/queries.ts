@@ -12,6 +12,8 @@ import type {
   CreateUserRequest,
   DocumentDetailResponse,
   DocumentListResponse,
+  CaseListItem,
+  CaseResult,
   CatalogVersionDetail,
   CatalogVersionSummary,
   DocumentTypeCatalogResponse,
@@ -172,12 +174,14 @@ export function useDocument(documentId: string | undefined) {
 /** Fetches the original file's bytes as a Blob URL, respecting the JWT
  * header — a plain `<img src=...>`/react-pdf `file=url` can't attach auth
  * headers, so the bytes are fetched through axios instead. */
-export function useDocumentFileUrl(documentId: string | undefined) {
+export function useDocumentFile(documentId: string | undefined) {
   return useQuery({
     queryKey: ['document-file', documentId],
     queryFn: async () => {
       const { data } = await apiClient.get(`/documents/${documentId}/file`, { responseType: 'blob' })
-      return URL.createObjectURL(data as Blob)
+      const blob = data as Blob
+      // The type decides the viewer: a PDF renders with react-pdf, an image as an image (VRT-38).
+      return { url: URL.createObjectURL(blob), mimeType: blob.type }
     },
     enabled: !!documentId,
     staleTime: Infinity,
@@ -278,6 +282,41 @@ export function useRegisterDocumentType() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['document-types'] })
     },
+  })
+}
+
+export function useCases() {
+  return useQuery({
+    queryKey: ['cases'],
+    queryFn: async () => {
+      const { data } = await apiClient.get<CaseListItem[]>('/v1/cases')
+      return data
+    },
+    refetchInterval: 10_000,
+  })
+}
+
+export function useCaseResult(caseId: string | undefined) {
+  return useQuery({
+    queryKey: ['cases', caseId, 'result'],
+    enabled: !!caseId,
+    queryFn: async () => {
+      const { data } = await apiClient.get<CaseResult>(`/v1/cases/${caseId}/result`)
+      return data
+    },
+    // A case still running keeps changing; a finished one doesn't.
+    refetchInterval: (query) => (query.state.data?.run?.status === 'running' || query.state.data?.run?.status === 'pending' ? 5_000 : false),
+  })
+}
+
+export function useWaiveCondition() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ caseId, conditionId, reason }: { caseId: string; conditionId: string; reason: string }) => {
+      const { data } = await apiClient.post(`/v1/cases/${caseId}/conditions/${conditionId}/waive`, { reason })
+      return data
+    },
+    onSuccess: (_, { caseId }) => queryClient.invalidateQueries({ queryKey: ['cases', caseId] }),
   })
 }
 

@@ -37,7 +37,11 @@ class PaddleOCRBackend:
 
     def _ocr_engine(self) -> PaddleOCR:
         if self._ocr is None:
-            self._ocr = PaddleOCR(lang=self._lang)
+            # No page unwarping nor orientation correction: they make the OCR
+            # read a transformed image, so its boxes stop matching the page
+            # the reviewer sees (measured ~20 px off on a flat scan; worse on
+            # photos). Evidence has to point at the original (VRT-38).
+            self._ocr = PaddleOCR(lang=self._lang, use_doc_unwarping=False, use_doc_orientation_classify=False)
         return self._ocr
 
     def _layout_engine(self) -> LayoutDetection:

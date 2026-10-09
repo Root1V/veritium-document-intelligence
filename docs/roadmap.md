@@ -223,7 +223,12 @@ Veritium pasa de "subir documentos sueltos" a ser una **capacidad de decisión d
 
 ## F3 — Expediente y revisión
 ## VRT-38 — Vista E2E del expediente
-**Why:** el ejecutivo necesita ver el resultado completo y su evidencia en un solo lugar. **Scope:** veredicto, condiciones, entidades consolidadas y visor con página y bbox correctos; miniaturas que soporten imágenes (hoy el visor de PDF falla con PNG/JPG). Absorbe VRT-17, VRT-18 y VRT-20.
+**Why:** el ejecutivo necesita ver el resultado completo y su evidencia en un solo lugar. Absorbe VRT-17, VRT-18 y VRT-20.
+**Scope:**
+- Páginas `/cases` y `/cases/:id`: veredicto con motivos (agrupados), requisitos con dispensa, entidades consolidadas con sus fuentes, hallazgos y documentos con su nombre visible; cada fuente abre el visor en su página con su recuadro.
+- `EvidenceViewer`: PDF o imagen (PNG/JPG) con la misma superposición; también en el detalle de documento y las miniaturas.
+- Recuadros fieles: el OCR ya no endereza ni rota la página (medido: desplazaba ~20 px los recuadros respecto de la imagen original).
+
 ## VRT-39 — Corrección con motivo y sustento
 **Why:** sin un motivo codificado no se puede medir por qué se corrige. **Scope:** código de motivo obligatorio + sustento libre, auditados.
 ## VRT-40 — Reproceso selectivo

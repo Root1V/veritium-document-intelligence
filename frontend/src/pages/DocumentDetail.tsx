@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { Loader2 } from 'lucide-react'
-import { useDocument, useDocumentFileUrl } from '@/lib/queries'
+import { useDocument } from '@/lib/queries'
 import { flattenExtraction, splitExtractionPayload } from '@/lib/extraction'
-import { PdfViewer, type BboxHighlight } from '@/components/documents/PdfViewer'
+import type { BboxHighlight } from '@/components/documents/PdfViewer'
+import { EvidenceViewer } from '@/components/documents/EvidenceViewer'
 import { ExtractionField } from '@/components/documents/ExtractionField'
 import { ExtractionTable } from '@/components/documents/ExtractionTable'
 import { ValidationIssuesList } from '@/components/documents/ValidationIssuesList'
@@ -15,7 +16,6 @@ import type { Extracted } from '@/types/api'
 export function DocumentDetailPage() {
   const { documentId } = useParams<{ documentId: string }>()
   const { data: document, isLoading } = useDocument(documentId)
-  const { data: fileUrl } = useDocumentFileUrl(documentId)
 
   const [selectedKey, setSelectedKey] = useState<string | null>(null)
   const [showAllOnPage, setShowAllOnPage] = useState(false)
@@ -85,18 +85,10 @@ export function DocumentDetailPage() {
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <div className="flex min-w-0 flex-col gap-3">
-          {fileUrl ? (
-            <>
-              <Button variant="outline" size="sm" className="self-start" onClick={() => setShowAllOnPage((v) => !v)}>
-                {showAllOnPage ? 'Mostrar solo el campo seleccionado' : 'Ver todos los campos de esta página'}
-              </Button>
-              <PdfViewer fileUrl={fileUrl} page={currentPage} onPageChange={setCurrentPage} highlights={highlights} />
-            </>
-          ) : (
-            <div className="flex h-96 items-center justify-center rounded-lg border">
-              <Loader2 className="size-6 animate-spin text-muted-foreground" />
-            </div>
-          )}
+          <Button variant="outline" size="sm" className="self-start" onClick={() => setShowAllOnPage((v) => !v)}>
+            {showAllOnPage ? 'Mostrar solo el campo seleccionado' : 'Ver todos los campos de esta página'}
+          </Button>
+          <EvidenceViewer documentId={document.id} page={currentPage} onPageChange={setCurrentPage} highlights={highlights} />
         </div>
 
         <Tabs defaultValue="extraction" className="min-w-0">

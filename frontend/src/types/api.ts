@@ -477,3 +477,85 @@ export interface ProfileLibrary {
   }[]
   legacy_rule_ids: Record<string, string>
 }
+
+// --- Cases (VRT-25; end-to-end view in VRT-38) -----------------------------
+
+export type VerdictDecision = 'continue' | 'human_review' | 'return_to_client'
+
+export interface CaseListItem {
+  id: string
+  external_ref: string | null
+  channel: string
+  status: string
+  profile: { key: string; version: number } | null
+  verdict: VerdictDecision | null
+  created_at: string
+}
+
+export interface EvidenceSource {
+  document_id: string
+  document_type: string
+  field_path: string
+  value: unknown
+  page: number | null
+  bbox: [number, number, number, number] | null
+  confidence: number | null
+  source_text: string | null
+}
+
+export interface ResolvedAttribute {
+  role: string
+  attribute: string
+  value: unknown
+  status: 'consistent' | 'conflict' | 'single_source'
+  distinct_values: unknown[]
+  sources: EvidenceSource[]
+}
+
+export interface CaseCondition {
+  id: string
+  key: string
+  label: string
+  kind: string
+  document_type: string | null
+  attributes: string[] | null
+  role: string | null
+  status: 'open' | 'resolved' | 'waived'
+  note: string | null
+  waived_by: string | null
+  waived_reason: string | null
+}
+
+export interface CaseFinding {
+  rule_id: string
+  category: string
+  severity: string
+  document_id: string | null
+  field_path: string | null
+  message: string
+  explanation: string
+}
+
+export interface CaseDocument {
+  id: string
+  filename: string
+  document_type: string | null
+  status: string
+  needs_review: boolean
+  parent_document_id: string | null
+  page_start: number | null
+  page_end: number | null
+  fields: Record<string, unknown> | null
+}
+
+export interface CaseResult {
+  case: { id: string; external_ref: string | null; channel: string; status: string; profile: { key: string; version: number; semantic_catalog_version: number } | null; created_at: string }
+  verdict: { decision: VerdictDecision | null; reasons: { kind: string; decision: VerdictDecision; message: string; ref: Record<string, unknown> }[]; decided_at: string | null }
+  conditions: CaseCondition[]
+  semantic_catalog_version: number | null
+  entities: Record<string, Record<string, Record<string, ResolvedAttribute>>>
+  documents: CaseDocument[]
+  findings: CaseFinding[]
+  run: { run_number: number; trigger: string; status: string; started_at: string | null; finished_at: string | null; error: string | null } | null
+}
+
