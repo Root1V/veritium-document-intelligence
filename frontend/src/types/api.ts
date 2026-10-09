@@ -88,6 +88,8 @@ export interface ReviewItem {
 
 export interface ReviewCorrectionRequest {
   corrected_value: unknown
+  reason_code: string
+  justification?: string | null
   model_version?: string | null
   prompt_version?: string | null
 }
@@ -163,6 +165,9 @@ export interface AuditEntry {
   reviewer_identity: string
   original_value: { value: unknown }
   corrected_value: { value: unknown }
+  reason_code: string | null
+  reason_label: string | null
+  justification: string | null
   original_confidence: number
   model_version: string | null
   prompt_version: string | null
@@ -557,5 +562,21 @@ export interface CaseResult {
   documents: CaseDocument[]
   findings: CaseFinding[]
   run: { run_number: number; trigger: string; status: string; started_at: string | null; finished_at: string | null; error: string | null } | null
+}
+
+// --- Correction reasons (VRT-39) ---------------------------------------------
+
+export interface CorrectionReason {
+  code: string
+  label: string
+  description: string
+  requires_justification: boolean
+}
+
+export interface CorrectionSummaryRow {
+  reason_code: string | null
+  reason_label: string
+  document_type: string | null
+  count: number
 }
 

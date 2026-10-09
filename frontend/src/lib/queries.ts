@@ -15,6 +15,8 @@ import type {
   CaseListItem,
   CaseResult,
   CatalogVersionDetail,
+  CorrectionReason,
+  CorrectionSummaryRow,
   CatalogVersionSummary,
   DocumentTypeCatalogResponse,
   ProcessProfileDefinition,
@@ -413,6 +415,27 @@ export function usePublishCatalogVersion() {
       return data
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['semantic-catalog'] }),
+  })
+}
+
+export function useCorrectionReasons() {
+  return useQuery({
+    queryKey: ['review', 'reasons'],
+    queryFn: async () => {
+      const { data } = await apiClient.get<CorrectionReason[]>('/review/reasons')
+      return data
+    },
+    staleTime: Infinity,
+  })
+}
+
+export function useCorrectionSummary() {
+  return useQuery({
+    queryKey: ['audit', 'correction-summary'],
+    queryFn: async () => {
+      const { data } = await apiClient.get<CorrectionSummaryRow[]>('/audit/correction-summary')
+      return data
+    },
   })
 }
 

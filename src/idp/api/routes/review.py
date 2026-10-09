@@ -1,6 +1,7 @@
-"""GET /review (pending queue) and POST /review/{id} (submit a correction —
-writes the full audit trail: original value/confidence, reviewer identity,
-corrected value, timestamp, model/prompt version)."""
+"""GET /review (pending queue), GET /review/reasons (the correction reason
+codes) and POST /review/{id} (submit a correction — writes the full audit
+trail: original value/confidence, reviewer identity, corrected value, the
+coded reason and its justification (VRT-39), timestamp, model/prompt version)."""
 
 from __future__ import annotations
 
@@ -8,10 +9,11 @@ import uuid
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, model_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from idp.api.deps import get_current_user, get_db_session, require_role
+from idp.domain.correction_reasons import CORRECTION_REASONS, REASONS_BY_CODE, CorrectionReason, ReasonCode
 from idp.persistence.models import User
 from idp.persistence.repositories import DocumentRepository, ReviewRepository
 from idp.pipeline.case_evaluation import refresh_verdict
@@ -31,8 +33,17 @@ class ReviewItemResponse(BaseModel):
 
 class ReviewCorrectionRequest(BaseModel):
     corrected_value: Any
+    reason_code: ReasonCode = Field(description="Por qué se corrige (GET /review/reasons).")
+    justification: str | None = Field(default=None, description="Sustento en palabras del revisor; obligatorio para algunos motivos.")
     model_version: str | None = None
     prompt_version: str | None = None
+
+    @model_validator(mode="after")
+    def _justified(self) -> ReviewCorrectionRequest:
+        reason = REASONS_BY_CODE[self.reason_code]
+        if reason.requires_justification and len((self.justification or "").strip()) < 5:
+            raise ValueError(f"el motivo '{reason.label}' requiere un sustento")
+        return self
 
 
 class ReviewCorrectionResponse(BaseModel):
@@ -58,6 +69,11 @@ async def list_pending_review(session: AsyncSession = Depends(get_db_session)) -
     ]
 
 
+@router.get("/reasons", response_model=list[CorrectionReason])
+async def correction_reasons() -> list[CorrectionReason]:
+    return CORRECTION_REASONS
+
+
 @router.post("/{review_item_id}", response_model=ReviewCorrectionResponse, dependencies=[Depends(require_role("operador", "admin"))])
 async def submit_correction(
     review_item_id: uuid.UUID,
@@ -74,6 +90,8 @@ async def submit_correction(
         review_item_id,
         reviewer_identity=current_user.name,
         corrected_value={"value": body.corrected_value},
+        reason_code=body.reason_code,
+        justification=(body.justification or "").strip() or None,
         model_version=body.model_version,
         prompt_version=body.prompt_version,
     )

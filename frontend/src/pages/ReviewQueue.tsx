@@ -2,13 +2,15 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
-import { useReviewQueue, useSubmitCorrection } from '@/lib/queries'
+import { useCorrectionReasons, useReviewQueue, useSubmitCorrection } from '@/lib/queries'
+import { errorDetail } from '@/lib/apiErrors'
 import { humanizeFieldName } from '@/lib/extraction'
 import { canExecute } from '@/lib/auth'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import type { ReviewItem } from '@/types/api'
 
 const REASON_LABEL: Record<string, string> = {
@@ -18,16 +20,28 @@ const REASON_LABEL: Record<string, string> = {
 
 function ReviewRow({ item }: { item: ReviewItem }) {
   const submitCorrection = useSubmitCorrection()
+  const { data: reasons } = useCorrectionReasons()
   const [correcting, setCorrecting] = useState(false)
   const [value, setValue] = useState(String(item.current_value.value ?? ''))
+  const [reasonCode, setReasonCode] = useState('')
+  const [justification, setJustification] = useState('')
   const canCorrect = canExecute()
+  const reason = reasons?.find((r) => r.code === reasonCode)
 
   function handleSubmit() {
+    if (!reason) {
+      toast.error('Elige el motivo de la corrección.')
+      return
+    }
+    if (reason.requires_justification && justification.trim().length < 5) {
+      toast.error(`"${reason.label}" requiere un sustento.`)
+      return
+    }
     submitCorrection.mutate(
-      { reviewItemId: item.id, body: { corrected_value: value } },
+      { reviewItemId: item.id, body: { corrected_value: value, reason_code: reason.code, justification: justification.trim() || null } },
       {
         onSuccess: () => toast.success('Corrección guardada.'),
-        onError: () => toast.error('No se pudo guardar la corrección.'),
+        onError: (error) => toast.error(errorDetail(error)),
       },
     )
   }
@@ -57,15 +71,44 @@ function ReviewRow({ item }: { item: ReviewItem }) {
             )}
           </div>
         ) : (
-          <div className="flex items-center gap-2">
-            <Input value={value} onChange={(e) => setValue(e.target.value)} className="max-w-sm" />
-            <Button size="sm" disabled={submitCorrection.isPending} onClick={handleSubmit}>
-              {submitCorrection.isPending && <Loader2 className="size-3.5 animate-spin" />}
-              Guardar
-            </Button>
-            <Button size="sm" variant="ghost" onClick={() => setCorrecting(false)}>
-              Cancelar
-            </Button>
+          <div className="flex flex-col gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <Input value={value} onChange={(e) => setValue(e.target.value)} className="max-w-sm" aria-label="Valor corregido" />
+              <Select
+                value={reasonCode}
+                onValueChange={(code) => {
+                  setReasonCode(code)
+                  if (code === 'confirmed_correct') setValue(String(item.current_value.value ?? ''))
+                }}
+              >
+                <SelectTrigger className="w-60">
+                  <SelectValue placeholder="Motivo (obligatorio)" />
+                </SelectTrigger>
+                <SelectContent>
+                  {(reasons ?? []).map((r) => (
+                    <SelectItem key={r.code} value={r.code}>
+                      {r.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {reason && <span className="text-xs text-muted-foreground">{reason.description}</span>}
+            <Input
+              value={justification}
+              onChange={(e) => setJustification(e.target.value)}
+              placeholder={reason?.requires_justification ? 'Sustento (obligatorio para este motivo)' : 'Sustento (opcional)'}
+              className="max-w-xl text-sm"
+            />
+            <div className="flex gap-2">
+              <Button size="sm" disabled={submitCorrection.isPending} onClick={handleSubmit}>
+                {submitCorrection.isPending && <Loader2 className="size-3.5 animate-spin" />}
+                Guardar
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => setCorrecting(false)}>
+                Cancelar
+              </Button>
+            </div>
           </div>
         )}
       </CardContent>

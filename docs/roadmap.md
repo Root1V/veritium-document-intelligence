@@ -230,7 +230,11 @@ Veritium pasa de "subir documentos sueltos" a ser una **capacidad de decisión d
 - Recuadros fieles: el OCR ya no endereza ni rota la página (medido: desplazaba ~20 px los recuadros respecto de la imagen original).
 
 ## VRT-39 — Corrección con motivo y sustento
-**Why:** sin un motivo codificado no se puede medir por qué se corrige. **Scope:** código de motivo obligatorio + sustento libre, auditados.
+**Why:** sin un motivo codificado no se puede medir por qué se corrige.
+**Scope:**
+- Siete motivos codificados (`domain/correction_reasons.py`: error de OCR, otro dato, no extraído, formato, ilegible, decisión de negocio, valor correcto); obligatorio en `POST /review/{id}`, con sustento obligatorio para ilegible y decisión de negocio.
+- Ambos en el `audit_log`; `GET /audit/correction-summary` cuenta por motivo y tipo de documento; la cola de revisión y la auditoría los muestran.
+
 ## VRT-40 — Reproceso selectivo
 **Why:** corregir un campo no debe obligar a reprocesar todo el expediente. **Scope:** grafo campo → regla → veredicto; reproceso por atributo, documento, regla o expediente, cada uno como una corrida nueva e inmutable.
 ## VRT-41 — Exportes

@@ -438,7 +438,17 @@ class ReviewRepository:
     async def get(self, review_item_id: uuid.UUID) -> ReviewItem | None:
         return await self._session.get(ReviewItem, review_item_id)
 
-    async def resolve(self, review_item_id: uuid.UUID, *, reviewer_identity: str, corrected_value: dict, model_version: str | None = None, prompt_version: str | None = None) -> AuditLogEntry:
+    async def resolve(
+        self,
+        review_item_id: uuid.UUID,
+        *,
+        reviewer_identity: str,
+        corrected_value: dict,
+        reason_code: str | None = None,
+        justification: str | None = None,
+        model_version: str | None = None,
+        prompt_version: str | None = None,
+    ) -> AuditLogEntry:
         item = await self._session.get(ReviewItem, review_item_id)
         if item is None:
             raise ValueError(f"review item not found: {review_item_id}")
@@ -448,6 +458,8 @@ class ReviewRepository:
             original_confidence=item.confidence,
             reviewer_identity=reviewer_identity,
             corrected_value=corrected_value,
+            reason_code=reason_code,
+            justification=justification,
             model_version=model_version,
             prompt_version=prompt_version,
         )
@@ -455,6 +467,18 @@ class ReviewRepository:
         self._session.add(entry)
         await self._session.flush()
         return entry
+
+    async def correction_summary(self) -> list[tuple[str | None, str | None, int]]:
+        """(reason_code, document_type, count) over every correction — why
+        corrections happen, and on which documents (VRT-39)."""
+        stmt = (
+            select(AuditLogEntry.reason_code, Document.document_type, func.count())
+            .join(ReviewItem, ReviewItem.id == AuditLogEntry.review_item_id)
+            .join(Document, Document.id == ReviewItem.document_id)
+            .group_by(AuditLogEntry.reason_code, Document.document_type)
+            .order_by(func.count().desc())
+        )
+        return [(r, t, n) for r, t, n in (await self._session.execute(stmt)).all()]
 
     async def list_audit_entries(self, *, limit: int = 50, offset: int = 0) -> list[AuditLogEntry]:
         # selectinload(review_item) avoids an N+1 — the API response needs
