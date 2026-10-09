@@ -55,6 +55,11 @@ export function ProfilesPage() {
                   <TableCell>{active ? `v${active.semantic_catalog_version}` : '—'}</TableCell>
                   <TableCell className="text-sm">
                     {p.versions.length} {draft && <Badge variant="outline">borrador v{draft.version}</Badge>}
+                    {draft && isAdmin() && (
+                      <Link to={`/simulations?profile=${p.key}&version=${draft.version}`} className="ml-2 text-xs underline">
+                        probar el borrador
+                      </Link>
+                    )}
                   </TableCell>
                   <TableCell className="text-right">
                     {isAdmin() && (

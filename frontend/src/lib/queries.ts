@@ -41,6 +41,8 @@ import type {
   EvalSuiteDetail,
   EvalSuiteSummary,
   ReprocessScope,
+  SimulationDetail,
+  SimulationView,
   ReviewItem,
   ToggleRule,
   TypeSuggestion,
@@ -704,5 +706,44 @@ export function useSetActiveCalibration() {
     mutationFn: async (version: number | null) =>
       (await apiClient.post(version === null ? '/v1/calibration/deactivate' : `/v1/calibration/${version}/activate`)).data,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['calibration'] }),
+  })
+}
+
+// --- What-if simulation and shadow mode (VRT-44) ----------------------------
+
+const simulating = (s: SimulationView) => s.status === 'pending' || (s.status === 'running' && s.kind === 'what_if')
+
+export function useSimulations() {
+  return useQuery({
+    queryKey: ['simulations'],
+    queryFn: async () => (await apiClient.get<SimulationView[]>('/v1/simulations')).data,
+    refetchInterval: (query) => (query.state.data?.some(simulating) ? 3_000 : false),
+  })
+}
+
+export function useSimulation(id: string | undefined) {
+  return useQuery({
+    queryKey: ['simulations', id],
+    enabled: !!id,
+    queryFn: async () => (await apiClient.get<SimulationDetail>(`/v1/simulations/${id}`)).data,
+    // A running what-if fills in; a shadow grows with every new case.
+    refetchInterval: (query) => (query.state.data && (simulating(query.state.data) || query.state.data.status === 'running') ? 5_000 : false),
+  })
+}
+
+export function useStartSimulation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (body: { profile_key: string; profile_version: number; kind: 'what_if' | 'shadow'; case_limit?: number }) =>
+      (await apiClient.post<SimulationView>('/v1/simulations', body)).data,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['simulations'] }),
+  })
+}
+
+export function useStopSimulation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (id: string) => (await apiClient.post<SimulationView>(`/v1/simulations/${id}/stop`)).data,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['simulations'] }),
   })
 }

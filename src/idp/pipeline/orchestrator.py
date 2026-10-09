@@ -14,6 +14,7 @@ promotion is mechanical, not a rewrite.
 from __future__ import annotations
 
 import asyncio
+import logging
 import threading
 import uuid
 from typing import Any
@@ -608,7 +609,16 @@ async def evaluate_case(settings: Settings, case_id: uuid.UUID, run_id: uuid.UUI
         await run_repo.mark_finished(run, status="completed", error=run.error)  # a re-extraction that failed says so (VRT-40)
         emit_run_finished(session, case, run)
         await session.commit()
-        return run.verdict
+        verdict = run.verdict
+    # Shadow candidates of the profile decide the case too (VRT-44); they
+    # never change the real decision, and their failure never fails the run.
+    from idp.pipeline.simulation import run_shadows  # imports this module
+
+    try:
+        await run_shadows(settings, case_id, run_id)
+    except Exception:
+        logging.getLogger(__name__).exception("shadow simulations failed for case %s", case_id)
+    return verdict
 
 
 async def fail_run(settings: Settings, case_id: uuid.UUID, run_id: uuid.UUID, error: str) -> None:

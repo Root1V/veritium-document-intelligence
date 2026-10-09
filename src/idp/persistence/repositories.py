@@ -246,6 +246,8 @@ class DocumentRepository:
             select(Document)
             .where(Document.case_id == case_id)
             .options(selectinload(Document.extraction))
+            # A stable order: messages built across documents read the same on every run.
+            .order_by(Document.created_at, Document.id)
             .execution_options(populate_existing=True)
         )
         result = await self._session.execute(stmt)

@@ -23,6 +23,7 @@ import { ValidationRulesPage } from '@/pages/ValidationRules'
 import { EvaluationPage } from '@/pages/Evaluation'
 import { EvaluationSuitePage } from '@/pages/EvaluationSuite'
 import { CalibrationPage } from '@/pages/Calibration'
+import { SimulationsPage } from '@/pages/Simulations'
 
 export default function App() {
   return (
@@ -161,6 +162,14 @@ export default function App() {
         element={
           <ProtectedRoute>
             <EvaluationPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/simulations"
+        element={
+          <ProtectedRoute>
+            <SimulationsPage />
           </ProtectedRoute>
         }
       />

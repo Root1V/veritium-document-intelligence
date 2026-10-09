@@ -633,3 +633,51 @@ class CalibrationVersion(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     activated_by: Mapped[str | None] = mapped_column(String(256), nullable=True)
     activated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class Simulation(Base):
+    """What would change if a profile version were the one in use (VRT-44).
+    ``what_if`` re-decides past cases of the profile with the candidate
+    version, from what was already extracted; ``shadow`` decides every new
+    case of the profile with it too, alongside the real decision, until
+    stopped. Neither touches a case, its verdict or its events."""
+
+    __tablename__ = "simulations"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    kind: Mapped[str] = mapped_column(String(16), nullable=False)  # what_if | shadow
+    profile_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    profile_version_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("process_profile_versions.id", ondelete="CASCADE"), nullable=False)
+    case_limit: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # what_if: pending -> running -> completed | failed; shadow: running -> stopped
+    status: Mapped[str] = mapped_column(String(16), default="pending", server_default="pending", nullable=False)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by: Mapped[str] = mapped_column(String(256), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    profile_version: Mapped["ProcessProfileVersion"] = relationship()
+    results: Mapped[list["SimulationResult"]] = relationship(back_populates="simulation", cascade="all, delete-orphan")
+
+
+class SimulationResult(Base):
+    """One case decided with the candidate version, next to its real
+    decision. In shadow mode a later run of the same case replaces it."""
+
+    __tablename__ = "simulation_results"
+    __table_args__ = (UniqueConstraint("simulation_id", "case_id"),)
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    simulation_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("simulations.id", ondelete="CASCADE"), nullable=False)
+    case_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("cases.id", ondelete="CASCADE"), nullable=False)
+    case_run_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("case_runs.id", ondelete="SET NULL"), nullable=True)
+    actual_verdict: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    simulated_verdict: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # Reason messages the candidate adds or no longer gives.
+    added_reasons: Mapped[list] = mapped_column(JSONB, nullable=False)
+    removed_reasons: Mapped[list] = mapped_column(JSONB, nullable=False)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    simulation: Mapped["Simulation"] = relationship(back_populates="results")
+    case: Mapped["Case"] = relationship()

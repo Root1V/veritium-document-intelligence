@@ -265,7 +265,11 @@ Veritium pasa de "subir documentos sueltos" a ser una **capacidad de decisión d
 - Versiones inmutables; un admin activa una y la cola de revisión compara la confianza calibrada con el umbral del perfil; la corrida registra la versión. UI en `/calibration`.
 - Fuera: recalcular solo y fijar el umbral del perfil automáticamente (lo decide una persona).
 ## VRT-44 — Simulación *what-if* y modo sombra
-**Why:** medir el impacto de un cambio antes de publicarlo. **Scope:** reejecución contra expedientes históricos y comparación en sombra.
+**Why:** medir el impacto de un cambio de proceso antes de publicarlo, sin tocar expedientes.
+**Scope:**
+- Candidato = una versión de perfil (checklist, reglas vinculadas incluidas las en borrador, catálogo y umbrales). Sobre el historial: re-decide los últimos N expedientes del proceso con lo ya extraído; en sombra: decide cada expediente nuevo también con el candidato, sin afectar el veredicto ni los webhooks.
+- Resultado en lenguaje de negocio: cuántos cambiarían, de qué decisión a cuál, y los motivos que aparecen o desaparecen (comparados por lo que tratan, no por su texto). UI en `/simulations`, con acceso desde el borrador en Perfiles.
+- Fuera: simular cambios de modelo o prompt (eso es VRT-42) y re-extraer en la simulación.
 ## VRT-45 — Lentes de Riesgos y Legal
 **Why:** las áreas aguas abajo necesitan comprender documentos, no solo validarlos. **Scope:** resúmenes y cláusulas contra un playbook, con evidencia citada.
 ## VRT-46 — Prompts versionados y grounding semántico

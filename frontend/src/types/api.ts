@@ -735,3 +735,43 @@ export interface CalibrationDetail extends CalibrationSummary {
   min_observations: number
   fields: (FieldCalibration & { label: string; document_type_name: string })[]
 }
+
+// --- What-if simulation and shadow mode (VRT-44) ----------------------------
+
+export interface SimulationSummary {
+  cases: number
+  failed: number
+  changed: number
+  agreement: number | null
+  before: Record<string, number>
+  after: Record<string, number>
+  transitions: { before: VerdictDecision | null; after: VerdictDecision | null; count: number }[]
+}
+
+export interface SimulationView {
+  id: string
+  kind: 'what_if' | 'shadow'
+  profile_key: string
+  profile_version: number
+  profile_version_status: string
+  case_limit: number | null
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'stopped'
+  error: string | null
+  created_by: string
+  created_at: string
+  finished_at: string | null
+  summary: SimulationSummary
+}
+
+export interface SimulationDetail extends SimulationView {
+  cases: {
+    case_id: string
+    case_ref: string | null
+    actual_verdict: VerdictDecision | null
+    simulated_verdict: VerdictDecision | null
+    added_reasons: string[]
+    removed_reasons: string[]
+    error: string | null
+    decided_at: string
+  }[]
+}
