@@ -5,7 +5,8 @@ POST /v1/cases/{id}/documents       add documents to an open case → new run (2
 POST /v1/cases/{id}/reprocess       redo a case, document, rule or attribute → new run (202; VRT-40)
 GET  /v1/cases                      list (filter by external_ref)
 GET  /v1/cases/{id}                 status, documents, runs
-GET  /v1/cases/{id}/result          the result contract v1 (api/case_contract.py)
+GET  /v1/cases/{id}/result          the result contract v1 (api/case_contract.py), or its YAML /
+                                    Markdown / PDF export by Accept or ?format= (VRT-41)
 
 Processing is asynchronous: the caller polls the status URL (webhooks arrive
 in VRT-28). Submitting is open to integracion/operador/admin; reading to any
@@ -14,11 +15,12 @@ authenticated user."""
 from __future__ import annotations
 
 import json
+import re
 import uuid
 from datetime import datetime
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Header, HTTPException, Response, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Header, HTTPException, Query, Response, UploadFile, status
 from pydantic import BaseModel, Field
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -28,10 +30,12 @@ from idp.api.case_service import dispatch_run, open_reprocess_run, open_run, rea
 from idp.api.deps import get_app_settings, get_current_user, get_db_session, get_object_store, require_role
 from idp.config import Settings
 from idp.domain.reprocess import ReprocessScope
+from idp.export.case_result import EXTENSIONS, MEDIA_TYPES, ExportFormat, ExportLabels, render
 from idp.domain.verdict import VerdictReason
 from idp.persistence.models import Case, User
-from idp.persistence.repositories import CaseConditionRepository, CaseRepository, CaseRunRepository
+from idp.persistence.repositories import CaseConditionRepository, CaseRepository, CaseRunRepository, DocumentTypeRepository
 from idp.pipeline.case_evaluation import refresh_verdict
+from idp.pipeline.orchestrator import load_semantic_catalog
 from idp.storage.object_store import S3ObjectStore
 
 router = APIRouter(prefix="/v1/cases", tags=["cases"], dependencies=[Depends(get_current_user)])
@@ -283,9 +287,59 @@ async def get_case(case_id: uuid.UUID, response: Response, session: AsyncSession
     )
 
 
-@router.get("/{case_id}/result", response_model=CaseResultV1)
-async def get_case_result(case_id: uuid.UUID, session: AsyncSession = Depends(get_db_session)) -> CaseResultV1:
-    return await build_case_result(session, await _case_or_404(session, case_id))
+_ACCEPTED: dict[str, ExportFormat] = {
+    "application/json": "json",
+    "application/yaml": "yaml",
+    "application/x-yaml": "yaml",
+    "text/yaml": "yaml",
+    "text/markdown": "markdown",
+    "application/pdf": "pdf",
+}
+
+
+def _negotiate(accept: str | None) -> ExportFormat:
+    """The first media type in Accept that has an export; JSON otherwise."""
+    for part in (accept or "").split(","):
+        if (fmt := _ACCEPTED.get(part.split(";")[0].strip().lower())) is not None:
+            return fmt
+    return "json"
+
+
+async def _export_labels(session: AsyncSession, case: Case) -> ExportLabels:
+    """Display names from the catalogs the case resolves against."""
+    loaded = await load_semantic_catalog(session, case.profile_version.semantic_catalog_version if case.profile_version else None)
+    types = await DocumentTypeRepository(session).load_catalog()
+    current = {key: types.current(key) for key in types.keys()}
+    return ExportLabels(
+        attributes={a.key: a.name for a in loaded[0].attributes} if loaded else {},
+        roles={r.key: r.name for r in loaded[0].roles} if loaded else {},
+        document_types={key: v[1].display_name for key, v in current.items() if v is not None},
+    )
+
+
+@router.get(
+    "/{case_id}/result",
+    response_model=CaseResultV1,
+    responses={200: {"content": {media: {} for media in MEDIA_TYPES.values() if media != "application/json"}}},
+)
+async def get_case_result(
+    case_id: uuid.UUID,
+    format: ExportFormat | None = Query(default=None, description="Exporta en ese formato y lo descarga; si falta, decide la cabecera Accept."),
+    accept: str | None = Header(default=None),
+    session: AsyncSession = Depends(get_db_session),
+) -> CaseResultV1 | Response:
+    case = await _case_or_404(session, case_id)
+    result = await build_case_result(session, case)
+    fmt = format or _negotiate(accept)
+    if format is None and fmt == "json":
+        return result
+    labels = await _export_labels(session, case) if fmt in ("markdown", "pdf") else ExportLabels()
+    name = re.sub(r"[^A-Za-z0-9._-]+", "-", case.external_ref or str(case.id))
+    return Response(
+        render(result, fmt, labels),
+        media_type=MEDIA_TYPES[fmt],
+        headers={"Content-Disposition": f'attachment; filename="expediente-{name}.{EXTENSIONS[fmt]}"'},
+    )
 
 
 class WaiveRequest(BaseModel):

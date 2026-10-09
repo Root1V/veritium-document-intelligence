@@ -323,6 +323,20 @@ export function useWaiveCondition() {
   })
 }
 
+export type CaseExportFormat = 'json' | 'yaml' | 'markdown' | 'pdf'
+
+/** Downloads an export of the case result (VRT-41) under the name the API gives it. */
+export async function downloadCaseResult(caseId: string, format: CaseExportFormat): Promise<void> {
+  const response = await apiClient.get<Blob>(`/v1/cases/${caseId}/result`, { params: { format }, responseType: 'blob' })
+  const name = /filename="([^"]+)"/.exec(String(response.headers['content-disposition'] ?? ''))?.[1] ?? `expediente.${format}`
+  const url = URL.createObjectURL(response.data)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = name
+  link.click()
+  URL.revokeObjectURL(url)
+}
+
 export function useReprocessCase() {
   const queryClient = useQueryClient()
   return useMutation({

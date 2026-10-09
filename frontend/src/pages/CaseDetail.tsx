@@ -2,19 +2,20 @@
 // (verdict, conditions), what the case says (consolidated entities), and
 // where each piece of it came from — every source, document and finding
 // opens the evidence viewer on its page with its box. Each of them can be
-// reprocessed on its own as a new run (VRT-40).
+// reprocessed on its own as a new run (VRT-40), and the result exported (VRT-41).
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { CheckCircle2, CircleAlert, Loader2, RefreshCw } from 'lucide-react'
+import { CheckCircle2, CircleAlert, Download, Loader2, RefreshCw } from 'lucide-react'
 import { toast } from 'sonner'
 import { EvidenceViewer } from '@/components/documents/EvidenceViewer'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { errorDetail } from '@/lib/apiErrors'
 import { canExecute } from '@/lib/auth'
-import { useCaseResult, useDocumentTypeCatalog, useReprocessCase, useWaiveCondition } from '@/lib/queries'
+import { downloadCaseResult, useCaseResult, useDocumentTypeCatalog, useReprocessCase, useWaiveCondition, type CaseExportFormat } from '@/lib/queries'
 import { VERDICT_LABEL, VERDICT_VARIANT } from '@/lib/verdict'
 import type { CaseCondition, CaseResult, ReprocessScope } from '@/types/api'
 
@@ -129,6 +130,33 @@ function ReprocessButton({ caseId, scope, label, busy }: { caseId: string; scope
   )
 }
 
+const EXPORTS: { format: CaseExportFormat; label: string }[] = [
+  { format: 'pdf', label: 'PDF' },
+  { format: 'markdown', label: 'Markdown' },
+  { format: 'yaml', label: 'YAML' },
+  { format: 'json', label: 'JSON' },
+]
+
+function ExportMenu({ caseId }: { caseId: string }) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button size="sm" variant="ghost" className="h-6 px-2 text-xs">
+          <Download className="size-3" />
+          Exportar
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start">
+        {EXPORTS.map((e) => (
+          <DropdownMenuItem key={e.format} onSelect={() => downloadCaseResult(caseId, e.format).catch((err) => toast.error(errorDetail(err)))}>
+            {e.label}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
 /** Where a field of a document's extraction is: its envelope's page and box. */
 function fieldEvidence(result: CaseResult, documentId: string, fieldPath: string | null): Evidence | null {
   const doc = result.documents.find((d) => d.id === documentId)
@@ -180,6 +208,7 @@ export function CaseDetailPage() {
           {result.run && ` · corrida ${result.run.run_number} (${result.run.status})${runLabel(result.run)}`}
         </span>
         <ReprocessButton caseId={result.case.id} scope={{ kind: 'case' }} label="Reprocesar expediente" busy={busy} />
+        <ExportMenu caseId={result.case.id} />
         <Link to="/cases" className="ml-auto text-sm underline">
           Volver a expedientes
         </Link>

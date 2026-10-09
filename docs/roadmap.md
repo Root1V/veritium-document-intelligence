@@ -244,7 +244,11 @@ Veritium pasa de "subir documentos sueltos" a ser una **capacidad de decisión d
 - Una corrección se escribe en la extracción (confianza 1.0, misma evidencia) y dispara una corrida `correction` sobre ese campo. Re-extraer re-aplica las correcciones; si la re-extracción falla, la extracción anterior se conserva y la corrida lo dice.
 - Fuera: re-extraer documentos segmentados (409) y guardar el historial de extracciones por corrida.
 ## VRT-41 — Exportes
-**Why:** el resultado se comparte fuera de la plataforma. **Scope:** PDF / JSON / YAML / Markdown derivados del resultado canónico, también vía `Accept`.
+**Why:** el resultado se comparte fuera de la plataforma.
+**Scope:**
+- `GET /v1/cases/{id}/result` por `Accept` o `?format=` (descarga): JSON y YAML son el contrato v1 tal cual; Markdown y PDF, un informe derivado de él (`export/case_result.py`) con los nombres de los catálogos, no las claves.
+- La vista del expediente tiene un menú «Exportar».
+- Fuera: plantillas de informe por cliente o marca, y firma del PDF.
 
 ## F4 — Calidad y comprensión
 ## VRT-42 — Suites de evaluación
