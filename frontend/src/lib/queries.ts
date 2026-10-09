@@ -43,6 +43,7 @@ import type {
   EvalRunSummary,
   EvalSuiteDetail,
   EvalSuiteSummary,
+  PromptView,
   ReprocessScope,
   SimulationDetail,
   SimulationView,
@@ -781,4 +782,10 @@ export function useSaveLens() {
     mutationFn: async (lens: LensDefinition) => (await apiClient.put<LensDefinition>(`/v1/lenses/${lens.key}`, lens)).data,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['lenses'] }),
   })
+}
+
+// --- Instructions to the model (VRT-46) --------------------------------------
+
+export function usePrompts() {
+  return useQuery({ queryKey: ['prompts'], queryFn: async () => (await apiClient.get<PromptView[]>('/v1/prompts')).data })
 }

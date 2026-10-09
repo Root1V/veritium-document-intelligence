@@ -210,6 +210,11 @@ export function CaseDetailPage() {
         </span>
         <ReprocessButton caseId={result.case.id} scope={{ kind: 'case' }} label="Reprocesar expediente" busy={busy} />
         <ExportMenu caseId={result.case.id} />
+        {result.run && (
+          <Link to={`/prompts?case=${result.case.id}`} className="text-xs underline">
+            instrucciones usadas
+          </Link>
+        )}
         <Link to="/cases" className="ml-auto text-sm underline">
           Volver a expedientes
         </Link>

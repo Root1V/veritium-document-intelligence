@@ -73,6 +73,7 @@ Estados: `done` · `todo` · `blocked` (espera a otro equipo) · `superseded` (a
 | VRT-44 | Simulación *what-if* y modo sombra | done | Medir un cambio de perfil, regla o modelo contra expedientes históricos antes de publicarlo. |
 | VRT-45 | Lentes de Riesgos y Legal | done | Resúmenes y análisis de cláusulas contra un playbook, con evidencia citada. |
 | VRT-46 | Prompts versionados y grounding semántico | todo | Prompts versionados en synaptum; medir el efecto de inyectar las definiciones semánticas. |
+| VRT-63 | Edición gobernada de prompts | todo | Un rol técnico edita instrucciones al modelo: borrador, evaluación obligatoria, publicación y vuelta atrás. |
 
 ## F5 — Canales
 

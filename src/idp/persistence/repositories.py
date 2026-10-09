@@ -8,7 +8,7 @@ import uuid
 from typing import Any
 from datetime import UTC, datetime
 
-from sqlalchemy import Text, delete, func, or_, select, update
+from sqlalchemy import Text, delete, func, or_, select, text, update
 from sqlalchemy import cast as sa_cast
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -42,6 +42,7 @@ from idp.persistence.models import (
     OutboxEvent,
     ProcessProfile,
     ProcessProfileVersion,
+    PromptVersionRecord,
     ReferenceEmployee,
     ReviewItem,
     SemanticCatalogVersion,
@@ -1305,7 +1306,7 @@ class LensRepository:
         for lens in SEED_LENSES:
             if lens.key not in existing:
                 self._session.add(LensRecord(key=lens.key, definition=lens.model_dump(mode="json"), updated_by="seed"))
-        await self._session.flush()
+        await self._session.commit()
 
     async def list_lenses(self) -> list[LensDefinition]:
         rows = (await self._session.scalars(select(LensRecord).order_by(LensRecord.key))).all()
@@ -1329,3 +1330,35 @@ class LensRepository:
 
     async def get_result(self, result_id: uuid.UUID) -> LensResult | None:
         return await self._session.get(LensResult, result_id, populate_existing=True)
+
+
+class PromptRepository:
+    """The text of every prompt version the platform has run with (VRT-46)."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def record(self, prompts: list[tuple[str, str, str]]) -> None:
+        """(name, version, text) of the prompts in use; a version already
+        kept keeps its first-seen date."""
+        for name, version, content in prompts:
+            await self._session.execute(
+                pg_insert(PromptVersionRecord).values(id=uuid.uuid4(), name=name, version=version, text=content).on_conflict_do_nothing(index_elements=["name", "version"])
+            )
+        await self._session.commit()
+
+    async def history(self) -> list[PromptVersionRecord]:
+        return list((await self._session.scalars(select(PromptVersionRecord).order_by(PromptVersionRecord.name, PromptVersionRecord.first_seen_at.desc()))).all())
+
+    async def usage(self) -> dict[tuple[str, str], tuple[int, datetime]]:
+        """How many case runs and evaluation runs used each (prompt,
+        version), and when the first of them did."""
+        usage: dict[tuple[str, str], tuple[int, datetime]] = {}
+        for table in ("case_runs", "eval_runs"):
+            rows = await self._session.execute(
+                text(f"select p.key, p.value, count(*), min({table}.created_at) from {table}, jsonb_each_text({table}.provenance->'prompts') p group by 1, 2")
+            )
+            for name, version, n, first in rows.all():
+                count, earliest = usage.get((name, version), (0, first))
+                usage[(name, version)] = (count + n, min(earliest, first))
+        return usage

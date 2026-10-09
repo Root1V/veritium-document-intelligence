@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom'
-import { LayoutDashboard, Upload, Files, ClipboardCheck, Sparkles, BookOpen, History, LogOut, FileStack, Users, ShieldCheck, ListChecks, Network, Workflow, FolderOpen, FlaskConical, Gauge, SplitSquareHorizontal, Scale } from 'lucide-react'
+import { LayoutDashboard, Upload, Files, ClipboardCheck, Sparkles, BookOpen, History, LogOut, FileStack, Users, ShieldCheck, ListChecks, Network, Workflow, FolderOpen, FlaskConical, Gauge, SplitSquareHorizontal, Scale, MessageSquareText } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { canExecute, clearSession, getUserName, getUserRole, isAdmin } from '@/lib/auth'
 import { Badge } from '@/components/ui/badge'
@@ -27,6 +27,7 @@ const NAV_ITEMS = [
   { to: '/simulations', label: 'Probar cambios', icon: SplitSquareHorizontal, requiresExecute: false },
   { to: '/evaluation', label: 'Evaluación', icon: FlaskConical, requiresExecute: false },
   { to: '/calibration', label: 'Confiabilidad', icon: Gauge, requiresExecute: false },
+  { to: '/prompts', label: 'Instrucciones al modelo', icon: MessageSquareText, requiresExecute: false },
 ]
 
 export function Sidebar() {

@@ -63,7 +63,29 @@ def prompt(name: str, text: str) -> Prompt:
     return _REGISTRY[name]
 
 
-def versions() -> dict[str, str]:
+# What each prompt is for, in the words of whoever reads the page about them.
+INFO: dict[str, tuple[str, str]] = {
+    "classify": ("Clasificación de documentos", "Decide qué tipo de documento es cada archivo que llega."),
+    "segment": ("Separación de documentos", "Detecta cuándo un archivo trae varios documentos juntos y dónde empieza cada uno."),
+    "extract_agentic": ("Extracción de datos", "Lee cada documento y saca sus datos con la cita de dónde está cada uno."),
+    "extract_generic": ("Extracción sin tipo", "Saca los datos de un documento que no corresponde a ningún tipo conocido."),
+    "read_table_region": ("Lectura de tablas", "Describe una tabla del documento cuando el texto no alcanza para leerla."),
+    "read_figure_region": ("Lectura de figuras", "Describe un gráfico o figura del documento."),
+    "entity_judge": ("Comparación de nombres", "Decide si dos nombres de documentos distintos son la misma persona o empresa cuando no es obvio."),
+    "suggest_document_type": ("Sugerencia de tipos nuevos", "Propone un tipo de documento nuevo cuando llegan documentos que no encajan."),
+    "propose_type_from_example": ("Tipo desde un ejemplo", "Propone los campos de un tipo nuevo a partir de un documento de ejemplo."),
+    "draft_rule": ("Redacción de reglas", "Traduce una regla escrita en lenguaje natural a una condición verificable."),
+    "lens_summary": ("Resumen para Riesgos", "Resume un expediente con lo que Riesgos necesita, citando la evidencia."),
+    "lens_playbook": ("Revisión para Legal", "Revisa cada documento contra el playbook de Legal, citando la evidencia."),
+}
+
+
+def current() -> list[Prompt]:
+    """Every prompt in use, by name."""
     for module in _MODULES:
         importlib.import_module(module)
-    return {name: p.version for name, p in sorted(_REGISTRY.items())}
+    return [p for _, p in sorted(_REGISTRY.items())]
+
+
+def versions() -> dict[str, str]:
+    return {p.name: p.version for p in current()}

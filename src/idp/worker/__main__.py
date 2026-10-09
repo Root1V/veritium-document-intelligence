@@ -21,8 +21,9 @@ from temporalio.worker import Worker
 from idp.config import Settings, get_settings
 from idp.execution.aeon import LANE_QUEUES, run_status
 from idp.llm.port import inference_lifespan
+from idp.llm.prompts import current as current_prompts
 from idp.persistence.db import get_session_factory
-from idp.persistence.repositories import CaseRunRepository
+from idp.persistence.repositories import CaseRunRepository, PromptRepository
 from idp.pipeline.orchestrator import fail_run
 from idp.worker.activities import CaseActivities
 
@@ -73,6 +74,10 @@ async def main() -> None:
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, stop.set)
+
+    async with get_session_factory(settings)() as session:
+        # The worker runs the prompts too: keep their text (VRT-46).
+        await PromptRepository(session).record([(p.name, p.version, p.text) for p in current_prompts()])
 
     async with contextlib.AsyncExitStack() as stack:
         await stack.enter_async_context(inference_lifespan(settings))

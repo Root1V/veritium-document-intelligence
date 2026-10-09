@@ -717,3 +717,19 @@ class LensResult(Base):
     created_by: Mapped[str] = mapped_column(String(256), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class PromptVersionRecord(Base):
+    """Every version a prompt has had (VRT-46): its text, kept the first time
+    the platform runs with it, so a past run's instructions can be read even
+    after the prompt changed. The base for governed editing (VRT-63)."""
+
+    __tablename__ = "prompt_versions"
+    __table_args__ = (UniqueConstraint("name", "version"),)
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    name: Mapped[str] = mapped_column(String(64), nullable=False)
+    version: Mapped[str] = mapped_column(String(16), nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    source: Mapped[str] = mapped_column(String(16), default="code", server_default="code", nullable=False)
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

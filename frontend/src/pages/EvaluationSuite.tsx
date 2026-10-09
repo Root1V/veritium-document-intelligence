@@ -64,6 +64,9 @@ function RunView({ runId, baseline }: { runId: string; baseline: EvalRunSummary 
   return (
     <div className="flex flex-col gap-4">
       {run.error && <span className="text-sm text-destructive">La corrida falló: {run.error}</span>}
+      <Link to={`/prompts?eval_run=${run.id}`} className="w-fit text-xs underline">
+        Instrucciones con que se hizo esta corrida
+      </Link>
       {m && (
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
           <Metric label="Clasificación" value={percent(m.classification)} />

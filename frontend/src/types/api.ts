@@ -573,7 +573,16 @@ export interface CaseResult {
   entities: Record<string, Record<string, Record<string, ResolvedAttribute>>>
   documents: CaseDocument[]
   findings: CaseFinding[]
-  run: { run_number: number; trigger: string; status: string; started_at: string | null; finished_at: string | null; error: string | null; scope: ReprocessScope | null } | null
+  run: {
+    run_number: number
+    trigger: string
+    status: string
+    started_at: string | null
+    finished_at: string | null
+    error: string | null
+    scope: ReprocessScope | null
+    provenance?: { prompts?: Record<string, string> } | null
+  } | null
 }
 
 // --- Selective reprocessing (VRT-40) -----------------------------------------
@@ -847,4 +856,25 @@ export interface CaseLens {
   lens: LensDefinition
   applicable: boolean
   latest: LensResultView | null
+}
+
+// --- Instructions to the model (VRT-46) --------------------------------------
+
+export interface PromptVersionView {
+  version: string
+  text: string
+  first_seen_at: string | null
+  runs: number
+}
+
+export interface PromptView {
+  name: string
+  label: string
+  purpose: string
+  version: string
+  text: string
+  placeholders: string[]
+  since: string | null
+  runs: number
+  earlier: PromptVersionView[]
 }

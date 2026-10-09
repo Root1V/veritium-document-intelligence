@@ -25,6 +25,7 @@ import { EvaluationSuitePage } from '@/pages/EvaluationSuite'
 import { CalibrationPage } from '@/pages/Calibration'
 import { SimulationsPage } from '@/pages/Simulations'
 import { LensesPage } from '@/pages/Lenses'
+import { PromptsPage } from '@/pages/Prompts'
 
 export default function App() {
   return (
@@ -163,6 +164,14 @@ export default function App() {
         element={
           <ProtectedRoute>
             <EvaluationPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/prompts"
+        element={
+          <ProtectedRoute>
+            <PromptsPage />
           </ProtectedRoute>
         }
       />

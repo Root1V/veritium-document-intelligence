@@ -283,6 +283,15 @@ Veritium pasa de "subir documentos sueltos" a ser una **capacidad de decisión d
 - Registro de prompts (`llm/prompts.py`): cada uno con nombre y versión = huella de su texto; se pasa a synaptum como `PromptTemplate`, que lo sella en el diario y la traza (S-8). La procedencia de corridas de expediente y de evaluación guarda la versión de cada prompt.
 - Grounding semántico: el prompt de extracción puede incluir el significado de negocio de cada campo (catálogo semántico). Apagado por defecto (`EXTRACTION_SEMANTIC_GROUNDING`); se mide por corrida de evaluación y la comparación dice qué cambió entre corridas.
 - Medido con el golden set de boletas: sin diferencia (60% de campos en ambos); hace falta una suite más grande para decidir.
+- Pantalla de solo lectura «Instrucciones al modelo» (`/prompts`): para qué sirve cada una, versión en uso y desde cuándo, texto, versiones anteriores (guardadas al arrancar, tabla `prompt_versions`) y, desde un expediente o una evaluación, con qué versión se hizo.
+
+## VRT-63 — Edición gobernada de prompts
+**Why:** un perfil técnico debe poder mejorar las instrucciones sin desplegar código, y un cambio de prompt afecta a todos los expedientes desde ese momento.
+**Scope:**
+- Rol nuevo «Especialista IA» (aparte de admin) que edita; el resto solo consulta.
+- Borrador con motivo; debe conservar las variables que completa la plataforma.
+- Evaluación obligatoria contra la versión en uso (VRT-42) y, si influye en el veredicto, simulación con expedientes pasados (VRT-44); publicar, auditar y volver atrás en un clic.
+- Un proveedor de prompts desde la BD delante del texto del código (registro encadenado de synaptum); la versión sigue siendo la huella del texto.
 
 ## F5 — Canales
 ## VRT-47 — Sesión de carga + verificación rápida
