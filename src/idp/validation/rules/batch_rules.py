@@ -32,6 +32,7 @@ def _full_name(fields: dict, *, first_key: str, paternal_key: str | None = None,
 
 class DuplicateDocumentIdentifier(ValidationRule):
     rule_id = "batch.duplicate_identifier"
+    reads = frozenset({"employee_code", "policy_number"})
     category = RuleCategory.CROSS_DOCUMENT
 
     async def evaluate(self, context: ValidationContext) -> ValidationResult:
@@ -63,6 +64,7 @@ class EmployeeNameCrossDocumentMatch(ValidationRule):
     insurance disclosure in the same request."""
 
     rule_id = "batch.employee_name_matches_insured_name"
+    reads = frozenset({"employee_name", "insured_first_name", "insured_paternal_surname", "insured_maternal_surname"})
     category = RuleCategory.CROSS_DOCUMENT
 
     def __init__(self, settings: Settings) -> None:

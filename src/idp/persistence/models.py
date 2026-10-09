@@ -94,7 +94,10 @@ class CaseRun(Base):
     id: Mapped[uuid.UUID] = _uuid_pk()
     case_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("cases.id", ondelete="CASCADE"), nullable=False)
     run_number: Mapped[int] = mapped_column(Integer, nullable=False)
-    trigger: Mapped[str] = mapped_column(String(32), nullable=False)  # submit | documents_added
+    trigger: Mapped[str] = mapped_column(String(32), nullable=False)  # submit | documents_added | reprocess | correction
+    # What a reprocess run redoes (domain/reprocess.py::ReprocessScope);
+    # None for a run that processes the whole case.
+    scope: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     status: Mapped[str] = mapped_column(String(16), default="pending", server_default="pending", nullable=False)  # pending|running|completed|failed
     profile_version_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("process_profile_versions.id"), nullable=True)
     provenance: Mapped[dict | None] = mapped_column(JSONB, nullable=True)

@@ -116,6 +116,8 @@ class RunInfo(BaseModel):
     started_at: datetime | None
     finished_at: datetime | None
     error: str | None
+    # What a reprocess run redid (VRT-40); None for a full run.
+    scope: dict[str, Any] | None
     # Rule versions live here (provenance.rules): a finding's rule_id
     # resolves to the exact definition that produced it.
     provenance: dict[str, Any] | None
@@ -196,6 +198,7 @@ async def build_case_result(session: AsyncSession, case: Case) -> CaseResultV1:
             started_at=run.started_at,
             finished_at=run.finished_at,
             error=run.error,
+            scope=run.scope,
             provenance=run.provenance,
         )
         if run is not None

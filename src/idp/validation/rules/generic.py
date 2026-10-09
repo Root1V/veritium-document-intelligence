@@ -8,6 +8,7 @@ included in the list at all."""
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from pydantic import BaseModel
@@ -17,6 +18,26 @@ from idp.persistence.models import ValidationRuleDefinition
 from idp.validation.base import ConfidenceMethod, RuleCategory, Severity, ValidationResult, ValidationRule
 from idp.validation.cel import CelEvaluationError, compile_expression, evaluate
 from idp.validation.context import ValidationContext
+
+
+_DOC_FIELD = re.compile(r"\bdoc\.(\w+)")
+_CASE_ATTRIBUTE = re.compile(r"\bcase\.\w+\.(\w+)\.(\w+)")
+
+
+def cel_reads(expressions: list[str], *, attribute: str | None) -> frozenset[str] | None:
+    """What a CEL rule reads (ValidationRule.reads): ``doc.<field>`` and
+    ``case.<role>.<entity>.<name>`` references, plus the rule's own
+    attribute. None (unknown) when ``doc`` or ``case`` is used some other
+    way, e.g. ``doc["x"]`` or a whole ``case.titular``."""
+    reads: set[str] = {f"@{attribute}"} if attribute else set()
+    for expression in expressions:
+        fields = _DOC_FIELD.findall(expression)
+        attributes = _CASE_ATTRIBUTE.findall(expression)
+        if len(fields) != len(re.findall(r"\bdoc\b", expression)) or len(attributes) != len(re.findall(r"\bcase\b", expression)):
+            return None
+        reads.update(fields)
+        reads.update(f"@{entity}.{name}" for entity, name in attributes)
+    return frozenset(reads)
 
 
 class DataDrivenRule(ValidationRule):
@@ -31,6 +52,7 @@ class DataDrivenRule(ValidationRule):
         # document in a multi-document batch.
         self._condition_program = compile_expression(row.condition_cel)
         self._applies_when_program = compile_expression(row.applies_when_cel) if row.applies_when_cel else None
+        self.reads = cel_reads([e for e in (row.condition_cel, row.applies_when_cel) if e], attribute=row.attribute)
 
     @property
     def definition_version(self) -> str:

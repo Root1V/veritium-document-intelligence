@@ -2,6 +2,7 @@
 
 POST /v1/cases                      submit a case under a process profile (202; Idempotency-Key)
 POST /v1/cases/{id}/documents       add documents to an open case → new run (202)
+POST /v1/cases/{id}/reprocess       redo a case, document, rule or attribute → new run (202; VRT-40)
 GET  /v1/cases                      list (filter by external_ref)
 GET  /v1/cases/{id}                 status, documents, runs
 GET  /v1/cases/{id}/result          the result contract v1 (api/case_contract.py)
@@ -23,9 +24,10 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from idp.api.case_contract import CaseResultV1, ConditionResult, ProfileRef, Verdict, build_case_result, condition_result, latest_run, profile_ref
-from idp.api.case_service import dispatch_run, open_run, read_uploads, request_fingerprint, resolve_profile_version, store_uploads
+from idp.api.case_service import dispatch_run, open_reprocess_run, open_run, read_uploads, request_fingerprint, resolve_profile_version, store_uploads
 from idp.api.deps import get_app_settings, get_current_user, get_db_session, get_object_store, require_role
 from idp.config import Settings
+from idp.domain.reprocess import ReprocessScope
 from idp.domain.verdict import VerdictReason
 from idp.persistence.models import Case, User
 from idp.persistence.repositories import CaseConditionRepository, CaseRepository, CaseRunRepository
@@ -65,6 +67,7 @@ class DocumentBrief(BaseModel):
 class RunBrief(BaseModel):
     run_number: int
     trigger: str
+    scope: dict | None
     status: str
     started_at: datetime | None
     finished_at: datetime | None
@@ -219,6 +222,30 @@ async def add_documents(
     return _accepted(case, run.run_number, replayed=False)
 
 
+@router.post(
+    "/{case_id}/reprocess",
+    response_model=CaseAccepted,
+    status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Depends(require_role("integracion", "operador", "admin"))],
+)
+async def reprocess_case(
+    case_id: uuid.UUID,
+    scope: ReprocessScope,
+    background_tasks: BackgroundTasks,
+    session: AsyncSession = Depends(get_db_session),
+    settings: Settings = Depends(get_app_settings),
+) -> CaseAccepted:
+    """A case or a document is re-extracted and the case re-evaluated; a
+    rule or an attribute re-evaluates only the rules it reaches."""
+    case = await _case_or_404(session, case_id)
+    if await CaseRunRepository(session).has_active_run(case_id):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="el expediente tiene una corrida en curso; reintentar cuando termine")
+    run = await open_reprocess_run(session, settings, case, scope, trigger="reprocess")
+    await session.commit()
+    await dispatch_run(session, settings, case, run, background_tasks)
+    return _accepted(case, run.run_number, replayed=False)
+
+
 @router.get("", response_model=list[CaseListItem])
 async def list_cases(
     external_ref: str | None = None, limit: int = 50, offset: int = 0, session: AsyncSession = Depends(get_db_session)
@@ -251,7 +278,7 @@ async def get_case(case_id: uuid.UUID, response: Response, session: AsyncSession
             )
             for d in sorted(case.documents, key=lambda d: d.created_at)
         ],
-        runs=[RunBrief(run_number=r.run_number, trigger=r.trigger, status=r.status, started_at=r.started_at, finished_at=r.finished_at) for r in case.runs],
+        runs=[RunBrief(run_number=r.run_number, trigger=r.trigger, scope=r.scope, status=r.status, started_at=r.started_at, finished_at=r.finished_at) for r in case.runs],
         links=_links(case.id),
     )
 

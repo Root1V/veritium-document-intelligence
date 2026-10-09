@@ -237,7 +237,12 @@ Veritium pasa de "subir documentos sueltos" a ser una **capacidad de decisión d
 - La cola nombra cada campo por su atributo semántico y rol (o el campo del tipo / la clave genérica), con documento, página, texto fuente y el hallazgo que lo envió (`review/labels.py`).
 
 ## VRT-40 — Reproceso selectivo
-**Why:** corregir un campo no debe obligar a reprocesar todo el expediente. **Scope:** grafo campo → regla → veredicto; reproceso por atributo, documento, regla o expediente, cada uno como una corrida nueva e inmutable.
+**Why:** corregir un campo no debe obligar a reprocesar todo el expediente, y hasta aquí una corrección ni siquiera llegaba al dato que leen las reglas.
+**Scope:**
+- `POST /v1/cases/{id}/reprocess` con alcance `case` | `document` (re-extraen y re-evalúan todo) o `rule` | `attribute` (re-evalúan solo las reglas alcanzadas; los hallazgos de las demás siguen vigentes). Cada uno es una corrida nueva con su `scope` en `case_runs`.
+- Grafo campo → regla: cada regla declara qué lee (`ValidationRule.reads`: campos y `@atributo`); las CEL lo derivan de su expresión; lo desconocido se re-evalúa siempre.
+- Una corrección se escribe en la extracción (confianza 1.0, misma evidencia) y dispara una corrida `correction` sobre ese campo. Re-extraer re-aplica las correcciones; si la re-extracción falla, la extracción anterior se conserva y la corrida lo dice.
+- Fuera: re-extraer documentos segmentados (409) y guardar el historial de extracciones por corrida.
 ## VRT-41 — Exportes
 **Why:** el resultado se comparte fuera de la plataforma. **Scope:** PDF / JSON / YAML / Markdown derivados del resultado canónico, también vía `Accept`.
 

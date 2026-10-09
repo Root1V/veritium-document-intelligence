@@ -70,6 +70,11 @@ class ValidationRule(ABC):
     rule_id: str
     category: RuleCategory
     depends_on: list[str] = []
+    # What the rule reads (VRT-40), so a reprocess re-evaluates only the
+    # rules a changed field reaches: field names (any document type) and
+    # semantic attributes as "@<entity>.<name>"; "@*" is any attribute.
+    # None means unknown — always re-evaluated.
+    reads: frozenset[str] | None = None
 
     def applies_when(self, context: "ValidationContext") -> bool:
         """Activation gate for conditional rules (category c chaining onto

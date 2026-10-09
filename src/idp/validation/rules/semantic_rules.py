@@ -16,6 +16,7 @@ from idp.validation.context import ValidationContext
 
 class SemanticAttributeConsistency(ValidationRule):
     rule_id = "semantic.attribute_consistency"
+    reads = frozenset({"@*"})
     category = RuleCategory.CROSS_DOCUMENT
 
     def applies_when(self, context: ValidationContext) -> bool:
@@ -66,6 +67,7 @@ class SemanticAttributeFormat(ValidationRule):
 
     def __init__(self, attribute: SemanticAttribute) -> None:
         self.rule_id = format_rule_id(attribute.key)
+        self.reads = frozenset({f"@{attribute.key}"})
         self._attribute = attribute
         self._program = compile_expression(attribute.format_cel or "true")
 

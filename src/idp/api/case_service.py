@@ -12,10 +12,11 @@ from fastapi import BackgroundTasks, HTTPException, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from idp.config import Settings
+from idp.domain.reprocess import ReprocessScope
 from idp.execution.port import executor_for
 from idp.persistence.models import Case, CaseRun, Document, ProcessProfileVersion
-from idp.persistence.repositories import CaseRunRepository, DocumentRepository, ProcessProfileRepository
-from idp.pipeline.orchestrator import fail_run
+from idp.persistence.repositories import CaseRunRepository, DocumentRepository, ProcessProfileRepository, ReviewRepository
+from idp.pipeline.orchestrator import case_rules, fail_run
 from idp.storage.object_store import ObjectStore
 
 
@@ -91,6 +92,41 @@ async def store_uploads(session: AsyncSession, object_store: ObjectStore, case: 
 
 async def open_run(session: AsyncSession, case: Case, *, trigger: str) -> CaseRun:
     return await CaseRunRepository(session).create_next(case, trigger=trigger)
+
+
+async def open_reprocess_run(session: AsyncSession, settings: Settings, case: Case, scope: ReprocessScope, *, trigger: str) -> CaseRun:
+    """A new, immutable run that redoes only what ``scope`` names (VRT-40).
+    A document to re-extract is marked ``reextract`` — the run's fan-out
+    finds it pending — and keeps its extraction until the new one replaces
+    it, so a failed re-extraction loses nothing. Its pending review items
+    go; its resolved corrections are re-applied after the new extraction."""
+    _unprocessable = status.HTTP_422_UNPROCESSABLE_ENTITY
+    documents = {d.id: d for d in case.documents}
+    if scope.document_id is not None and scope.document_id not in documents:
+        raise HTTPException(status_code=_unprocessable, detail="el documento no pertenece al expediente")
+    rules, semantic = await case_rules(settings, session, case)
+    if scope.kind == "rule" and scope.rule_id not in {r.rule_id for r in rules}:
+        raise HTTPException(status_code=_unprocessable, detail=f"la regla '{scope.rule_id}' no se aplica a este expediente")
+    if scope.attribute is not None and (semantic is None or scope.attribute not in {a.key for a in semantic.attributes}):
+        raise HTTPException(status_code=_unprocessable, detail=f"el atributo '{scope.attribute}' no está en el catálogo semántico del expediente")
+
+    if scope.reextracts:
+        segmented = {d.parent_document_id for d in case.documents if d.parent_document_id is not None}
+        targets = [documents[scope.document_id]] if scope.document_id is not None else [d for d in case.documents if d.parent_document_id is None]
+        if scope.kind == "document" and (targets[0].parent_document_id is not None or targets[0].id in segmented):
+            # Its segments carry their own corrections and audit trail.
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="un documento segmentado no se re-extrae (todavía)")
+        review_repo = ReviewRepository(session)
+        for document in targets:
+            if document.id in segmented:
+                continue
+            document.status, document.needs_review = "reextract", False
+            await review_repo.delete_pending_for_document(document.id)
+
+    run = await open_run(session, case, trigger=trigger)
+    run.scope = scope.model_dump(mode="json", exclude_none=True)
+    case.status = "uploaded"
+    return run
 
 
 async def dispatch_run(session: AsyncSession, settings: Settings, case: Case, run: CaseRun, background: BackgroundTasks) -> None:

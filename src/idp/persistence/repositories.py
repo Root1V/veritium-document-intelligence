@@ -5,9 +5,10 @@ directly."""
 from __future__ import annotations
 
 import uuid
+from typing import Any
 from datetime import UTC, datetime
 
-from sqlalchemy import Text, func, or_, select, update
+from sqlalchemy import Text, delete, func, or_, select, update
 from sqlalchemy import cast as sa_cast
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -160,6 +161,13 @@ class CaseRunRepository:
     async def mark_running(self, run: CaseRun, *, provenance: dict) -> None:
         run.status, run.provenance, run.started_at = "running", provenance, datetime.now(UTC)
 
+    async def append_error(self, run_id: uuid.UUID, message: str) -> None:
+        """Adds to the run's error without overwriting what another step of
+        the same run wrote (documents run in parallel)."""
+        await self._session.execute(
+            update(CaseRun).where(CaseRun.id == run_id).values(error=func.concat(func.coalesce(CaseRun.error + "; ", ""), message))
+        )
+
     async def mark_finished(self, run: CaseRun, *, status: str, error: str | None = None) -> None:
         run.status, run.error, run.finished_at = status, error, datetime.now(UTC)
 
@@ -295,6 +303,11 @@ class DocumentRepository:
             doc.classification_reasoning = reasoning
             doc.needs_review = doc.needs_review or needs_review
 
+    async def set_document_type(self, document_id: uuid.UUID, document_type: str | None) -> None:
+        doc = await self._session.get(Document, document_id)
+        if doc is not None:
+            doc.document_type = document_type
+
     async def set_status(self, document_id: uuid.UUID, status: str) -> None:
         doc = await self._session.get(Document, document_id)
         if doc is not None:
@@ -311,6 +324,14 @@ class ExtractionRepository:
         self._session = session
 
     async def save(self, *, document_id: uuid.UUID, schema_version: str, payload: dict, parser_backend: str, extraction_method: str) -> Extraction:
+        # A re-extraction (VRT-40) replaces the document's extraction only
+        # once the new one exists; until then the previous one stays.
+        existing = await self._session.scalar(select(Extraction).where(Extraction.document_id == document_id))
+        if existing is not None:
+            existing.schema_version, existing.payload = schema_version, payload
+            existing.parser_backend, existing.extraction_method = parser_backend, extraction_method
+            await self._session.flush()
+            return existing
         extraction = Extraction(
             document_id=document_id,
             schema_version=schema_version,
@@ -338,14 +359,14 @@ class ValidationRepository:
         result = await self._session.execute(stmt)
         return list(result.scalars().all())
 
-    async def supersede_active(self, case_id: uuid.UUID) -> int:
-        """A new run re-evaluates the whole case: the previous run's issues
-        stay for audit but stop counting as current."""
-        result = await self._session.execute(
-            update(ValidationIssue)
-            .where(ValidationIssue.case_id == case_id, ValidationIssue.superseded_at.is_(None))
-            .values(superseded_at=datetime.now(UTC))
-        )
+    async def supersede_active(self, case_id: uuid.UUID, *, rule_ids: set[str] | None = None) -> int:
+        """A new run re-evaluates the whole case — or only ``rule_ids``, on a
+        selective reprocess (VRT-40): the issues it re-evaluates stay for
+        audit but stop counting as current."""
+        conditions = [ValidationIssue.case_id == case_id, ValidationIssue.superseded_at.is_(None)]
+        if rule_ids is not None:
+            conditions.append(ValidationIssue.rule_id.in_(rule_ids))
+        result = await self._session.execute(update(ValidationIssue).where(*conditions).values(superseded_at=datetime.now(UTC)))
         return result.rowcount or 0  # type: ignore[attr-defined]
 
     @staticmethod
@@ -412,10 +433,26 @@ class ReviewRepository:
     async def has_item_for_field(self, document_id: uuid.UUID, field_path: str) -> bool:
         """True if this field was already sent to review (pending or
         resolved). A re-evaluation of the case must not ask a human twice
-        about the same field — applying a correction and re-validating is
-        VRT-40."""
+        about the same field; a correction is written into the extraction
+        instead (VRT-40)."""
         stmt = select(func.count()).select_from(ReviewItem).where(ReviewItem.document_id == document_id, ReviewItem.field_path == field_path)
         return bool(await self._session.scalar(stmt))
+
+    async def corrections_for_document(self, document_id: uuid.UUID) -> list[tuple[str, Any]]:
+        """(field_path, corrected value) of every resolved review item of
+        the document, oldest first — re-applied after a re-extraction."""
+        stmt = (
+            select(ReviewItem.field_path, AuditLogEntry.corrected_value)
+            .join(AuditLogEntry, AuditLogEntry.review_item_id == ReviewItem.id)
+            .where(ReviewItem.document_id == document_id, ReviewItem.status == "resolved")
+            .order_by(AuditLogEntry.timestamp)
+        )
+        return [(path, (corrected or {}).get("value")) for path, corrected in (await self._session.execute(stmt)).all()]
+
+    async def delete_pending_for_document(self, document_id: uuid.UUID) -> None:
+        """A re-extracted document's pending items asked about values that
+        no longer exist; resolved ones stay (their audit trail)."""
+        await self._session.execute(delete(ReviewItem).where(ReviewItem.document_id == document_id, ReviewItem.status == "pending"))
 
     async def has_pending_for_document(self, document_id: uuid.UUID) -> bool:
         stmt = select(func.count()).select_from(ReviewItem).where(ReviewItem.document_id == document_id, ReviewItem.status == "pending")

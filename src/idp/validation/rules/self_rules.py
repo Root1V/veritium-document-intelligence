@@ -13,6 +13,7 @@ _TOLERANCE = 0.01
 
 class PayslipArithmeticConsistency(ValidationRule):
     rule_id = "self.payslip_arithmetic_consistency"
+    reads = frozenset({"gross_pay", "total_deductions", "net_pay"})
     category = RuleCategory.SELF
 
     def applies_when(self, context: ValidationContext) -> bool:

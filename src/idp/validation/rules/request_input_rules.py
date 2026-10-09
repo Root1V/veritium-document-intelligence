@@ -11,6 +11,7 @@ from idp.validation.context import ValidationContext
 
 class ExpectedEmployeeCodeMatches(ValidationRule):
     rule_id = "request_input.expected_employee_code_matches"
+    reads = frozenset({"employee_code"})
     category = RuleCategory.REQUEST_INPUT
 
     def applies_when(self, context: ValidationContext) -> bool:

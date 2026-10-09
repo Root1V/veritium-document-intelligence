@@ -28,6 +28,7 @@ from idp.domain.envelope import Extracted
 from idp.domain.request_payload import RequestInputPayload
 from idp.domain.schemas.generic import GenericSchema
 from idp.domain.process_profile import ProcessProfileDefinition
+from idp.domain.reprocess import ReprocessScope, changed_reads, rules_to_reevaluate
 from idp.domain.semantic import SemanticCatalog
 from idp.domain.semantic_resolution import ConsolidatedView, DocumentExtraction, resolve_case
 from idp.extraction.agentic.loop import ExtractionIncomplete
@@ -36,7 +37,7 @@ from idp.parsing.base import ParserBackend
 from idp.parsing.docling_backend import DoclingBackend
 from idp.parsing.paddleocr_backend import PaddleOCRBackend
 from idp.persistence.db import get_session_factory
-from idp.persistence.models import Case
+from idp.persistence.models import Case, Document
 from idp.persistence.models import ValidationIssue as ValidationIssueModel
 from idp.persistence.repositories import (
     DocumentTypeRepository,
@@ -56,6 +57,7 @@ from idp.pipeline.case_evaluation import apply_binding, profile_definition, refr
 from idp.pipeline.provenance import build_provenance
 from idp.webhooks.events import emit_run_finished
 from idp.pipeline.stages import classify_document, extract_document, parse_document, segment_document, suggest_type
+from idp.review.corrections import apply_correction
 from idp.review.queue import enqueue_review_items
 from idp.review.routing import find_review_candidates
 from idp.storage.object_store import ObjectStore, S3ObjectStore
@@ -401,6 +403,7 @@ async def _process_uploaded_file(
 
 # Documents in these states are done for the run that processed them.
 _TERMINAL_DOCUMENT_STATUSES = {"extracted", "needs_review", "completed", "failed"}
+_EXTRACTION_STEPS = {"parsing", "classifying", "extracting"}
 
 
 async def start_run(settings: Settings, case_id: uuid.UUID, run_id: uuid.UUID) -> list[uuid.UUID]:
@@ -423,8 +426,18 @@ async def start_run(settings: Settings, case_id: uuid.UUID, run_id: uuid.UUID) -
         return _pending(case)
 
 
+def _reextracting(document: Document) -> bool:
+    """Marked for re-extraction (VRT-40) — or interrupted while at it: an
+    extraction already exists and the document is back in an extraction step."""
+    return document.status == "reextract" or (document.extraction is not None and document.status in _EXTRACTION_STEPS)
+
+
 def _pending(case: Case) -> list[uuid.UUID]:
-    return [d.id for d in case.documents if d.parent_document_id is None and d.extraction is None and d.status not in _TERMINAL_DOCUMENT_STATUSES]
+    return [
+        d.id
+        for d in case.documents
+        if d.parent_document_id is None and (_reextracting(d) or (d.extraction is None and d.status not in _TERMINAL_DOCUMENT_STATUSES))
+    ]
 
 
 async def pending_documents(settings: Settings, case_id: uuid.UUID) -> list[uuid.UUID]:
@@ -448,8 +461,10 @@ async def process_document(settings: Settings, case_id: uuid.UUID, run_id: uuid.
         document = await document_repo.get(document_id)
         if document is None or document.case_id != case_id:
             raise ValueError(f"document {document_id} does not belong to case {case_id}")
-        if document.extraction is not None or document.status in _TERMINAL_DOCUMENT_STATUSES:
+        reextract = _reextracting(document)
+        if not reextract and (document.extraction is not None or document.status in _TERMINAL_DOCUMENT_STATUSES):
             return
+        previous_type, filename, had_extraction = document.document_type, document.original_filename, document.extraction is not None
         with traced_stage("process_document", case_id=str(case_id), document_id=str(document_id)):
             try:
                 await _process_uploaded_file(
@@ -468,14 +483,58 @@ async def process_document(settings: Settings, case_id: uuid.UUID, run_id: uuid.
                     # published mid-run applies from the next document on.
                     type_catalog=await DocumentTypeRepository(session).load_catalog(),
                 )
+                await _reapply_corrections(session, document_id)
             except ExtractionIncomplete:
                 await document_repo.mark_needs_review(document_id)
                 await document_repo.set_status(document_id, "needs_review")
-            except Exception:
+            except Exception as exc:
                 # One document's failure (e.g. the LLM/VLM endpoint being
                 # unreachable) must not stop the case. The span records it.
-                await document_repo.set_status(document_id, "failed")
+                if reextract and had_extraction:
+                    # The previous extraction stands; the run says why it was not replaced.
+                    await session.rollback()
+                    await document_repo.set_document_type(document_id, previous_type)
+                    await document_repo.set_status(document_id, "extracted")
+                    await CaseRunRepository(session).append_error(run_id, f"re-extracción de {filename} falló ({type(exc).__name__}: {exc}); se conserva la extracción anterior")
+                else:
+                    await document_repo.set_status(document_id, "failed")
         await session.commit()
+
+
+async def _reapply_corrections(session: AsyncSession, document_id: uuid.UUID) -> None:
+    """A re-extracted document (VRT-40) gets its human corrections back; a
+    correction whose field the new extraction no longer has is dropped
+    (it stays in the audit log)."""
+    corrections = await ReviewRepository(session).corrections_for_document(document_id)
+    if not corrections:
+        return
+    document = await DocumentRepository(session).get(document_id)
+    if document is None:
+        return
+    await session.flush()
+    await session.refresh(document, attribute_names=["extraction", "document_type"])
+    if document.extraction is None or document.document_type is None:
+        return
+    type_catalog = await DocumentTypeRepository(session).load_catalog()
+    schema = extraction_schema(type_catalog, document.document_type, document.extraction.schema_version)
+    payload = document.extraction.payload
+    for field_path, value in corrections:
+        try:
+            payload = apply_correction(payload, field_path, value, schema)
+        except ValueError:
+            continue
+    document.extraction.payload = payload
+
+
+async def case_rules(settings: Settings, session: AsyncSession, case: Case) -> tuple[list[ValidationRule], SemanticCatalog | None]:
+    """The rules a run of this case evaluates — its profile's bindings over
+    the rule library plus the format rules of the catalog version the case
+    resolves against (VRT-35) — and that catalog."""
+    catalog_version = case.profile_version.semantic_catalog_version if case.profile_version is not None else None
+    loaded = await load_semantic_catalog(session, catalog_version)
+    attribute_formats = format_rules(loaded[0]) if loaded is not None else []
+    rules = rules_for_profile(await build_default_rules(settings, session) + attribute_formats, profile_definition(case))
+    return rules, loaded[0] if loaded is not None else None
 
 
 async def evaluate_case(settings: Settings, case_id: uuid.UUID, run_id: uuid.UUID) -> str | None:
@@ -496,17 +555,23 @@ async def evaluate_case(settings: Settings, case_id: uuid.UUID, run_id: uuid.UUI
         all_fields = await case_document_fields(document_repo, case_id)
         catalog_version = case.profile_version.semantic_catalog_version if case.profile_version is not None else None
         semantic_view = await resolve_semantic_view(session, all_fields, catalog_version=catalog_version)
-        # The format rules come from the same catalog version the view used (VRT-35).
-        loaded = await load_semantic_catalog(session, catalog_version)
-        attribute_formats = format_rules(loaded[0]) if loaded is not None else []
-        rules = rules_for_profile(await build_default_rules(settings, session) + attribute_formats, definition)
+        rules, semantic = await case_rules(settings, session, case)
+        # A rule- or attribute-scoped reprocess (VRT-40) re-evaluates only
+        # the rules it reaches; every other rule's issues stay current.
+        reevaluated: set[str] | None = None
+        scope = ReprocessScope.model_validate(run.scope) if run.scope else None
+        if scope is not None and not scope.reextracts:
+            document_type = next((f.document_type for f in all_fields if f.document_id == scope.document_id), None)
+            rules = rules_to_reevaluate(rules, scope, changed_reads(scope, semantic, document_type=document_type))
+            reevaluated = {r.rule_id for r in rules}
         run.provenance = {
             **(run.provenance or build_provenance(settings, profile_version=case.profile_version, rules=rules)),
             # the rules actually evaluated (a toggle may have changed since the run started)
             "rules": build_provenance(settings, profile_version=case.profile_version, rules=rules)["rules"],
             "semantic_catalog_version": semantic_view.catalog_version if semantic_view else None,
+            "scope": run.scope,
         }
-        await validation_repo.supersede_active(case_id)
+        await validation_repo.supersede_active(case_id, rule_ids=reevaluated)
         await session.commit()
 
         request_payload = RequestInputPayload(data=case.request_input_payload or {})
@@ -534,7 +599,7 @@ async def evaluate_case(settings: Settings, case_id: uuid.UUID, run_id: uuid.UUI
         await refresh_conditions(session, case, run, semantic_view, definition)
         await refresh_verdict(session, case_id, run=run)
         await case_repo.set_status(case_id, "completed")
-        await run_repo.mark_finished(run, status="completed")
+        await run_repo.mark_finished(run, status="completed", error=run.error)  # a re-extraction that failed says so (VRT-40)
         emit_run_finished(session, case, run)
         await session.commit()
         return run.verdict
@@ -589,7 +654,7 @@ async def case_document_fields(document_repo: DocumentRepository, case_id: uuid.
     return out
 
 
-def _extraction_schema(type_catalog: DocumentTypeCatalog, document_type: str, schema_version: str) -> type[BaseModel]:
+def extraction_schema(type_catalog: DocumentTypeCatalog, document_type: str, schema_version: str) -> type[BaseModel]:
     """The schema that produced a stored payload. generic's lives in code; a
     catalog type's is the version recorded on the extraction (VRT-32) — "1.0",
     written before the catalog existed, is version 1, which the seed
@@ -658,7 +723,7 @@ async def _validate_document(
 
         document = await document_repo.get(current.document_id)
         if document is not None and document.extraction is not None:
-            schema_instance = _extraction_schema(type_catalog, current.document_type, document.extraction.schema_version).model_validate(document.extraction.payload)
+            schema_instance = extraction_schema(type_catalog, current.document_type, document.extraction.schema_version).model_validate(document.extraction.payload)
             threshold = definition.thresholds.field_confidence_min if definition and definition.thresholds.field_confidence_min is not None else settings.review_confidence_threshold
             candidates = find_review_candidates(schema_instance, results, confidence_threshold=threshold)
             # A re-evaluation must not ask a human twice about the same field.

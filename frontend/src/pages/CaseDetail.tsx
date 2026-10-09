@@ -1,10 +1,11 @@
 // The end-to-end view of a case (VRT-38): what to do next and why
 // (verdict, conditions), what the case says (consolidated entities), and
 // where each piece of it came from — every source, document and finding
-// opens the evidence viewer on its page with its box.
+// opens the evidence viewer on its page with its box. Each of them can be
+// reprocessed on its own as a new run (VRT-40).
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { CheckCircle2, CircleAlert, Loader2 } from 'lucide-react'
+import { CheckCircle2, CircleAlert, Loader2, RefreshCw } from 'lucide-react'
 import { toast } from 'sonner'
 import { EvidenceViewer } from '@/components/documents/EvidenceViewer'
 import { Badge } from '@/components/ui/badge'
@@ -13,9 +14,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input'
 import { errorDetail } from '@/lib/apiErrors'
 import { canExecute } from '@/lib/auth'
-import { useCaseResult, useDocumentTypeCatalog, useWaiveCondition } from '@/lib/queries'
+import { useCaseResult, useDocumentTypeCatalog, useReprocessCase, useWaiveCondition } from '@/lib/queries'
 import { VERDICT_LABEL, VERDICT_VARIANT } from '@/lib/verdict'
-import type { CaseCondition, CaseResult } from '@/types/api'
+import type { CaseCondition, CaseResult, ReprocessScope } from '@/types/api'
 
 interface Evidence {
   documentId: string
@@ -76,6 +77,58 @@ function ConditionRow({ caseId, condition }: { caseId: string; condition: CaseCo
   )
 }
 
+const SCOPE_LABEL: Record<ReprocessScope['kind'], string> = { case: 'expediente', document: 'documento', rule: 'regla', attribute: 'atributo' }
+
+function runLabel(run: NonNullable<CaseResult['run']>): string {
+  if (run.trigger === 'correction') return ' · re-evaluación por corrección'
+  if (run.trigger === 'reprocess' && run.scope) return ` · reproceso de ${SCOPE_LABEL[run.scope.kind]} ${run.scope.rule_id ?? run.scope.attribute ?? ''}`.trimEnd()
+  return ''
+}
+
+/** Starts a reprocess run for one scope; re-extraction asks first (it calls the model again). */
+function ReprocessButton({ caseId, scope, label, busy }: { caseId: string; scope: ReprocessScope; label: string; busy: boolean }) {
+  const reprocess = useReprocessCase()
+  const [asking, setAsking] = useState(false)
+  if (!canExecute()) return null
+  const reextracts = scope.kind === 'case' || scope.kind === 'document'
+  const start = () =>
+    reprocess.mutate(
+      { caseId, scope },
+      {
+        onSuccess: (run) => {
+          setAsking(false)
+          toast.success(`Corrida ${run.run_number} en curso.`)
+        },
+        onError: (e) => toast.error(errorDetail(e)),
+      },
+    )
+  if (asking)
+    return (
+      <span className="flex items-center gap-1 text-xs">
+        Se vuelve a extraer con el modelo; las correcciones se conservan.
+        <Button size="sm" className="h-6 px-2 text-xs" disabled={reprocess.isPending} onClick={start}>
+          Confirmar
+        </Button>
+        <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" onClick={() => setAsking(false)}>
+          Cancelar
+        </Button>
+      </span>
+    )
+  return (
+    <Button
+      size="sm"
+      variant="ghost"
+      className="h-6 px-2 text-xs"
+      disabled={busy || reprocess.isPending}
+      title={busy ? 'Hay una corrida en curso' : undefined}
+      onClick={() => (reextracts ? setAsking(true) : start())}
+    >
+      <RefreshCw className="size-3" />
+      {label}
+    </Button>
+  )
+}
+
 /** Where a field of a document's extraction is: its envelope's page and box. */
 function fieldEvidence(result: CaseResult, documentId: string, fieldPath: string | null): Evidence | null {
   const doc = result.documents.find((d) => d.id === documentId)
@@ -112,6 +165,8 @@ export function CaseDetailPage() {
     const d = result.documents.find((x) => x.id === id)
     return d ? `${d.document_type ? (typeName[d.document_type] ?? d.document_type) : 'Sin clasificar'} — ${d.filename}` : '—'
   }
+  const busy = result.run?.status === 'pending' || result.run?.status === 'running'
+  const segmented = new Set(result.documents.map((d) => d.parent_document_id).filter(Boolean))
   const selected = evidence ?? (result.documents[0] ? { documentId: result.documents[0].id, page: result.documents[0].page_start ?? 0, bbox: null, label: result.documents[0].filename } : null)
 
   return (
@@ -122,8 +177,9 @@ export function CaseDetailPage() {
         <Badge variant="outline">{result.case.status}</Badge>
         <span className="text-xs text-muted-foreground">
           {result.case.profile ? `perfil ${result.case.profile.key} v${result.case.profile.version} · catálogo v${result.case.profile.semantic_catalog_version}` : 'sin perfil'} · canal {result.case.channel}
-          {result.run && ` · corrida ${result.run.run_number} (${result.run.status})`}
+          {result.run && ` · corrida ${result.run.run_number} (${result.run.status})${runLabel(result.run)}`}
         </span>
+        <ReprocessButton caseId={result.case.id} scope={{ kind: 'case' }} label="Reprocesar expediente" busy={busy} />
         <Link to="/cases" className="ml-auto text-sm underline">
           Volver a expedientes
         </Link>
@@ -185,6 +241,7 @@ export function CaseDetailPage() {
                           {STATUS_LABEL[a.status]}
                         </Badge>
                         {a.status === 'conflict' && <span className="text-xs text-destructive">valores: {a.distinct_values.map(show).join(' / ')}</span>}
+                        <ReprocessButton caseId={result.case.id} scope={{ kind: 'attribute', attribute: a.attribute }} label="Re-evaluar" busy={busy} />
                         <span className="flex flex-wrap gap-1">
                           {a.sources.map((s, i) => (
                             <Button
@@ -214,21 +271,23 @@ export function CaseDetailPage() {
               </CardHeader>
               <CardContent className="flex flex-col gap-2 text-sm">
                 {result.findings.map((f, i) => (
-                  <button
-                    key={i}
-                    type="button"
-                    className="flex flex-col items-start gap-0.5 rounded-md border p-2 text-left hover:bg-muted/50"
-                    onClick={() => f.document_id && setEvidence(fieldEvidence(result, f.document_id, f.field_path))}
-                  >
-                    <span className="flex items-center gap-2">
-                      <Badge variant={f.severity === 'error' ? 'destructive' : 'outline'} className="text-[10px]">
-                        {f.severity}
-                      </Badge>
-                      <code className="text-xs">{f.rule_id}</code>
-                    </span>
-                    <span>{f.message}</span>
-                    {f.document_id && <span className="text-xs text-muted-foreground">{docName(f.document_id)}</span>}
-                  </button>
+                  <div key={i} className="flex items-start gap-2 rounded-md border p-2 hover:bg-muted/50">
+                    <button
+                      type="button"
+                      className="flex flex-1 flex-col items-start gap-0.5 text-left"
+                      onClick={() => f.document_id && setEvidence(fieldEvidence(result, f.document_id, f.field_path))}
+                    >
+                      <span className="flex items-center gap-2">
+                        <Badge variant={f.severity === 'error' ? 'destructive' : 'outline'} className="text-[10px]">
+                          {f.severity}
+                        </Badge>
+                        <code className="text-xs">{f.rule_id}</code>
+                      </span>
+                      <span>{f.message}</span>
+                      {f.document_id && <span className="text-xs text-muted-foreground">{docName(f.document_id)}</span>}
+                    </button>
+                    <ReprocessButton caseId={result.case.id} scope={{ kind: 'rule', rule_id: f.rule_id }} label="Re-evaluar regla" busy={busy} />
+                  </div>
                 ))}
               </CardContent>
             </Card>
@@ -240,22 +299,28 @@ export function CaseDetailPage() {
             </CardHeader>
             <CardContent className="flex flex-col gap-1 text-sm">
               {result.documents.map((d) => (
-                <button
-                  key={d.id}
-                  type="button"
-                  className="flex flex-wrap items-center gap-2 rounded-md p-1.5 text-left hover:bg-muted/50"
-                  onClick={() => setEvidence({ documentId: d.id, page: d.page_start ?? 0, bbox: null, label: d.filename })}
-                >
-                  <span className="font-medium">{d.document_type ? (typeName[d.document_type] ?? d.document_type) : 'Sin clasificar'}</span>
-                  <span className="text-xs text-muted-foreground">{d.filename}</span>
-                  <Badge variant="outline" className="text-[10px]">
-                    {d.status}
-                  </Badge>
-                  {d.needs_review && <Badge variant="destructive" className="text-[10px]">revisión</Badge>}
-                  <Link to={`/documents/${d.id}`} className="ml-auto text-xs underline" onClick={(e) => e.stopPropagation()}>
-                    campos
-                  </Link>
-                </button>
+                <div key={d.id} className="flex flex-wrap items-center gap-2 rounded-md p-1.5 hover:bg-muted/50">
+                  <button
+                    type="button"
+                    className="flex flex-wrap items-center gap-2 text-left"
+                    onClick={() => setEvidence({ documentId: d.id, page: d.page_start ?? 0, bbox: null, label: d.filename })}
+                  >
+                    <span className="font-medium">{d.document_type ? (typeName[d.document_type] ?? d.document_type) : 'Sin clasificar'}</span>
+                    <span className="text-xs text-muted-foreground">{d.filename}</span>
+                    <Badge variant="outline" className="text-[10px]">
+                      {d.status}
+                    </Badge>
+                    {d.needs_review && <Badge variant="destructive" className="text-[10px]">revisión</Badge>}
+                  </button>
+                  <span className="ml-auto flex items-center gap-2">
+                    {!d.parent_document_id && !segmented.has(d.id) && (
+                      <ReprocessButton caseId={result.case.id} scope={{ kind: 'document', document_id: d.id }} label="Re-extraer" busy={busy} />
+                    )}
+                    <Link to={`/documents/${d.id}`} className="text-xs underline">
+                      campos
+                    </Link>
+                  </span>
+                </div>
               ))}
             </CardContent>
           </Card>

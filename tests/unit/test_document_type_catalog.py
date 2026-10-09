@@ -15,7 +15,7 @@ from idp.domain.document_type_seed import seed_definitions
 from idp.domain.document_types import DocumentType
 from idp.domain.schemas import SCHEMA_BY_DOCUMENT_TYPE
 from idp.domain.semantic_seed import seed_catalog
-from idp.pipeline.orchestrator import _extraction_schema
+from idp.pipeline.orchestrator import extraction_schema
 
 
 def _definition(**fields_and_overrides) -> DocumentTypeDefinition:
@@ -73,12 +73,12 @@ def test_a_run_sees_the_latest_published_version_and_can_reread_older_ones():
     catalog = DocumentTypeCatalog([("recibo_luz", 1, "retired", v1), ("recibo_luz", 2, "published", v2)])
     assert catalog.keys() == ["recibo_luz"] and catalog.current("recibo_luz")[0] == 2
     assert "monto" not in catalog.schema("recibo_luz", 1).model_fields  # the old payloads re-read with their schema
-    assert _extraction_schema(catalog, "recibo_luz", "2") is catalog.schema("recibo_luz", 2)
+    assert extraction_schema(catalog, "recibo_luz", "2") is catalog.schema("recibo_luz", 2)
 
 
 def test_extractions_from_before_the_catalog_are_version_one():
     catalog = DocumentTypeCatalog([(d.key, 1, "published", d) for d in seed_definitions()])
-    assert _extraction_schema(catalog, "payslip", "1.0").model_json_schema() == SCHEMA_BY_DOCUMENT_TYPE[DocumentType.PAYSLIP].model_json_schema()
+    assert extraction_schema(catalog, "payslip", "1.0").model_json_schema() == SCHEMA_BY_DOCUMENT_TYPE[DocumentType.PAYSLIP].model_json_schema()
 
 
 def test_the_classifier_can_only_answer_a_published_type_or_generic():

@@ -1,7 +1,9 @@
 """GET /review (pending queue), GET /review/reasons (the correction reason
 codes) and POST /review/{id} (submit a correction — writes the full audit
 trail: original value/confidence, reviewer identity, corrected value, the
-coded reason and its justification (VRT-39), timestamp, model/prompt version)."""
+coded reason and its justification (VRT-39), timestamp, model/prompt version).
+A correction is written into the extraction and, when the value changed,
+re-evaluates only the rules that read that field (VRT-40)."""
 
 from __future__ import annotations
 
@@ -9,17 +11,22 @@ import re
 import uuid
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from pydantic import BaseModel, Field, model_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from idp.api.deps import get_current_user, get_db_session, require_role
+from idp.api.case_service import dispatch_run, open_reprocess_run
+from idp.api.deps import get_app_settings, get_current_user, get_db_session, require_role
+from idp.config import Settings
 from idp.domain.correction_reasons import CORRECTION_REASONS, REASONS_BY_CODE, CorrectionReason, ReasonCode
 from idp.domain.document_type_catalog import DocumentTypeCatalog
+from idp.domain.reprocess import ReprocessScope
 from idp.domain.semantic import SemanticCatalog
 from idp.persistence.models import ReviewItem, User
-from idp.persistence.repositories import DocumentRepository, DocumentTypeRepository, ReviewRepository, SemanticCatalogRepository
+from idp.persistence.repositories import CaseRepository, CaseRunRepository, DocumentRepository, DocumentTypeRepository, ReviewRepository, SemanticCatalogRepository
 from idp.pipeline.case_evaluation import refresh_verdict
+from idp.pipeline.orchestrator import extraction_schema
+from idp.review.corrections import apply_correction
 from idp.review.labels import describe_field
 
 router = APIRouter(prefix="/review", tags=["review"], dependencies=[Depends(get_current_user)])
@@ -67,6 +74,9 @@ class ReviewCorrectionRequest(BaseModel):
 class ReviewCorrectionResponse(BaseModel):
     review_item_id: uuid.UUID
     status: str
+    # The case run that re-evaluates the rules reading the field, when the
+    # value changed and no other run was in progress.
+    run_number: int | None = None
 
 
 @router.get("", response_model=list[ReviewItemResponse])
@@ -144,13 +154,29 @@ async def correction_reasons() -> list[CorrectionReason]:
 async def submit_correction(
     review_item_id: uuid.UUID,
     body: ReviewCorrectionRequest,
+    background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_db_session),
     current_user: User = Depends(get_current_user),
+    settings: Settings = Depends(get_app_settings),
 ) -> ReviewCorrectionResponse:
     repo = ReviewRepository(session)
     item = await repo.get(review_item_id)
     if item is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="review item not found")
+    document_repo = DocumentRepository(session)
+    document = await document_repo.get(item.document_id)
+    if document is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="document not found")
+
+    extraction, written = document.extraction, False
+    if body.corrected_value != (item.current_value or {}).get("value") and extraction is not None and document.document_type is not None:
+        type_catalog = await DocumentTypeRepository(session).load_catalog()
+        schema = extraction_schema(type_catalog, document.document_type, extraction.schema_version)
+        try:
+            extraction.payload = apply_correction(extraction.payload, item.field_path, body.corrected_value, schema)
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+        written = True
 
     await repo.resolve(
         review_item_id,
@@ -163,11 +189,21 @@ async def submit_correction(
     )
     # The case verdict depends on pending reviews (VRT-27): once a
     # document has none left it is done, and the verdict is recomputed.
-    document_repo = DocumentRepository(session)
-    document = await document_repo.get(item.document_id)
-    if document is not None:
-        if not await repo.has_pending_for_document(document.id):
-            await document_repo.set_status(document.id, "completed")
-        await refresh_verdict(session, document.case_id)
+    if not await repo.has_pending_for_document(document.id):
+        await document_repo.set_status(document.id, "completed")
+    await refresh_verdict(session, document.case_id)
+
+    run, case = None, None
+    if written and not await CaseRunRepository(session).has_active_run(document.case_id):
+        case = await CaseRepository(session).get(document.case_id)
+    if case is not None:
+        scope = ReprocessScope(kind="attribute", document_id=document.id, field_path=item.field_path)
+        run = await open_reprocess_run(session, settings, case, scope, trigger="correction")
     await session.commit()
-    return ReviewCorrectionResponse(review_item_id=review_item_id, status="resolved")
+    if run is not None and case is not None:
+        try:
+            await dispatch_run(session, settings, case, run, background_tasks)
+        except HTTPException:
+            run = None  # the correction stands; dispatch_run marked the run failed
+    return ReviewCorrectionResponse(review_item_id=review_item_id, status="resolved", run_number=run.run_number if run else None)
+

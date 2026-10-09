@@ -12,6 +12,7 @@ from idp.validation.context import ValidationContext
 
 class InsurancePolicyVerifiedExternally(ValidationRule):
     rule_id = "external_system.insurance_policy_verified"
+    reads = frozenset({"policy_number"})
     category = RuleCategory.EXTERNAL_SYSTEM
 
     def applies_when(self, context: ValidationContext) -> bool:

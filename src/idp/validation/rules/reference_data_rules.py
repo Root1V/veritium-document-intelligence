@@ -16,6 +16,7 @@ from idp.validation.entity_matching import EntityKind, escalate_to_llm_judge, ma
 
 class EmployeeCodeExistsInReferenceData(ValidationRule):
     rule_id = "reference_data.employee_code_exists"
+    reads = frozenset({"employee_code"})
     category = RuleCategory.REFERENCE_DATA
 
     def applies_when(self, context: ValidationContext) -> bool:
@@ -45,6 +46,7 @@ class EmployeeNameExistsInReferenceData(ValidationRule):
     fuzzy/escalation bands as category (b)."""
 
     rule_id = "reference_data.employee_name_matches_reference"
+    reads = frozenset({"employee_code", "employee_name"})
     category = RuleCategory.REFERENCE_DATA
 
     def __init__(self, settings: Settings) -> None:

@@ -34,6 +34,7 @@ import type {
   ManualRuleRequest,
   ReviewCorrectionRequest,
   ReviewCorrectionResponse,
+  ReprocessScope,
   ReviewItem,
   ToggleRule,
   TypeSuggestion,
@@ -316,6 +317,17 @@ export function useWaiveCondition() {
   return useMutation({
     mutationFn: async ({ caseId, conditionId, reason }: { caseId: string; conditionId: string; reason: string }) => {
       const { data } = await apiClient.post(`/v1/cases/${caseId}/conditions/${conditionId}/waive`, { reason })
+      return data
+    },
+    onSuccess: (_, { caseId }) => queryClient.invalidateQueries({ queryKey: ['cases', caseId] }),
+  })
+}
+
+export function useReprocessCase() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ caseId, scope }: { caseId: string; scope: ReprocessScope }) => {
+      const { data } = await apiClient.post<{ run_number: number }>(`/v1/cases/${caseId}/reprocess`, scope)
       return data
     },
     onSuccess: (_, { caseId }) => queryClient.invalidateQueries({ queryKey: ['cases', caseId] }),

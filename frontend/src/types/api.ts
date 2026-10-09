@@ -573,7 +573,17 @@ export interface CaseResult {
   entities: Record<string, Record<string, Record<string, ResolvedAttribute>>>
   documents: CaseDocument[]
   findings: CaseFinding[]
-  run: { run_number: number; trigger: string; status: string; started_at: string | null; finished_at: string | null; error: string | null } | null
+  run: { run_number: number; trigger: string; status: string; started_at: string | null; finished_at: string | null; error: string | null; scope: ReprocessScope | null } | null
+}
+
+// --- Selective reprocessing (VRT-40) -----------------------------------------
+
+export interface ReprocessScope {
+  kind: 'case' | 'document' | 'rule' | 'attribute'
+  document_id?: string
+  attribute?: string
+  field_path?: string
+  rule_id?: string
 }
 
 // --- Correction reasons (VRT-39) ---------------------------------------------
