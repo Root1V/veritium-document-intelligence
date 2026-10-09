@@ -690,3 +690,48 @@ export interface EvalRunDetail extends EvalRunSummary {
   baseline_id: string | null
   comparison: { regressions: EvalChange[]; improvements: EvalChange[] } | null
 }
+
+// --- Calibration (VRT-43) ----------------------------------------------------
+
+export interface CalibrationBin {
+  low: number
+  high: number
+  count: number
+  accuracy: number | null
+  mean_confidence: number | null
+  calibrated: number
+}
+
+export interface FieldCalibration {
+  key: string
+  count: number
+  accuracy: number
+  mean_confidence: number | null
+  ece: number | null
+  brier: number | null
+  preliminary: boolean
+  bins: CalibrationBin[]
+}
+
+export interface ThresholdSuggestion {
+  target_error: number
+  threshold: number | null
+  coverage: number
+  error_rate: number | null
+}
+
+export interface CalibrationSummary {
+  id: string
+  version: number
+  status: 'draft' | 'active' | 'retired'
+  report: { observations: { evaluation: number; review: number }; suggestions: ThresholdSuggestion[] }
+  created_by: string
+  created_at: string
+  activated_by: string | null
+  activated_at: string | null
+}
+
+export interface CalibrationDetail extends CalibrationSummary {
+  min_observations: number
+  fields: FieldCalibration[]
+}

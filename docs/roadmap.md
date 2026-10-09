@@ -258,7 +258,12 @@ Veritium pasa de "subir documentos sueltos" a ser una **capacidad de decisión d
 - Una corrida clasifica y extrae con la configuración del momento, sin crear expedientes, y guarda métricas (clasificación, campos, por campo) y procedencia; se compara con la corrida anterior (regresiones y mejoras). UI en `/evaluation`.
 - Fuera: evaluar reglas y veredictos (VRT-44), calibración (VRT-43), campos lista, curar casos desde la UI y correr sobre aeon (corre en la API, reanudable).
 ## VRT-43 — Exactitud por campo y calibración
-**Why:** una confianza mal calibrada deja pasar errores con confianza alta. **Scope:** métricas por campo y calibración que alimenta los umbrales del perfil.
+**Why:** una confianza mal calibrada deja pasar errores con confianza alta; medido en VRT-42, el modelo dice 100% y acierta 50–67% en algunos campos.
+**Scope:**
+- Observaciones etiquetadas: la última corrida de cada suite de evaluación y las revisiones que ninguna suite cubre (sin decisiones de negocio).
+- Por campo: acierto, confianza media, ECE, Brier y confianza calibrada por tramos (suavizada hacia el acierto del campo, no decreciente); umbrales sugeridos para 1/2/5% de error con su cobertura.
+- Versiones inmutables; un admin activa una y la cola de revisión compara la confianza calibrada con el umbral del perfil; la corrida registra la versión. UI en `/calibration`.
+- Fuera: recalcular solo y fijar el umbral del perfil automáticamente (lo decide una persona).
 ## VRT-44 — Simulación *what-if* y modo sombra
 **Why:** medir el impacto de un cambio antes de publicarlo. **Scope:** reejecución contra expedientes históricos y comparación en sombra.
 ## VRT-45 — Lentes de Riesgos y Legal

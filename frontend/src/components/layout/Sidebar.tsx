@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom'
-import { LayoutDashboard, Upload, Files, ClipboardCheck, Sparkles, BookOpen, History, LogOut, FileStack, Users, ShieldCheck, ListChecks, Network, Workflow, FolderOpen, FlaskConical } from 'lucide-react'
+import { LayoutDashboard, Upload, Files, ClipboardCheck, Sparkles, BookOpen, History, LogOut, FileStack, Users, ShieldCheck, ListChecks, Network, Workflow, FolderOpen, FlaskConical, Gauge } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { canExecute, clearSession, getUserName, getUserRole, isAdmin } from '@/lib/auth'
 import { Badge } from '@/components/ui/badge'
@@ -24,6 +24,7 @@ const NAV_ITEMS = [
   { to: '/validation', label: 'Validación', icon: ShieldCheck, requiresExecute: false },
   { to: '/validation-rules', label: 'Reglas de validación', icon: ListChecks, requiresExecute: false },
   { to: '/evaluation', label: 'Evaluación', icon: FlaskConical, requiresExecute: false },
+  { to: '/calibration', label: 'Calibración', icon: Gauge, requiresExecute: false },
 ]
 
 export function Sidebar() {

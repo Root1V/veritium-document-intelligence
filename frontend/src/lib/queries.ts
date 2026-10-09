@@ -34,6 +34,8 @@ import type {
   ManualRuleRequest,
   ReviewCorrectionRequest,
   ReviewCorrectionResponse,
+  CalibrationDetail,
+  CalibrationSummary,
   EvalRunDetail,
   EvalRunSummary,
   EvalSuiteDetail,
@@ -668,5 +670,39 @@ export function useRunEvalSuite() {
   return useMutation({
     mutationFn: async (suiteId: string) => (await apiClient.post<EvalRunSummary>(`/v1/eval-suites/${suiteId}/runs`)).data,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['eval-suites'] }),
+  })
+}
+
+// --- Calibration (VRT-43) ----------------------------------------------------
+
+export function useCalibrations() {
+  return useQuery({
+    queryKey: ['calibration'],
+    queryFn: async () => (await apiClient.get<CalibrationSummary[]>('/v1/calibration')).data,
+  })
+}
+
+export function useCalibration(version: number | undefined) {
+  return useQuery({
+    queryKey: ['calibration', version],
+    enabled: version !== undefined,
+    queryFn: async () => (await apiClient.get<CalibrationDetail>(`/v1/calibration/${version}`)).data,
+  })
+}
+
+export function useComputeCalibration() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async () => (await apiClient.post<CalibrationDetail>('/v1/calibration')).data,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['calibration'] }),
+  })
+}
+
+export function useSetActiveCalibration() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (version: number | null) =>
+      (await apiClient.post(version === null ? '/v1/calibration/deactivate' : `/v1/calibration/${version}/activate`)).data,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['calibration'] }),
   })
 }

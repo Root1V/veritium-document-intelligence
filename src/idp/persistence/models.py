@@ -610,3 +610,26 @@ class EvalResult(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     run: Mapped["EvalRun"] = relationship(back_populates="results")
+
+
+class CalibrationVersion(Base):
+    """A confidence calibration computed from labelled observations
+    (VRT-43). Only an admin activates one, and at most one is active: from
+    then on, review routing compares the calibrated confidence with the
+    threshold. Immutable once computed; a new computation is a new version."""
+
+    __tablename__ = "calibration_versions"
+    __table_args__ = (Index("ix_calibration_one_active", "status", unique=True, postgresql_where=text("status = 'active'")),)
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    version: Mapped[int] = mapped_column(Integer, unique=True, nullable=False)
+    status: Mapped[str] = mapped_column(String(16), default="draft", server_default="draft", nullable=False)  # draft | active | retired
+    # domain/calibration.py::Calibration
+    model: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    # where the observations came from ({"evaluation": n, "review": n}) and
+    # the thresholds they suggest for a few target error rates
+    report: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    created_by: Mapped[str] = mapped_column(String(256), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    activated_by: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    activated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

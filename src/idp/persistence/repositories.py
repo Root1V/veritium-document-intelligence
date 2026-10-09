@@ -14,6 +14,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from idp.domain.calibration import Observation, field_key
 from idp.domain.document_type_catalog import DocumentTypeCatalog, DocumentTypeDefinition
 from idp.domain.document_type_seed import seed_definitions
 from idp.domain.process_profile import ProcessProfileDefinition
@@ -22,6 +23,7 @@ from idp.domain.semantic import SemanticCatalog
 from idp.domain.semantic_seed import seed_catalog
 from idp.persistence.models import (
     AuditLogEntry,
+    CalibrationVersion,
     Case,
     CaseCondition,
     CaseRun,
@@ -1208,3 +1210,79 @@ class EvaluationRepository:
                 continue  # list items are not evaluated
             by_document.setdefault(document.id, (document, {}))[1][field_path] = (corrected or {}).get("value")
         return list(by_document.values())
+
+
+class CalibrationRepository:
+    """Labelled observations and calibration versions (VRT-43)."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def observations(self) -> tuple[list[Observation], dict[str, int]]:
+        """Every labelled (field, confidence, right or wrong): the latest
+        completed run of each evaluation suite, plus the human reviews of
+        fields no evaluation already covers. A business override is left
+        out (a decision, not a reading)."""
+        observations: list[Observation] = []
+        covered: set[tuple[uuid.UUID, str]] = set()
+        latest = (
+            select(EvalRun.id)
+            .where(EvalRun.status == "completed")
+            .distinct(EvalRun.suite_id)
+            .order_by(EvalRun.suite_id, EvalRun.created_at.desc())
+        )
+        stmt = select(EvalResult, EvalCase).join(EvalCase, EvalCase.id == EvalResult.case_id).where(EvalResult.run_id.in_(latest), EvalResult.status == "done")
+        for result, case in (await self._session.execute(stmt)).all():
+            document_type = case.expected_document_type or result.predicted_document_type
+            if document_type is None:
+                continue
+            for f in result.field_results:
+                observations.append(Observation(key=field_key(document_type, f["field"]), confidence=f.get("confidence"), correct=bool(f["match"])))
+                if case.source_document_id is not None:
+                    covered.add((case.source_document_id, f["field"]))
+        from_evaluation = len(observations)
+
+        stmt = (
+            select(ReviewItem, AuditLogEntry, Document.document_type)
+            .join(AuditLogEntry, AuditLogEntry.review_item_id == ReviewItem.id)
+            .join(Document, Document.id == ReviewItem.document_id)
+            .where(
+                ReviewItem.status == "resolved",
+                Document.document_type.is_not(None),
+                Document.document_type != "generic",
+                or_(AuditLogEntry.reason_code.is_(None), AuditLogEntry.reason_code != "business_override"),
+            )
+        )
+        for item, entry, document_type in (await self._session.execute(stmt)).all():
+            if (item.document_id, item.field_path) in covered:
+                continue
+            original = (entry.original_value or {}).get("value")
+            corrected = (entry.corrected_value or {}).get("value")
+            correct = entry.reason_code == "confirmed_correct" or str(original).strip() == str(corrected).strip()
+            observations.append(Observation(key=field_key(document_type, item.field_path), confidence=entry.original_confidence, correct=correct))
+        return observations, {"evaluation": from_evaluation, "review": len(observations) - from_evaluation}
+
+    async def create(self, *, model: dict, report: dict, created_by: str) -> CalibrationVersion:
+        current = await self._session.scalar(select(func.max(CalibrationVersion.version)))
+        row = CalibrationVersion(version=(current or 0) + 1, model=model, report=report, created_by=created_by)
+        self._session.add(row)
+        await self._session.flush()
+        return row
+
+    async def list_versions(self) -> list[CalibrationVersion]:
+        return list((await self._session.scalars(select(CalibrationVersion).order_by(CalibrationVersion.version.desc()))).all())
+
+    async def get(self, version: int) -> CalibrationVersion | None:
+        return await self._session.scalar(select(CalibrationVersion).where(CalibrationVersion.version == version))
+
+    async def active(self) -> CalibrationVersion | None:
+        return await self._session.scalar(select(CalibrationVersion).where(CalibrationVersion.status == "active"))
+
+    async def activate(self, row: CalibrationVersion, *, by: str) -> None:
+        await self._session.execute(update(CalibrationVersion).where(CalibrationVersion.status == "active").values(status="retired"))
+        await self._session.flush()
+        row.status, row.activated_by, row.activated_at = "active", by, datetime.now(UTC)
+        await self._session.flush()
+
+    async def deactivate(self) -> None:
+        await self._session.execute(update(CalibrationVersion).where(CalibrationVersion.status == "active").values(status="retired"))

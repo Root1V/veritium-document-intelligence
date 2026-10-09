@@ -1,10 +1,13 @@
 """Per-field (not per-document) confidence-based review routing. Walks every
 ``Extracted[T]`` leaf in an extraction schema and flags it when its
 confidence is below threshold, or a validation rule touched that field with
-a non-passing result of severity >= warning."""
+a non-passing result of severity >= warning. With an active calibration
+(VRT-43) the confidence compared is the calibrated one: the accuracy
+observed for that field at that raw confidence."""
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 from pydantic import BaseModel
@@ -39,6 +42,7 @@ def find_review_candidates(
     validation_results: list[ValidationResult],
     *,
     confidence_threshold: float,
+    calibrate: Callable[[str, float], float] | None = None,
 ) -> list[ReviewCandidate]:
     leaves: list[tuple[str, Extracted]] = []
     _walk(schema_instance, "", leaves)
@@ -51,7 +55,8 @@ def find_review_candidates(
 
     candidates: list[ReviewCandidate] = []
     for path, extracted in leaves:
-        if extracted.confidence < confidence_threshold:
+        confidence = calibrate(path, extracted.confidence) if calibrate is not None else extracted.confidence
+        if confidence < confidence_threshold:
             candidates.append(
                 ReviewCandidate(field_path=path, value=extracted.value, confidence=extracted.confidence, reason="low_confidence")
             )

@@ -23,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from idp.classification.classifier import needs_review as classification_needs_review
 from idp.config import Settings
+from idp.domain.calibration import Calibration, field_key
 from idp.domain.document_type_catalog import GENERIC, DocumentTypeCatalog
 from idp.domain.envelope import Extracted
 from idp.domain.request_payload import RequestInputPayload
@@ -40,6 +41,7 @@ from idp.persistence.db import get_session_factory
 from idp.persistence.models import Case, Document
 from idp.persistence.models import ValidationIssue as ValidationIssueModel
 from idp.persistence.repositories import (
+    CalibrationRepository,
     DocumentTypeRepository,
     CaseRepository,
     CaseRunRepository,
@@ -556,6 +558,8 @@ async def evaluate_case(settings: Settings, case_id: uuid.UUID, run_id: uuid.UUI
         catalog_version = case.profile_version.semantic_catalog_version if case.profile_version is not None else None
         semantic_view = await resolve_semantic_view(session, all_fields, catalog_version=catalog_version)
         rules, semantic = await case_rules(settings, session, case)
+        active_calibration = await CalibrationRepository(session).active()
+        calibration = Calibration.model_validate(active_calibration.model) if active_calibration else None
         # A rule- or attribute-scoped reprocess (VRT-40) re-evaluates only
         # the rules it reaches; every other rule's issues stay current.
         reevaluated: set[str] | None = None
@@ -570,6 +574,7 @@ async def evaluate_case(settings: Settings, case_id: uuid.UUID, run_id: uuid.UUI
             "rules": build_provenance(settings, profile_version=case.profile_version, rules=rules)["rules"],
             "semantic_catalog_version": semantic_view.catalog_version if semantic_view else None,
             "scope": run.scope,
+            "calibration_version": active_calibration.version if active_calibration else None,
         }
         await validation_repo.supersede_active(case_id, rule_ids=reevaluated)
         await session.commit()
@@ -594,6 +599,7 @@ async def evaluate_case(settings: Settings, case_id: uuid.UUID, run_id: uuid.UUI
                 validation_repo=validation_repo,
                 review_repo=review_repo,
                 type_catalog=type_catalog,
+                calibration=calibration,
             )
 
         await refresh_conditions(session, case, run, semantic_view, definition)
@@ -685,6 +691,7 @@ async def _validate_document(
     validation_repo: ValidationRepository,
     review_repo: ReviewRepository,
     type_catalog: DocumentTypeCatalog,
+    calibration: Calibration | None = None,
 ) -> None:
     await document_repo.set_status(current.document_id, "validating")
     await session.commit()
@@ -725,7 +732,8 @@ async def _validate_document(
         if document is not None and document.extraction is not None:
             schema_instance = extraction_schema(type_catalog, current.document_type, document.extraction.schema_version).model_validate(document.extraction.payload)
             threshold = definition.thresholds.field_confidence_min if definition and definition.thresholds.field_confidence_min is not None else settings.review_confidence_threshold
-            candidates = find_review_candidates(schema_instance, results, confidence_threshold=threshold)
+            calibrate = (lambda path, raw: calibration.calibrated(field_key(current.document_type, path), raw)) if calibration is not None else None
+            candidates = find_review_candidates(schema_instance, results, confidence_threshold=threshold, calibrate=calibrate)
             # A re-evaluation must not ask a human twice about the same field.
             new_candidates = [c for c in candidates if not await review_repo.has_item_for_field(current.document_id, c.field_path)]
             if new_candidates:
