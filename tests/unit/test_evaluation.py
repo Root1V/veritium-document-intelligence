@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from idp.domain.document_type_catalog import DocumentTypeCatalog, FieldSpec
 from idp.domain.document_type_seed import seed_definitions
-from idp.domain.evaluation import CaseOutcome, FieldResult, compare_fields, compare_runs, matches, parse_table, summarize
+from idp.domain.evaluation import EXAMPLE_FILE, CaseOutcome, FieldResult, compare_fields, compare_runs, matches, parse_table, summarize, template_rows
 
 CATALOG = DocumentTypeCatalog([(d.key, 1, "published", d) for d in seed_definitions()])
 PAYSLIP_FIELDS = next(d for d in seed_definitions() if d.key == "payslip").fields
@@ -94,3 +94,11 @@ def test_comparing_runs_finds_regressions_and_improvements() -> None:
     comparison = compare_runs(before, after)
     assert {(c.case_id, c.field) for c in comparison.regressions} == {("1", "net_pay"), ("2", "tipo")}
     assert {(c.case_id, c.field) for c in comparison.improvements} == {("1", "period")}
+
+
+def test_the_template_example_row_reads_back_as_a_valid_case() -> None:
+    header, example = template_rows("payslip", PAYSLIP_FIELDS)
+    row = dict(zip(header, example, strict=True))
+    assert row["net_pay"] == "4304.14" and row["employee_code"] == "011858" and row["period"] == "01/2026"
+    cases, errors = parse_table([row], CATALOG)
+    assert errors == [] and cases[0].filename == EXAMPLE_FILE, "the example fits the type, so only its file is missing"

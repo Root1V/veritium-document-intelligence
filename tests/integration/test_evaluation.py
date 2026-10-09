@@ -69,7 +69,9 @@ async def test_a_suite_from_a_table_runs_and_compares(live_settings, stub_model)
             h = {"Authorization": f"Bearer {token}"}
 
             template = await client.get("/v1/eval-suites/template", headers=h, params={"document_type": "payslip"})
-            assert template.text.startswith("archivo,tipo,paginas,") and "net_pay" in template.text
+            header, example = template.text.lstrip("\ufeff").splitlines()
+            assert header.startswith("archivo,tipo,paginas,") and "net_pay" in header
+            assert example.startswith("EJEMPLO-reemplazar-o-borrar.pdf,payslip,1,")
 
             table = "archivo;tipo;net_pay;employee_name\nboleta.png;payslip;4,304.14;Salas Siguas, Katerín\n"
             bad = await client.post(

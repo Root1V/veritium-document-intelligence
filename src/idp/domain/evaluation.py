@@ -19,6 +19,51 @@ FILE_COLUMN, TYPE_COLUMN, PAGES_COLUMN = "archivo", "tipo", "paginas"
 _PAGES = re.compile(r"^\s*(\d+)\s*(?:-\s*(\d+)\s*)?$")
 
 
+# The template's example row: a file name that asks to be replaced, and a
+# plausible value per field so the expected format is evident.
+EXAMPLE_FILE = "EJEMPLO-reemplazar-o-borrar.pdf"
+_EXAMPLES = (  # most specific words first
+    (("dni",), "12345678"),
+    (("ruc",), "20123456789"),
+    (("birth", "nacimiento"), "1990-05-14"),
+    (("date", "fecha"), "2026-01-31"),
+    (("phone", "telefono", "celular"), "987654321"),
+    (("address", "direccion"), "AV. EJEMPLO 123"),
+    (("rate", "tasa"), "12.5%"),
+    (("period", "periodo"), "01/2026"),
+    (("employer", "empleador", "insurer", "aseguradora", "pension_fund", "afp", "bank", "banco", "company", "empresa"), "EMPRESA EJEMPLO S.A.C."),
+    (("first_name", "nombres"), "ANA MARIA"),
+    (("paternal",), "PEREZ"),
+    (("maternal",), "ROJAS"),
+    (("name", "nombre"), "PEREZ ROJAS, ANA MARIA"),
+    (("code", "codigo", "number", "numero"), "011858"),
+    (("email", "correo"), "ana.perez@ejemplo.pe"),
+    (("place", "lugar", "city", "ciudad", "district", "distrito", "province", "provincia", "department", "departamento"), "LIMA"),
+)
+_AMOUNTS = ((("gross", "bruto"), "6618.00"), (("deduction", "descuento"), "2313.86"), (("net", "neto"), "4304.14"))
+
+
+def example_value(spec: FieldSpec) -> str:
+    if spec.type == "float":
+        return next((value for words, value in _AMOUNTS if any(w in spec.name for w in words)), "15000.00")
+    if spec.type == "int":
+        return "12"
+    if spec.type == "bool":
+        return "sí"
+    if spec.type == "enum" and spec.enum_values:
+        return spec.enum_values[0]
+    return next((value for words, value in _EXAMPLES if any(w in spec.name for w in words)), "texto tal como aparece")
+
+
+def template_rows(document_type: str, fields: list[FieldSpec]) -> list[list[str]]:
+    """Header and one example row for a type's evaluation table."""
+    columns = [f for f in fields if f.type != "list"]
+    return [
+        [FILE_COLUMN, TYPE_COLUMN, PAGES_COLUMN, *(f.name for f in columns)],
+        [EXAMPLE_FILE, document_type, "1", *(example_value(f) for f in columns)],
+    ]
+
+
 class CaseSpec(BaseModel):
     filename: str
     expected_document_type: str | None

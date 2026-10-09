@@ -23,7 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from idp.api.case_service import read_uploads
 from idp.api.deps import get_app_settings, get_current_user, get_db_session, get_object_store, require_role
 from idp.config import Settings
-from idp.domain.evaluation import FILE_COLUMN, PAGES_COLUMN, TYPE_COLUMN, RunComparison, compare_runs, parse_table
+from idp.domain.evaluation import RunComparison, compare_runs, parse_table, template_rows
 from idp.evaluation.runner import is_active, outcome_of, run_evaluation
 from idp.persistence.models import EvalCase, EvalRun, EvalSuite, User
 from idp.persistence.repositories import DocumentTypeRepository, EvaluationRepository
@@ -160,9 +160,11 @@ async def table_template(document_type: str, session: AsyncSession = Depends(get
     current = (await DocumentTypeRepository(session).load_catalog()).current(document_type)
     if current is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"el tipo '{document_type}' no está en el catálogo")
-    header = [FILE_COLUMN, TYPE_COLUMN, PAGES_COLUMN, *(f.name for f in current[1].fields if f.type != "list")]
+    out = io.StringIO()
+    csv.writer(out, lineterminator="\n").writerows(template_rows(document_type, current[1].fields))
     return Response(
-        ",".join(header) + "\n",
+        # The BOM makes Excel read the accents as UTF-8.
+        "\ufeff" + out.getvalue(),
         media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": f'attachment; filename="evaluacion-{document_type}.csv"'},
     )

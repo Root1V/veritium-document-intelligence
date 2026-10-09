@@ -30,7 +30,7 @@ function FromTable() {
         <CardTitle>Desde una tabla</CardTitle>
         <CardDescription>
           CSV o Excel con las columnas <code>archivo</code>, <code>tipo</code>, <code>paginas</code> (opcional, p. ej. 1-2) y una columna por campo con el
-          valor esperado. Una celda vacía no se evalúa. Sube también los documentos que nombra la tabla.
+          valor esperado. Una celda vacía no se evalúa. La plantilla trae una fila de ejemplo: reemplázala con tus documentos. Sube también los documentos que nombra la tabla.
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-3 text-sm">
