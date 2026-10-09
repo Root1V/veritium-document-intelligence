@@ -761,3 +761,55 @@ class PromptEdit(Base):
     # The evaluation run that tried this text before it was published.
     evaluation_run_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("eval_runs.id", ondelete="SET NULL"), nullable=True)
     retired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class UploadSession(Base):
+    """A short-lived window for a person to upload a case's documents from a
+    front-end (VRT-47): the calling system opens it and hands over a link;
+    whoever has the link uploads and gets each file checked in seconds; on
+    submit it becomes a case (or adds to one). Only the token's hash is
+    kept. Lifecycle: open -> submitted, or open -> expired."""
+
+    __tablename__ = "upload_sessions"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    profile_version_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("process_profile_versions.id"), nullable=False)
+    # Upload into an existing case instead of creating one.
+    case_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("cases.id", ondelete="CASCADE"), nullable=True)
+    external_ref: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    channel: Mapped[str] = mapped_column(String(16), default="online", server_default="online", nullable=False)
+    request_input_payload: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    status: Mapped[str] = mapped_column(String(16), default="open", server_default="open", nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_by: Mapped[str] = mapped_column(String(256), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    submitted_case_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("cases.id", ondelete="SET NULL"), nullable=True)
+
+    profile_version: Mapped["ProcessProfileVersion"] = relationship()
+    files: Mapped[list["UploadedFile"]] = relationship(back_populates="session", cascade="all, delete-orphan", order_by="UploadedFile.created_at")
+
+
+class UploadedFile(Base):
+    """One file of an upload session and its quick check."""
+
+    __tablename__ = "uploaded_files"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    session_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("upload_sessions.id", ondelete="CASCADE"), nullable=False)
+    filename: Mapped[str] = mapped_column(String(256), nullable=False)
+    content_type: Mapped[str] = mapped_column(String(128), nullable=False)
+    size: Mapped[int] = mapped_column(Integer, nullable=False)
+    storage_key: Mapped[str] = mapped_column(String(512), nullable=False)
+    # The requirement of the profile the person said it is for, if any.
+    requirement_key: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    detected_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    page_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    checks: Mapped[list] = mapped_column(JSONB, nullable=False)
+    verdict: Mapped[str] = mapped_column(String(16), nullable=False)  # ok | warning | reject
+    check_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    removed: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    session: Mapped["UploadSession"] = relationship(back_populates="files")

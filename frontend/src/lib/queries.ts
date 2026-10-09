@@ -816,3 +816,12 @@ export const useRestorePrompt = () =>
   usePromptAction(async ({ name, version, reason }: { name: string; version: string; reason: string }) =>
     (await apiClient.post<PromptView>(`/v1/prompts/${name}/restore`, { version, reason })).data,
   )
+
+// --- Upload sessions (VRT-47) ------------------------------------------------
+
+export function useOpenUploadSession() {
+  return useMutation({
+    mutationFn: async (body: { profile: string; external_ref?: string; case_id?: string }) =>
+      (await apiClient.post<{ id: string; token: string; upload_url: string; expires_at: string }>('/v1/upload-sessions', body)).data,
+  })
+}

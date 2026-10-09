@@ -296,7 +296,12 @@ Veritium pasa de "subir documentos sueltos" a ser una **capacidad de decisión d
 
 ## F5 — Canales
 ## VRT-47 — Sesión de carga + verificación rápida
-**Why:** el canal en línea no puede esperar el pipeline completo. **Scope:** token efímero / URL prefirmada y verificación síncrona en segundos (calidad, tipo, legibilidad).
+**Why:** el canal en línea no puede esperar el pipeline completo: quien sube una foto mala debe saberlo mientras aún puede repetirla.
+**Scope:**
+- `POST /v1/upload-sessions` (sistema que llama u operador, «Enlace de carga» en Expedientes) abre una sesión con token efímero (solo su hash en BD) y entrega el enlace `/carga/{id}#t=…`; página pública, sin cuenta, para el teléfono.
+- Cada archivo se revisa en 1–3 s: se abre (dañado, contraseña, formato), nitidez, luz, página en blanco y resolución con umbrales medidos en documentos reales; tipo con el modelo de visión y las descripciones del catálogo, con tiempo límite. Solo lo ilegible se rechaza; lo demás advierte, en palabras del cliente.
+- Los requisitos del perfil se muestran ya filtrados por los datos del proceso, con los tipos que cumplen cada uno (también por atributo); enviar crea el expediente (o completa uno existente) en el canal `online`, sin los archivos rechazados, una sola vez.
+- Fuera: URL prefirmada directa al almacenamiento (la verificación necesita pasar por la API) y QR del enlace.
 ## VRT-48 — *Bulk jobs*
 **Why:** el backoffice procesa en masa sin afectar al canal en línea. **Scope:** lotes multi-expediente en el carril `bulk`, con resultado por expediente.
 ## VRT-49 — Eventos CloudEvents

@@ -4,15 +4,20 @@ import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useCases } from '@/lib/queries'
 import { VERDICT_LABEL, VERDICT_VARIANT } from '@/lib/verdict'
+import { canExecute } from '@/lib/auth'
+import { UploadLinkDialog } from '@/components/cases/UploadLinkDialog'
 
 export function CasesPage() {
   const { data: cases, isLoading } = useCases()
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Expedientes</h1>
-        <p className="text-muted-foreground">Cada expediente con su veredicto. Ábrelo para ver el resultado completo y su evidencia.</p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Expedientes</h1>
+          <p className="text-muted-foreground">Cada expediente con su veredicto. Ábrelo para ver el resultado completo y su evidencia.</p>
+        </div>
+        {canExecute() && <UploadLinkDialog />}
       </div>
       {isLoading ? (
         <Loader2 className="size-5 animate-spin text-muted-foreground" />

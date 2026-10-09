@@ -36,6 +36,7 @@ _MODULES = (
     "idp.validation.entity_matching",
     "idp.validation.rule_discovery",
     "idp.pipeline.lenses",
+    "idp.pipeline.quick_check",
 )
 
 
@@ -108,6 +109,7 @@ INFO: dict[str, tuple[str, str]] = {
     "draft_rule": ("Redacción de reglas", "Traduce una regla escrita en lenguaje natural a una condición verificable."),
     "lens_summary": ("Resumen para Riesgos", "Resume un expediente con lo que Riesgos necesita, citando la evidencia."),
     "lens_playbook": ("Revisión para Legal", "Revisa cada documento contra el playbook de Legal, citando la evidencia."),
+    "quick_type": ("Tipo al subir", "Reconoce en segundos qué documento acaba de subir el cliente, para avisarle si no es el pedido."),
 }
 
 

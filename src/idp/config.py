@@ -66,6 +66,14 @@ class Settings(BaseSettings):
     # from the semantic catalog. Measure it with an evaluation run first.
     extraction_semantic_grounding: bool = False
 
+    # --- Upload sessions and quick check (VRT-47) ---
+    upload_session_minutes: int = 30
+    upload_max_file_mb: int = 20
+    upload_max_files: int = 40
+    quick_check_type_timeout_seconds: float = 8.0
+    # Where the upload page lives; the session link points there.
+    public_upload_base_url: str = "http://localhost:5180"
+
     # --- Parsing / OCR backend selection ---
     # "docling" | "paddleocr" — overridable per document type later; Phase 0
     # implements both behind the same ParserBackend protocol and compares

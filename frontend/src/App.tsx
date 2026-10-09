@@ -26,11 +26,14 @@ import { CalibrationPage } from '@/pages/Calibration'
 import { SimulationsPage } from '@/pages/Simulations'
 import { LensesPage } from '@/pages/Lenses'
 import { PromptsPage } from '@/pages/Prompts'
+import { UploadSessionPage } from '@/pages/UploadSession'
 
 export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      {/* Public: whoever has the link uploads (VRT-47). */}
+      <Route path="/carga/:sessionId" element={<UploadSessionPage />} />
       <Route
         path="/"
         element={
