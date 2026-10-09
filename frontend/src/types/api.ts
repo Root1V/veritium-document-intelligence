@@ -733,5 +733,5 @@ export interface CalibrationSummary {
 
 export interface CalibrationDetail extends CalibrationSummary {
   min_observations: number
-  fields: FieldCalibration[]
+  fields: (FieldCalibration & { label: string; document_type_name: string })[]
 }

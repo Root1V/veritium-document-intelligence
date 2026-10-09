@@ -24,7 +24,7 @@ const NAV_ITEMS = [
   { to: '/validation', label: 'Validación', icon: ShieldCheck, requiresExecute: false },
   { to: '/validation-rules', label: 'Reglas de validación', icon: ListChecks, requiresExecute: false },
   { to: '/evaluation', label: 'Evaluación', icon: FlaskConical, requiresExecute: false },
-  { to: '/calibration', label: 'Calibración', icon: Gauge, requiresExecute: false },
+  { to: '/calibration', label: 'Confiabilidad', icon: Gauge, requiresExecute: false },
 ]
 
 export function Sidebar() {

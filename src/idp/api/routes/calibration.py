@@ -20,7 +20,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from idp.api.deps import get_current_user, get_db_session, require_role
 from idp.domain.calibration import MIN_OBSERVATIONS, Calibration, FieldCalibration, calibrate, suggest_threshold
 from idp.persistence.models import CalibrationVersion, User
-from idp.persistence.repositories import CalibrationRepository
+from idp.persistence.repositories import CalibrationRepository, DocumentTypeRepository, SemanticCatalogRepository
+from idp.review.labels import describe_field
 
 router = APIRouter(prefix="/v1/calibration", tags=["calibration"], dependencies=[Depends(get_current_user)])
 _admin = [Depends(require_role("admin"))]
@@ -38,9 +39,15 @@ class VersionSummary(BaseModel):
     activated_at: datetime | None
 
 
+class FieldView(FieldCalibration):
+    # What a person reads: the field's business name and its document type's.
+    label: str
+    document_type_name: str
+
+
 class VersionDetail(VersionSummary):
     min_observations: int
-    fields: list[FieldCalibration]
+    fields: list[FieldView]
 
 
 def _summary(row: CalibrationVersion) -> VersionSummary:
@@ -50,9 +57,19 @@ def _summary(row: CalibrationVersion) -> VersionSummary:
     )
 
 
-def _detail(row: CalibrationVersion) -> VersionDetail:
+async def _detail(session: AsyncSession, row: CalibrationVersion) -> VersionDetail:
     model = Calibration.model_validate(row.model)
-    return VersionDetail(**_summary(row).model_dump(), min_observations=MIN_OBSERVATIONS, fields=list(model.fields.values()))
+    types = await DocumentTypeRepository(session).load_catalog()
+    loaded = await SemanticCatalogRepository(session).load_active()
+    fields = []
+    for f in model.fields.values():
+        document_type, _, path = f.key.partition(".")
+        current = types.current(document_type)
+        definition = current[1] if current else None
+        label = describe_field(path, document_type=document_type, definition=definition, catalog=loaded[0] if loaded else None, payload=None).label
+        name = definition.display_name if definition else document_type
+        fields.append(FieldView(**f.model_dump(), label=label, document_type_name=name))
+    return VersionDetail(**_summary(row).model_dump(), min_observations=MIN_OBSERVATIONS, fields=fields)
 
 
 async def _version_or_404(session: AsyncSession, version: int) -> CalibrationVersion:
@@ -84,12 +101,12 @@ async def compute(session: AsyncSession = Depends(get_db_session), user: User = 
     }
     row = await repo.create(model=model.model_dump(mode="json"), report=report, created_by=user.name)
     await session.commit()
-    return _detail(row)
+    return await _detail(session, row)
 
 
 @router.get("/{version}", response_model=VersionDetail)
 async def get_version(version: int, session: AsyncSession = Depends(get_db_session)) -> VersionDetail:
-    return _detail(await _version_or_404(session, version))
+    return await _detail(session, await _version_or_404(session, version))
 
 
 @router.post("/deactivate", response_model=list[VersionSummary], dependencies=_admin)
@@ -104,4 +121,4 @@ async def activate(version: int, session: AsyncSession = Depends(get_db_session)
     row = await _version_or_404(session, version)
     await CalibrationRepository(session).activate(row, by=user.name)
     await session.commit()
-    return _detail(row)
+    return await _detail(session, row)
