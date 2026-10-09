@@ -12,6 +12,7 @@ import { DocumentTypesPage } from '@/pages/DocumentTypes'
 import { NewDocumentTypePage } from '@/pages/NewDocumentType'
 import { SemanticCatalogPage } from '@/pages/SemanticCatalog'
 import { ProfilesPage } from '@/pages/Profiles'
+import { ApiClientsPage } from '@/pages/ApiClients'
 import { BulkJobDetailPage, BulkJobsPage } from '@/pages/BulkJobs'
 import { CasesPage } from '@/pages/Cases'
 import { CaseDetailPage } from '@/pages/CaseDetail'
@@ -124,6 +125,14 @@ export default function App() {
         element={
           <ProtectedRoute>
             <CaseDetailPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/sistemas"
+        element={
+          <ProtectedRoute>
+            <ApiClientsPage />
           </ProtectedRoute>
         }
       />

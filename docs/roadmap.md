@@ -318,6 +318,11 @@ Veritium pasa de "subir documentos sueltos" a ser una **capacidad de decisión d
 **Why:** integración por eventos con sistemas que ya hablan por bus. **Scope:** consumidor y publicador CloudEvents, con claim-check para los archivos.
 ## VRT-50 — Salida renderizable (A2UI)
 **Why:** que otros front-ends muestren el resultado sin conocer el dominio. **Scope:** capa A2UI v0.9 sobre el contrato canónico.
+## VRT-65 — Credenciales de sistema
+**Why:** hoy un sistema solo entra como una persona (usuario y contraseña, token de 8 h); para integrarse de verdad necesita credenciales propias que se roten y revoquen sin tocar a nadie más. **Scope:**
+- Alta de sistemas por un admin: `client_id` + secreto mostrado una sola vez; rotar y revocar con efecto inmediato.
+- `POST /auth/token` (OAuth2 client credentials) → token corto con rol `integracion`.
+- Cuota de llamadas por minuto y por sistema (429 + `Retry-After`); arranque rechazado fuera de dev con la clave JWT por defecto. Fuera: SSO de personas y multi-tenant (VRT-57).
 
 ## F6 — Agéntico
 ## VRT-51 — Servidor MCP

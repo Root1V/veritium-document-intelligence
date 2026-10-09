@@ -23,6 +23,7 @@ from idp.domain.process_profile_seed import SEED_PROFILES
 from idp.domain.semantic import SemanticCatalog
 from idp.domain.semantic_seed import seed_catalog
 from idp.persistence.models import (
+    ApiClient,
     AuditLogEntry,
     CalibrationVersion,
     Case,
@@ -74,7 +75,8 @@ class UserRepository:
         return user
 
     async def list(self) -> list[User]:
-        result = await self._session.execute(select(User).order_by(User.created_at))
+        """People only: a connected system's user is managed with its client (VRT-65)."""
+        result = await self._session.execute(select(User).where(User.id.not_in(select(ApiClient.user_id))).order_by(User.created_at))
         return list(result.scalars().all())
 
 

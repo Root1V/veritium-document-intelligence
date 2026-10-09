@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from opentelemetry import trace
 
-from idp.api.routes import audit, auth, batches, bulk_jobs, calibration, cases, document_types, documents, evaluation, lenses, profiles, prompts, simulations, upload_sessions, review, semantic_catalog, type_suggestions, users, validation, validation_rules, webhooks
+from idp.api.routes import api_clients, audit, auth, batches, bulk_jobs, calibration, cases, document_types, documents, evaluation, lenses, profiles, prompts, simulations, upload_sessions, review, semantic_catalog, type_suggestions, users, validation, validation_rules, webhooks
 from idp.config import get_settings
 from idp.llm.port import inference_lifespan
 from idp.llm.prompts import current as current_prompts
@@ -84,6 +84,7 @@ def create_app() -> FastAPI:
     app.include_router(prompts.router)
     app.include_router(upload_sessions.router)
     app.include_router(bulk_jobs.router)
+    app.include_router(api_clients.router)
 
     @app.get("/health")
     async def health() -> dict:

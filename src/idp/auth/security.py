@@ -9,6 +9,7 @@ independently. Move to asymmetric keys only if that changes.
 
 from __future__ import annotations
 
+import hashlib
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -34,18 +35,23 @@ def create_access_token(settings: Settings, *, user_id: uuid.UUID) -> str:
     return jwt.encode(payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
 
 
-def decode_access_token(settings: Settings, token: str) -> uuid.UUID | None:
-    """Returns the user id encoded in a valid, unexpired token, or None if
-    the token is missing/invalid/expired — callers turn None into a 401,
-    this module has no opinion on HTTP."""
+def create_client_token(settings: Settings, *, user_id: uuid.UUID, client_id: str) -> str:
+    """A connected system's token (VRT-65): short-lived, and it names the
+    client, so a revoked or rotated client stops working at once."""
+    now = datetime.now(UTC)
+    # iat with sub-second precision: a token issued right after a rotation must not look older than it.
+    payload = {"sub": str(user_id), "cid": client_id, "iat": now.timestamp(), "exp": now + timedelta(minutes=settings.api_client_token_minutes)}
+    return jwt.encode(payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
+
+
+def decode_claims(settings: Settings, token: str) -> dict | None:
+    """The claims of a valid, unexpired token, or None."""
     try:
-        payload = jwt.decode(token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm])
+        return jwt.decode(token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm])
     except JWTError:
         return None
-    subject = payload.get("sub")
-    if subject is None:
-        return None
-    try:
-        return uuid.UUID(subject)
-    except ValueError:
-        return None
+
+
+def hash_client_secret(secret: str) -> str:
+    """Client secrets are random and long: a plain sha256 is enough (no bcrypt cost on every token request)."""
+    return hashlib.sha256(secret.encode()).hexdigest()

@@ -5,6 +5,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from '@/lib/apiClient'
 import { getToken } from '@/lib/auth'
 import type {
+  ApiClientView,
+  ApiClientWithSecret,
   BulkJobDetail,
   BulkJobSummary,
   AppUser,
@@ -870,5 +872,23 @@ export function useSubmitBulkJob() {
       return (await apiClient.post<{ id: string; cases: number; skipped: BulkJobSummary['skipped'] }>('/v1/bulk-jobs', form)).data
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['bulk-jobs'] }),
+  })
+}
+
+// --- Connected systems (VRT-65) -----------------------------------------------
+
+export function useApiClients() {
+  return useQuery({ queryKey: ['api-clients'], queryFn: async () => (await apiClient.get<ApiClientView[]>('/v1/api-clients')).data })
+}
+
+export function useApiClientAction() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (action: { kind: 'create'; name: string; rateLimit?: number } | { kind: 'rotate' | 'revoke'; id: string }) => {
+      if (action.kind === 'create')
+        return (await apiClient.post<ApiClientWithSecret>('/v1/api-clients', { name: action.name, rate_limit_per_minute: action.rateLimit ?? null })).data
+      return (await apiClient.post<ApiClientView | ApiClientWithSecret>(`/v1/api-clients/${action.id}/${action.kind}`)).data
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['api-clients'] }),
   })
 }

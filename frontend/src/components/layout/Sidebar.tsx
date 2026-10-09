@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom'
-import { LayoutDashboard, Upload, Files, ClipboardCheck, Sparkles, BookOpen, History, LogOut, FileStack, Users, ShieldCheck, ListChecks, Network, Workflow, FolderOpen, FolderArchive, FlaskConical, Gauge, SplitSquareHorizontal, Scale, MessageSquareText } from 'lucide-react'
+import { LayoutDashboard, Upload, Files, ClipboardCheck, Sparkles, BookOpen, History, LogOut, FileStack, Users, ShieldCheck, ListChecks, Network, Workflow, FolderOpen, FolderArchive, FlaskConical, Gauge, SplitSquareHorizontal, Scale, MessageSquareText, KeyRound } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { canExecute, clearSession, getUserName, getUserRole, isAdmin } from '@/lib/auth'
 import { Badge } from '@/components/ui/badge'
@@ -84,6 +84,22 @@ export function Sidebar() {
           >
             <Users className="size-4" />
             Usuarios
+          </NavLink>
+        )}
+        {isAdmin() && (
+          <NavLink
+            to="/sistemas"
+            className={({ isActive }) =>
+              cn(
+                'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+                isActive
+                  ? 'bg-sidebar-primary text-sidebar-primary-foreground'
+                  : 'text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
+              )
+            }
+          >
+            <KeyRound className="size-4" />
+            Sistemas conectados
           </NavLink>
         )}
       </nav>

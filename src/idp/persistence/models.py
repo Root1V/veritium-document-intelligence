@@ -766,6 +766,33 @@ class PromptEdit(Base):
     retired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class ApiClient(Base):
+    """A system that calls Veritium from its own back end (VRT-65): it gets
+    tokens with OAuth2 client credentials instead of logging in as a person.
+    It acts through its own ``User`` (role ``integracion``, no usable
+    password), so every route sees it like any caller. Only the secret's
+    sha256 is kept. Rotating invalidates tokens issued before it; revoking
+    stops it at once."""
+
+    __tablename__ = "api_clients"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    name: Mapped[str] = mapped_column(String(256), nullable=False)
+    client_id: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    secret_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    # Calls per minute; None = the default (settings.api_client_rate_limit_per_minute).
+    rate_limit_per_minute: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_by: Mapped[str] = mapped_column(String(256), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    secret_rotated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    revoked_by: Mapped[str | None] = mapped_column(String(256), nullable=True)
+
+    user: Mapped["User"] = relationship()
+
+
 class BulkJob(Base):
     """Many cases handed over at once (VRT-48): an archive with one folder
     per case. Its cases run in the ``bulk`` lane and are released a few at a

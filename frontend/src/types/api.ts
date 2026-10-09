@@ -932,3 +932,21 @@ export interface BulkJobSummary {
 export interface BulkJobDetail extends BulkJobSummary {
   items: { id: string; external_ref: string | null; profile: string | null; outcome: BulkOutcome; progress: CaseProgress }[]
 }
+
+// --- Connected systems (VRT-65) -----------------------------------------------
+
+export interface ApiClientView {
+  id: string
+  name: string
+  client_id: string
+  rate_limit_per_minute: number
+  created_by: string
+  created_at: string
+  secret_rotated_at: string
+  last_used_at: string | null
+  revoked_at: string | null
+}
+
+export interface ApiClientWithSecret extends ApiClientView {
+  client_secret: string
+}

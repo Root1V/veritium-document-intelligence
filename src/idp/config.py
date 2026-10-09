@@ -13,8 +13,11 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import SecretStr
+from pydantic import SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+DEV_JWT_SECRET = "dev-insecure-change-me"
 
 
 class Settings(BaseSettings):
@@ -27,9 +30,13 @@ class Settings(BaseSettings):
     # HS256 shared-secret signing — adequate for a single-backend internal
     # tool; move to asymmetric keys only if a second service ever needs to
     # verify tokens independently.
-    jwt_secret_key: str = "dev-insecure-change-me"
+    jwt_secret_key: str = DEV_JWT_SECRET
     jwt_algorithm: str = "HS256"
     jwt_expiration_minutes: int = 480  # 8h — one work shift
+    # Connected systems (VRT-65): their tokens are short, and each system
+    # has a quota of calls per minute (per API process).
+    api_client_token_minutes: int = 15
+    api_client_rate_limit_per_minute: int = 120
 
     # --- CORS (frontend dev server origin) ---
     cors_allowed_origins: list[str] = ["http://localhost:5180"]
@@ -142,6 +149,13 @@ class Settings(BaseSettings):
     webhook_dispatcher_enabled: bool = True
     webhook_dispatch_interval_seconds: float = 2.0
     webhook_request_timeout_seconds: float = 10.0
+
+    @model_validator(mode="after")
+    def _real_secret_outside_dev(self) -> Settings:
+        # Anyone who knows the default could sign a token for any user or system (VRT-65).
+        if self.environment == "prod" and self.jwt_secret_key == DEV_JWT_SECRET:
+            raise ValueError("JWT_SECRET_KEY debe definirse en producción (no la clave de desarrollo)")
+        return self
 
 
 @lru_cache

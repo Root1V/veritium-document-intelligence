@@ -3,17 +3,21 @@ module-level singletons (the PoC's ``ocr = PaddleOCR(...)`` anti-pattern)."""
 
 from __future__ import annotations
 
+import uuid
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from idp.auth.security import decode_access_token
+from idp.auth.rate_limit import limiter
+from idp.auth.security import decode_claims
 from idp.config import Settings, get_settings
 from idp.persistence.db import get_session_factory
-from idp.persistence.models import User
+from idp.persistence.models import ApiClient, User
 from idp.persistence.repositories import ReferenceDataRepository, UserRepository
 from idp.storage.object_store import S3ObjectStore
 from idp.validation.ports import ExternalSystemPort, ReferenceDataPort, StubExternalSystemPort
@@ -51,13 +55,38 @@ async def get_current_user(
     unauthorized = HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid or missing credentials")
     if credentials is None:
         raise unauthorized
-    user_id = decode_access_token(settings, credentials.credentials)
-    if user_id is None:
+    claims = decode_claims(settings, credentials.credentials)
+    if claims is None or "sub" not in claims:
         raise unauthorized
+    try:
+        user_id = uuid.UUID(claims["sub"])
+    except ValueError:
+        raise unauthorized from None
+    if "cid" in claims:
+        await _check_client(settings, session, claims, user_id, unauthorized)
     user = await UserRepository(session).get(user_id)
     if user is None:
         raise unauthorized
     return user
+
+
+async def _check_client(settings: Settings, session: AsyncSession, claims: dict, user_id: uuid.UUID, unauthorized: HTTPException) -> None:
+    """A connected system's token (VRT-65): its client must still be active,
+    the token newer than the last rotation, and the system within its quota."""
+    client = await session.scalar(select(ApiClient).where(ApiClient.client_id == claims["cid"]))
+    if client is None or client.revoked_at is not None or client.user_id != user_id:
+        raise unauthorized
+    if float(claims.get("iat", 0)) < client.secret_rotated_at.timestamp():
+        raise unauthorized
+    retry_after = limiter.check(client.client_id, client.rate_limit_per_minute or settings.api_client_rate_limit_per_minute)
+    if retry_after is not None:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="se superó la cuota de llamadas por minuto", headers={"Retry-After": str(retry_after)}
+        )
+    now = datetime.now(UTC)
+    if client.last_used_at is None or now - client.last_used_at > timedelta(minutes=1):  # not one write per call
+        client.last_used_at = now
+        await session.commit()
 
 
 def require_role(*allowed_roles: str):
