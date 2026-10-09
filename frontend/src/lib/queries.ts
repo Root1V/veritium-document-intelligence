@@ -673,7 +673,8 @@ export function useCreateGoldenSet() {
 export function useRunEvalSuite() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async (suiteId: string) => (await apiClient.post<EvalRunSummary>(`/v1/eval-suites/${suiteId}/runs`)).data,
+    mutationFn: async ({ suiteId, semanticGrounding }: { suiteId: string; semanticGrounding?: boolean }) =>
+      (await apiClient.post<EvalRunSummary>(`/v1/eval-suites/${suiteId}/runs`, semanticGrounding === undefined ? {} : { semantic_grounding: semanticGrounding })).data,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['eval-suites'] }),
   })
 }

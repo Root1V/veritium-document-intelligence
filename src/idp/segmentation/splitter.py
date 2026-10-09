@@ -25,6 +25,7 @@ from pydantic import BaseModel, Field
 
 from idp.config import Settings
 from idp.llm.port import structured
+from idp.llm.prompts import prompt
 from idp.observability.otel import traced_llm_call
 from idp.parsing.normalize import ParsedDocument
 
@@ -39,7 +40,7 @@ class _SegmentationResult(BaseModel):
     segments: list[DocumentSegment]
 
 
-_SYSTEM_PROMPT = """Eres un agente que detecta los limites entre documentos logicos distintos dentro \
+_SYSTEM_PROMPT = prompt("segment", """Eres un agente que detecta los limites entre documentos logicos distintos dentro \
 de un unico archivo PDF fisico subido por un cliente. Un archivo fisico puede contener MAS DE UN \
 documento logico concatenado — p. ej. un correo electronico de portada, seguido de un cronograma de \
 pagos, seguido de terminos y condiciones contractuales, seguido de un estado de cuenta: cada uno un \
@@ -66,7 +67,7 @@ de tema.
 Se te da un resumen del texto de cada pagina. Identifica los rangos [start_page, end_page] (0-indexed, \
 inclusive) de cada documento logico distinto, en orden de aparicion. Los rangos deben cubrir el \
 documento completo, sin huecos ni superposiciones. Si tienes dudas sobre si dos paginas son el mismo \
-documento, trata ambas como parte de UN solo segmento."""
+documento, trata ambas como parte de UN solo segmento.""")
 
 
 def _page_excerpts(parsed: ParsedDocument, max_chars_per_page: int = 6000) -> str:
@@ -86,7 +87,7 @@ def detect_segments(settings: Settings, parsed: ParsedDocument) -> list[Document
             purpose="segment",
             role="reasoning",
             output=_SegmentationResult,
-            instructions=_SYSTEM_PROMPT,
+            instructions=_SYSTEM_PROMPT.render(),
             task=_page_excerpts(parsed),
         )
     return result.segments or [DocumentSegment(start_page=0, end_page=parsed.page_count - 1, reasoning="Fallback: sin segmentos detectados.")]

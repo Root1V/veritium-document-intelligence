@@ -13,17 +13,18 @@ from pydantic import BaseModel, Field, create_model
 from idp.config import Settings
 from idp.domain.document_type_catalog import GENERIC, DocumentTypeCatalog
 from idp.llm.port import structured
+from idp.llm.prompts import prompt
 from idp.observability.otel import traced_llm_call
 from idp.parsing.normalize import ParsedDocument
 
 GENERIC_DESCRIPTION = "cualquier otro documento que no encaje claramente en los tipos anteriores"
 
-_SYSTEM_PROMPT = """Eres un clasificador de documentos empresariales. Dado el texto \
+_SYSTEM_PROMPT = prompt("classify", """Eres un clasificador de documentos empresariales. Dado el texto \
 extraido de un documento, determina su tipo. Los tipos validos son:
 {types}
 
 Si el documento no encaja claramente en ninguno de los tipos especificos, clasifica como generic.
-Responde con el tipo, tu confianza (0-1) y una breve justificacion."""
+Responde con el tipo, tu confianza (0-1) y una breve justificacion.""")
 
 
 class ClassificationResult(BaseModel):
@@ -52,7 +53,7 @@ def classify(settings: Settings, parsed: ParsedDocument, catalog: DocumentTypeCa
             purpose="classify",
             role="reasoning",
             output=_result_model(tuple(keys)),
-            instructions=_SYSTEM_PROMPT.format(types=types),
+            instructions=_SYSTEM_PROMPT.render(types=types),
             task=f"Texto del documento:\n\n{text_excerpt}",
         )
     return result

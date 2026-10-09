@@ -44,11 +44,12 @@ def extract_document(
     *,
     document_id: str,
     correction_note: str | None = None,
+    grounding: dict[str, str] | None = None,
 ) -> ExtractionOutcome:
     with traced_stage("extract", document_id=document_id, document_type=document_type):
         if document_type == GENERIC:
             return GenericExtractor().extract(parsed, settings, correction_note)
-        return extract_catalog_type(parsed, settings, catalog, document_type, correction_note)
+        return extract_catalog_type(parsed, settings, catalog, document_type, correction_note, grounding=grounding)
 
 
 def suggest_type(settings: Settings, generic_result: GenericSchema, catalog: DocumentTypeCatalog, *, document_id: str) -> DocumentTypeProposal:

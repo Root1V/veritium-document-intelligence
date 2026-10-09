@@ -17,11 +17,12 @@ from PIL import Image
 from synaptum import Tool, tool
 
 from idp.llm.port import inference
+from idp.llm.prompts import prompt
 from idp.observability.otel import traced_tool_call
 from idp.parsing.normalize import ParsedDocument
 
-_TABLE_PROMPT = "Describe el contenido de esta tabla de forma estructurada: encabezados, filas y valores relevantes."
-_FIGURE_PROMPT = "Describe el contenido de esta figura/grafico: tipo, ejes o etiquetas, y los datos o tendencias relevantes."
+_TABLE_PROMPT = prompt("read_table_region", "Describe el contenido de esta tabla de forma estructurada: encabezados, filas y valores relevantes.")
+_FIGURE_PROMPT = prompt("read_figure_region", "Describe el contenido de esta figura/grafico: tipo, ejes o etiquetas, y los datos o tendencias relevantes.")
 
 
 def _crop_region_b64(parsed: ParsedDocument, region_id: int) -> str | None:
@@ -74,12 +75,12 @@ def region_tools(parsed: ParsedDocument) -> list[Tool]:
     async def read_table_region(region_id: int) -> str:
         """Envia la imagen recortada de una region de tipo tabla a un modelo de vision para interpretar su contenido estructurado."""
         with traced_tool_call(tool_name="read_table_region", arguments={"region_id": region_id}):
-            return await _read_visual(parsed, region_id, purpose="read_table_region", prompt=_TABLE_PROMPT)
+            return await _read_visual(parsed, region_id, purpose="read_table_region", prompt=str(_TABLE_PROMPT))
 
     @tool(idempotent=True)
     async def read_figure_region(region_id: int) -> str:
         """Envia la imagen recortada de una region de tipo figura/grafico a un modelo de vision para interpretar su contenido."""
         with traced_tool_call(tool_name="read_figure_region", arguments={"region_id": region_id}):
-            return await _read_visual(parsed, region_id, purpose="read_figure_region", prompt=_FIGURE_PROMPT)
+            return await _read_visual(parsed, region_id, purpose="read_figure_region", prompt=str(_FIGURE_PROMPT))
 
     return [read_text_region, read_table_region, read_figure_region]

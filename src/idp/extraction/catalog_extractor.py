@@ -14,7 +14,13 @@ from idp.parsing.normalize import ParsedDocument
 
 
 def extract_catalog_type(
-    parsed: ParsedDocument, settings: Settings, catalog: DocumentTypeCatalog, type_key: str, correction_note: str | None = None
+    parsed: ParsedDocument,
+    settings: Settings,
+    catalog: DocumentTypeCatalog,
+    type_key: str,
+    correction_note: str | None = None,
+    *,
+    grounding: dict[str, str] | None = None,
 ) -> ExtractionOutcome:
     current = catalog.current(type_key)
     if current is None:
@@ -31,6 +37,7 @@ def extract_catalog_type(
             purpose=f"extract/{type_key}/v{version}",
             hint=definition.extraction_hint,
             correction_note=correction_note,
+            grounding=grounding,
         )
     except ExtractionIncomplete as exc:
         return ExtractionOutcome(schema_instance=None, needs_review=True, review_reason=str(exc), extraction_method="agentic", schema_version=schema_version)

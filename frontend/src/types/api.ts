@@ -627,7 +627,14 @@ export interface EvalRunSummary {
   finished_at: string | null
   error: string | null
   metrics: EvalMetrics | null
-  provenance: { models?: Record<string, string>; code_version?: string; document_types?: Record<string, number> } | null
+  options: { semantic_grounding?: boolean } | null
+  provenance: {
+    models?: Record<string, string>
+    code_version?: string
+    document_types?: Record<string, number>
+    prompts?: Record<string, string>
+    semantic_grounding?: boolean
+  } | null
 }
 
 export interface EvalSuiteSummary {

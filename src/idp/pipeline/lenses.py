@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from idp.config import Settings
 from idp.domain.lenses import LensDefinition, LensDocument, LensSummaryAnswer, PlaybookAnswer, build_output, render_context, render_facts
 from idp.llm.port import structured
+from idp.llm.prompts import prompt
 from idp.observability.otel import traced_llm_call
 from idp.parsing.normalize import ParsedDocument
 from idp.parsing.store import load_parsed, save_parsed
@@ -32,14 +33,14 @@ entidad, nunca el cliente. Escribe en espanol claro, para un ejecutivo, sin jerg
 donde se apoya cada afirmacion. Copia nombres, montos y fechas exactamente como aparecen. No afirmes nada que no \
 este en el expediente y no inventes cifras ni referencias."""
 
-_SUMMARY = _COMMON + """
+_SUMMARY = prompt("lens_summary", _COMMON + """
 
 Eres analista del area de {area}. {instructions}
 Responde con un titular de una o dos frases, de 3 a 8 puntos clave con sus referencias, y en `attention` como \
 maximo 4 alertas que un analista debe revisar en ESTE expediente: datos que no coinciden, montos que no cuadran o \
-datos clave que faltan. No incluyas generalidades que valdrian para cualquier expediente."""
+datos clave que faltan. No incluyas generalidades que valdrian para cualquier expediente.""")
 
-_PLAYBOOK = _COMMON + """
+_PLAYBOOK = prompt("lens_playbook", _COMMON + """
 
 Eres abogado del area {area}. Revisa CADA punto del playbook contra los documentos y responde un check por punto \
 (item_key igual a la clave del punto):
@@ -51,7 +52,7 @@ trata) o "dudoso" (no se puede decidir con lo que dice).
 Agrega un titular de una frase con la conclusion general.
 
 Playbook:
-{playbook}"""
+{playbook}""")
 
 
 async def lens_documents(settings: Settings, session: AsyncSession, case: Case, lens: LensDefinition) -> list[LensDocument]:
@@ -84,10 +85,10 @@ def _ask(settings: Settings, lens: LensDefinition, context: str) -> LensSummaryA
     with traced_llm_call(role="reasoning", model=settings.reasoning_model):
         if lens.kind == "summary":
             return structured(purpose=f"lens/{lens.key}", role="reasoning", output=LensSummaryAnswer,
-                              instructions=_SUMMARY.format(area=area, instructions=lens.instructions), task=context)
+                              instructions=_SUMMARY.render(area=area, instructions=lens.instructions), task=context)
         playbook = "\n".join(f"- {i.key}: {i.label}" + (f" ({i.guidance})" if i.guidance else "") for i in lens.playbook)
         return structured(purpose=f"lens/{lens.key}", role="reasoning", output=PlaybookAnswer,
-                          instructions=_PLAYBOOK.format(area=area, playbook=playbook), task=context)
+                          instructions=_PLAYBOOK.render(area=area, playbook=playbook), task=context)
 
 
 async def run_lens(settings: Settings, result_id: uuid.UUID) -> None:

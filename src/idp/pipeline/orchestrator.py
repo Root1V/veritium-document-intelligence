@@ -31,7 +31,7 @@ from idp.domain.request_payload import RequestInputPayload
 from idp.domain.schemas.generic import GenericSchema
 from idp.domain.process_profile import ProcessProfileDefinition
 from idp.domain.reprocess import ReprocessScope, changed_reads, rules_to_reevaluate
-from idp.domain.semantic import SemanticCatalog
+from idp.domain.semantic import SemanticCatalog, field_meanings
 from idp.domain.semantic_resolution import ConsolidatedView, DocumentExtraction, resolve_case
 from idp.extraction.agentic.loop import ExtractionIncomplete
 from idp.observability.otel import traced_stage
@@ -241,8 +241,9 @@ async def _classify_and_extract(
     await document_repo.set_status(document_id, "extracting")
     await session.commit()
 
+    grounding = await extraction_grounding(settings, session, classification.document_type)
     outcome = await asyncio.to_thread(
-        extract_document, settings, parsed, classification.document_type, type_catalog, document_id=str(document_id)
+        extract_document, settings, parsed, classification.document_type, type_catalog, document_id=str(document_id), grounding=grounding
     )
 
     if outcome.schema_instance is None:
@@ -275,6 +276,15 @@ async def _classify_and_extract(
         fields=flatten_top_level_fields(outcome.schema_instance),
         payload=outcome.schema_instance.model_dump(mode="json"),
     )
+
+
+async def extraction_grounding(settings: Settings, session: AsyncSession, document_type: str, *, enabled: bool | None = None) -> dict[str, str] | None:
+    """The business meaning of the type's fields, when semantic grounding
+    is on (VRT-46): ``enabled`` overrides the setting, for an evaluation."""
+    if not (settings.extraction_semantic_grounding if enabled is None else enabled):
+        return None
+    loaded = await SemanticCatalogRepository(session).load_active()
+    return field_meanings(loaded[0], document_type) or None if loaded else None
 
 
 async def _suggest_type_if_promising(

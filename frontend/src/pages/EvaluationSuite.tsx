@@ -11,7 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { errorDetail } from '@/lib/apiErrors'
 import { canExecute } from '@/lib/auth'
-import { percent, show } from '@/lib/evaluation'
+import { configChanges, percent, show } from '@/lib/evaluation'
 import { humanizeFieldName } from '@/lib/extraction'
 import { useDocumentTypeCatalog, useEvalRun, useEvalSuite, useRunEvalSuite } from '@/lib/queries'
 import type { EvalChange, EvalRunDetail, EvalRunSummary } from '@/types/api'
@@ -82,7 +82,16 @@ function RunView({ runId, baseline }: { runId: string; baseline: EvalRunSummary 
               {percent(m?.classification)}
             </CardDescription>
           </CardHeader>
-          <CardContent className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <CardContent className="flex flex-col gap-1 pb-0 text-sm">
+            <span className="font-medium">Qué cambió entre las dos corridas</span>
+            {configChanges(baseline.provenance, run.provenance).map((c) => (
+              <span key={c}>• {c}</span>
+            ))}
+            {configChanges(baseline.provenance, run.provenance).length === 0 && (
+              <span className="text-muted-foreground">Nada de la configuración: la diferencia, si la hay, es variación del modelo.</span>
+            )}
+          </CardContent>
+          <CardContent className="grid grid-cols-1 gap-4 pt-4 md:grid-cols-2">
             <Changes title="Regresiones" changes={run.comparison.regressions} run={run} tone="bad" />
             <Changes title="Mejoras" changes={run.comparison.improvements} run={run} tone="good" />
           </CardContent>
@@ -158,6 +167,7 @@ export function EvaluationSuitePage() {
   const { data: suite, isLoading } = useEvalSuite(suiteId)
   const runSuite = useRunEvalSuite()
   const [selected, setSelected] = useState<string | null>(null)
+  const [withMeaning, setWithMeaning] = useState(false)
   if (isLoading || !suite) return <Loader2 className="size-6 animate-spin text-muted-foreground" />
 
   const runs = suite.runs
@@ -181,7 +191,7 @@ export function EvaluationSuitePage() {
             <Button
               disabled={busy || runSuite.isPending}
               onClick={() =>
-                runSuite.mutate(suite.id, {
+                runSuite.mutate({ suiteId: suite.id, semanticGrounding: withMeaning || undefined }, {
                   onSuccess: (r) => {
                     setSelected(r.id)
                     toast.success('Corrida en curso.')
@@ -192,6 +202,12 @@ export function EvaluationSuitePage() {
             >
               {busy ? <Loader2 className="size-4 animate-spin" /> : <Play className="size-4" />} Correr con la configuración actual
             </Button>
+          )}
+          {canExecute() && (
+            <label className="flex items-center gap-2 text-sm" title="Le dice al modelo qué significa cada campo para el negocio, según el catálogo semántico.">
+              <input type="checkbox" checked={withMeaning} onChange={(e) => setWithMeaning(e.target.checked)} />
+              Probar con el significado de negocio de cada campo
+            </label>
           )}
           <Link to="/evaluation" className="text-sm underline">
             Volver
@@ -204,6 +220,7 @@ export function EvaluationSuitePage() {
           {runs.map((r) => (
             <Button key={r.id} size="sm" variant={r.id === current?.id ? 'default' : 'outline'} onClick={() => setSelected(r.id)}>
               {new Date(r.created_at).toLocaleString()} · {r.status === 'completed' ? percent(r.metrics?.fields) : r.status}
+              {r.provenance?.semantic_grounding && ' · con significado'}
             </Button>
           ))}
         </div>

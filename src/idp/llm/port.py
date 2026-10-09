@@ -35,7 +35,7 @@ from typing import Any, Literal, TypeVar
 from axonium import AsyncAxonium
 from axonium.config import Timeouts
 from pydantic import BaseModel
-from synaptum import Agent, FinalStep, Image, Limits, LocalGateway, MemoryCheckpointer, Phase, Sampling, Session, Text, ToolStep, generate
+from synaptum import Agent, FinalStep, Image, Limits, LocalGateway, MemoryCheckpointer, Phase, PromptTemplate, Sampling, Session, Text, ToolStep, generate
 from synaptum.providers.axonium import AxoniumModel
 
 from idp.config import Settings
@@ -91,14 +91,14 @@ class Inference:
             log.warning("inference: se pidió %s y respondió %s (%s)", model, sorted(answered), purpose)
         return result
 
-    async def structured(self, *, purpose: str, role: Role, output: type[T], instructions: str, task: str) -> T:
+    async def structured(self, *, purpose: str, role: Role, output: type[T], instructions: str | PromptTemplate, task: str) -> T:
         return await self._generate(purpose, role, task, instructions=instructions, output=output, max_steps=STRUCTURED_MAX_STEPS)
 
     async def vision(self, *, purpose: str, image_b64: str, prompt: str, mime_type: str = "image/png") -> str:
         return await self._generate(purpose, "vision", [Text(prompt), Image(media_type=mime_type, data=image_b64)], max_steps=1)
 
     async def run_agent(
-        self, *, purpose: str, instructions: str, task: str, tools: list[Any], output: type[T], max_steps: int
+        self, *, purpose: str, instructions: str | PromptTemplate, task: str, tools: list[Any], output: type[T], max_steps: int
     ) -> tuple[T, list[ToolStep]]:
         """A bounded tool-using agent on the reasoning model (VRT-30). The
         result arrives through synaptum's submit tool, validated against
@@ -160,7 +160,7 @@ def inference() -> Inference:
     return _current
 
 
-def structured(*, purpose: str, role: Role, output: type[T], instructions: str, task: str) -> T:
+def structured(*, purpose: str, role: Role, output: type[T], instructions: str | PromptTemplate, task: str) -> T:
     """Sync entry point for the pipeline's threads."""
     port = inference()
     return port.run_sync(port.structured(purpose=purpose, role=role, output=output, instructions=instructions, task=task))

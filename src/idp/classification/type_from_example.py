@@ -19,6 +19,7 @@ from idp.config import Settings
 from idp.domain.document_type_catalog import DocumentTypeCatalog, DocumentTypeDefinition, FieldSpec
 from idp.domain.semantic import SemanticCatalog
 from idp.llm.port import structured
+from idp.llm.prompts import prompt
 from idp.observability.otel import traced_llm_call
 from idp.parsing.normalize import ParsedDocument
 
@@ -74,7 +75,7 @@ class TypeDraft(BaseModel):
         )
 
 
-_SYSTEM_PROMPT = """Eres un analista que define tipos de documento para una plataforma de validacion \
+_SYSTEM_PROMPT = prompt("propose_type_from_example", """Eres un analista que define tipos de documento para una plataforma de validacion \
 documental. Recibes el texto (OCR) de UN documento de ejemplo y diseñas su tipo: un esquema de campos \
 que sirva para cualquier documento de esa misma clase, aunque cambie el formato.
 
@@ -95,7 +96,7 @@ corresponde (p. ej. el DNI del titular del recibo -> persona.dni con rol titular
 Atributos:
 {attributes}
 Roles:
-{roles}"""
+{roles}""")
 
 
 def propose_type_from_example(
@@ -112,7 +113,7 @@ def propose_type_from_example(
             purpose="propose_type_from_example",
             role="reasoning",
             output=TypeDraft,
-            instructions=_SYSTEM_PROMPT.format(types=types, attributes=attributes, roles=roles),
+            instructions=_SYSTEM_PROMPT.render(types=types, attributes=attributes, roles=roles),
             task=task,
         )
 

@@ -37,6 +37,7 @@ _unprocessable = status.HTTP_422_UNPROCESSABLE_ENTITY
 class RunSummary(BaseModel):
     id: uuid.UUID
     status: str
+    options: dict[str, Any] | None
     created_by: str
     created_at: datetime
     finished_at: datetime | None
@@ -92,6 +93,12 @@ class RunDetail(RunSummary):
     comparison: RunComparison | None = None
 
 
+class RunOptions(BaseModel):
+    semantic_grounding: bool | None = Field(
+        default=None, description="Probar con (true) o sin (false) el significado de negocio de cada campo; si falta, como está configurado."
+    )
+
+
 class GoldenSetRequest(BaseModel):
     name: str = Field(min_length=3)
     description: str | None = None
@@ -99,7 +106,7 @@ class GoldenSetRequest(BaseModel):
 
 def _run_summary(run: EvalRun) -> RunSummary:
     return RunSummary(
-        id=run.id, status=run.status, created_by=run.created_by, created_at=run.created_at, finished_at=run.finished_at,
+        id=run.id, status=run.status, options=run.options, created_by=run.created_by, created_at=run.created_at, finished_at=run.finished_at,
         error=run.error, metrics=run.metrics, provenance=run.provenance,
     )
 
@@ -238,6 +245,7 @@ async def get_suite(suite_id: uuid.UUID, session: AsyncSession = Depends(get_db_
 async def start_run(
     suite_id: uuid.UUID,
     background: BackgroundTasks,
+    options: RunOptions | None = None,
     session: AsyncSession = Depends(get_db_session),
     settings: Settings = Depends(get_app_settings),
     user: User = Depends(get_current_user),
@@ -246,7 +254,8 @@ async def start_run(
     repo = EvaluationRepository(session)
     run = await repo.unfinished_run(suite.id)
     if run is None:
-        run = EvalRun(suite_id=suite.id, created_by=user.name)
+        chosen = options.model_dump(exclude_none=True) if options else {}
+        run = EvalRun(suite_id=suite.id, created_by=user.name, options=chosen or None)
         session.add(run)
         await session.commit()
         await session.refresh(run)

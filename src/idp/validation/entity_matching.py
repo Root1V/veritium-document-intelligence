@@ -26,6 +26,7 @@ from rapidfuzz import distance, fuzz
 
 from idp.config import Settings
 from idp.llm.port import structured
+from idp.llm.prompts import prompt
 
 Band = Literal["match", "no_match", "ambiguous"]
 
@@ -133,9 +134,9 @@ class EntityMatchVerdict(BaseModel):
     reasoning: str
 
 
-_JUDGE_SYSTEM_PROMPT = """Eres un juez que determina si dos valores extraidos de documentos distintos \
+_JUDGE_SYSTEM_PROMPT = prompt("entity_judge", """Eres un juez que determina si dos valores extraidos de documentos distintos \
 se refieren a la misma entidad (persona, empresa o direccion). Considera abreviaturas, nombres \
-compuestos, apodos y variaciones de formato. Responde con tu veredicto y una breve justificacion."""
+compuestos, apodos y variaciones de formato. Responde con tu veredicto y una breve justificacion.""")
 
 
 def escalate_to_llm_judge(settings: Settings, *, kind: EntityKind, value_a: str, value_b: str, outcome: MatchOutcome) -> EntityMatchVerdict:
@@ -153,6 +154,6 @@ def escalate_to_llm_judge(settings: Settings, *, kind: EntityKind, value_a: str,
         purpose="entity_judge",
         role="reasoning",
         output=EntityMatchVerdict,
-        instructions=_JUDGE_SYSTEM_PROMPT,
+        instructions=_JUDGE_SYSTEM_PROMPT.render(),
         task=prompt,
     )

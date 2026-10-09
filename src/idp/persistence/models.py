@@ -578,6 +578,9 @@ class EvalRun(Base):
     id: Mapped[uuid.UUID] = _uuid_pk()
     suite_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("eval_suites.id", ondelete="CASCADE"), nullable=False)
     status: Mapped[str] = mapped_column(String(16), default="pending", server_default="pending", nullable=False)
+    # What this run tries differently from the configuration in use, e.g.
+    # {"semantic_grounding": true} (VRT-46).
+    options: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     provenance: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     metrics: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)

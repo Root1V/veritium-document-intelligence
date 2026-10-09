@@ -1,7 +1,6 @@
 """What produced a case run's result (VRT-25): enough to explain it and to
-reproduce it later. Stored on ``CaseRun.provenance``. Prompts live in code
-today, so ``code_version`` pins them; per-prompt versions arrive with
-synaptum's prompt registry (VRT-46)."""
+reproduce it later. Stored on ``CaseRun.provenance``. Each prompt's
+version is a fingerprint of its text (llm/prompts.py, VRT-46)."""
 
 from __future__ import annotations
 
@@ -13,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from idp.config import Settings
+from idp.llm.prompts import versions as prompt_versions
 from idp.persistence.models import ProcessProfileVersion
 from idp.validation.base import ValidationRule
 from idp.validation.rules.generic import DataDrivenRule
@@ -66,6 +66,8 @@ def build_provenance(
         "semantic_catalog_version": None,
         # Prometheus registry ids: the gateway serves exactly these (VRT-29).
         "models": {"reasoning": settings.reasoning_model, "vision": settings.vision_model},
+        "prompts": prompt_versions(),
+        "semantic_grounding": settings.extraction_semantic_grounding,
         "inference": {"route": "synaptum → axonium → prometheus", "synaptum": _package_version("synaptum"), "axonium": _package_version("axonium")},
         "parser_backend": settings.parser_backend,
         "thresholds": {

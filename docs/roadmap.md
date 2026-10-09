@@ -278,7 +278,11 @@ Veritium pasa de "subir documentos sueltos" a ser una **capacidad de decisión d
 - El texto OCR de cada archivo se guarda junto a él al procesarlo (los anteriores se leen una vez más la primera vez).
 - Fuera: lentes que corren solas en cada corrida y versionado de lentes (cada lectura guarda la definición que usó y se marca si la lente cambió).
 ## VRT-46 — Prompts versionados y grounding semántico
-**Why:** reproducibilidad y calidad de extracción medible. **Scope:** prompts versionados (synaptum, S-8) y la medición de inyectar definiciones semánticas.
+**Why:** reproducibilidad y calidad de extracción medible.
+**Scope:**
+- Registro de prompts (`llm/prompts.py`): cada uno con nombre y versión = huella de su texto; se pasa a synaptum como `PromptTemplate`, que lo sella en el diario y la traza (S-8). La procedencia de corridas de expediente y de evaluación guarda la versión de cada prompt.
+- Grounding semántico: el prompt de extracción puede incluir el significado de negocio de cada campo (catálogo semántico). Apagado por defecto (`EXTRACTION_SEMANTIC_GROUNDING`); se mide por corrida de evaluación y la comparación dice qué cambió entre corridas.
+- Medido con el golden set de boletas: sin diferencia (60% de campos en ambos); hace falta una suite más grande para decidir.
 
 ## F5 — Canales
 ## VRT-47 — Sesión de carga + verificación rápida

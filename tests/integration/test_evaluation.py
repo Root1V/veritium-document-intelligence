@@ -43,7 +43,7 @@ def stub_model(monkeypatch):
     monkeypatch.setattr(
         runner,
         "extract_document",
-        lambda settings, parsed, document_type, catalog, document_id: ExtractionOutcome(
+        lambda settings, parsed, document_type, catalog, document_id, grounding=None: answer.update(grounding=grounding) or ExtractionOutcome(
             schema_instance=PayslipSchema(
                 employee_name=e("SALAS SIGUAS, KATERIN"), period=e("01/2026"), gross_pay=e(6618.0), total_deductions=e(2313.86), net_pay=e(answer["net_pay"])
             ),
@@ -96,12 +96,22 @@ async def test_a_suite_from_a_table_runs_and_compares(live_settings, stub_model)
             assert run1["metrics"]["fields"] == {"evaluated": 2, "correct": 2, "accuracy": 1.0}
             assert run1["provenance"]["document_types"]["payslip"] >= 1
 
+            assert run1["provenance"]["semantic_grounding"] is False and "extract_agentic" in run1["provenance"]["prompts"]
+
             stub_model["net_pay"] = 4304.0  # a worse "model"
             second = (await client.post(f"/v1/eval-suites/{suite_id}/runs", headers=h)).json()
             run2 = (await client.get(f"/v1/eval-runs/{second['id']}", headers=h, params={"baseline": first["id"]})).json()
             assert run2["metrics"]["fields"]["correct"] == 1
             assert [(c["field"], c["before"], c["after"]) for c in run2["comparison"]["regressions"]] == [("net_pay", 4304.14, 4304.0)]
             assert run2["comparison"]["improvements"] == []
+
+            # Measuring semantic grounding (VRT-46): one run with it on, against the same suite.
+            grounded = (await client.post(f"/v1/eval-suites/{suite_id}/runs", headers=h, json={"semantic_grounding": True})).json()
+            assert grounded["options"] == {"semantic_grounding": True}
+            run3 = (await client.get(f"/v1/eval-runs/{grounded['id']}", headers=h)).json()
+            assert run3["provenance"]["semantic_grounding"] is True
+            assert "net_pay" in (stub_model["grounding"] or {}), "the extraction got the business meaning of the fields"
+            second = grounded
 
             suites = (await client.get("/v1/eval-suites", headers=h)).json()
             assert next(s for s in suites if s["id"] == suite_id)["latest_run"]["id"] == second["id"]

@@ -46,6 +46,7 @@ def run_agentic_extraction(
     purpose: str,
     hint: str,
     correction_note: str | None = None,
+    grounding: dict[str, str] | None = None,
 ) -> tuple[BaseModel, list[ToolCallRecord]]:
     task = "Extrae los datos del documento segun el esquema objetivo."
     if correction_note:
@@ -56,7 +57,7 @@ def run_agentic_extraction(
             result, steps = port.run_sync(
                 port.run_agent(
                     purpose=purpose,
-                    instructions=build_system_prompt(hint, schema_cls, parsed),
+                    instructions=build_system_prompt(hint, schema_cls, parsed, grounding),
                     task=task,
                     tools=region_tools(parsed),
                     output=schema_cls,

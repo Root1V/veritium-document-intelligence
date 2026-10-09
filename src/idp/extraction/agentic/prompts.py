@@ -2,29 +2,25 @@
 acotado al esquema objetivo: the agent is given the target Pydantic schema
 and the document's detected regions, and told to inspect regions rather than
 assume a fixed layout (the layout-drift problem this loop exists to solve).
-"""
+Registered and versioned (VRT-46); optionally grounded in the business
+meaning of each field, from the semantic catalog."""
 
 from __future__ import annotations
 
 from pydantic import BaseModel
+from synaptum import PromptTemplate
 
+from idp.llm.prompts import prompt
 from idp.parsing.normalize import ParsedDocument
 
-
-
-def build_system_prompt(hint: str, schema_cls: type[BaseModel], parsed: ParsedDocument) -> str:
-    """``hint`` is the document type's extraction hint (catalog, VRT-32)."""
-    regions_summary = "\n".join(
-        f"- region_id={b.region_id} tipo={b.block_type} pagina={b.page} texto_ocr={b.text[:80]!r}" for b in parsed.blocks
-    )
-    return f"""Eres un agente de extraccion de datos de documentos empresariales. {hint}
+_EXTRACTION = prompt("extract_agentic", """Eres un agente de extraccion de datos de documentos empresariales. {hint}
 
 El layout de este tipo de documento puede variar entre distintas plantillas de la empresa a lo largo \
 del tiempo, por lo que debes inspeccionar activamente las regiones disponibles en vez de asumir una \
 posicion fija para cada campo.
 
 Regiones detectadas en el documento:
-{regions_summary}
+{regions}
 
 Herramientas disponibles:
 - read_text_region(region_ids): lee texto OCR ya extraido de una o VARIAS regiones a la vez (sin costo). \
@@ -36,8 +32,8 @@ en vez de una llamada por region — cada llamada consume un turno de tu presupu
 - submit(...): entrega el resultado final segun el esquema objetivo. Debes llamarla para terminar.
 
 Esquema objetivo (JSON Schema):
-{schema_cls.model_json_schema()}
-
+{schema}
+{grounding}
 Instrucciones:
 1. Identifica primero que regiones necesitas para los campos principales (no listas) del esquema, y \
 leelas en la MENOR cantidad de llamadas posible agrupando varios region_ids por llamada.
@@ -61,4 +57,16 @@ sin espacios sobrantes, sin el nombre de la etiqueta). "source_text" en cambio d
 tal como aparece en la region OCR, incluyendo cualquier separador o etiqueta — no los uniformes. \
 Ejemplo: si la region dice "Apellidos y Nombres : SALAS SIGUAS, KATERIN KAROLA", value debe ser \
 "SALAS SIGUAS, KATERIN KAROLA" (sin el ":" inicial) y source_text puede conservar el texto completo.
-"""
+""")
+
+
+def build_system_prompt(hint: str, schema_cls: type[BaseModel], parsed: ParsedDocument, grounding: dict[str, str] | None = None) -> PromptTemplate:
+    """``hint`` is the document type's extraction hint (catalog, VRT-32);
+    ``grounding`` the business meaning of each field (VRT-46). Without it
+    the prompt is the same text it always was."""
+    regions = "\n".join(f"- region_id={b.region_id} tipo={b.block_type} pagina={b.page} texto_ocr={b.text[:80]!r}" for b in parsed.blocks)
+    meaning = ""
+    if grounding:
+        lines = "\n".join(f"- {field}: {text}" for field, text in grounding.items())
+        meaning = f"\nSignificado de negocio de los campos (te ayuda a ubicar el dato correcto; no cambia el formato del esquema):\n{lines}\n"
+    return _EXTRACTION.render(hint=hint, regions=regions, schema=schema_cls.model_json_schema(), grounding=meaning)

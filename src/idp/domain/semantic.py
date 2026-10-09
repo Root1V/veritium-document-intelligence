@@ -180,3 +180,19 @@ def read_field(payload: dict[str, Any], path: str) -> dict[str, Any] | None:
     if not isinstance(envelope, dict) or envelope.get("value") in (None, ""):
         return None
     return envelope
+
+
+def field_meanings(catalog: SemanticCatalog, document_type: str) -> dict[str, str]:
+    """What each field of a document type means to the business (VRT-46):
+    the attribute it maps to, its definition and its role — what an
+    extraction prompt can be grounded in."""
+    attributes = {a.key: a for a in catalog.attributes}
+    roles = {r.key: r.name for r in catalog.roles}
+    meanings: dict[str, str] = {}
+    for m in catalog.mappings:
+        if m.document_type != document_type:
+            continue
+        attribute = attributes[m.attribute]
+        for path in m.field_paths:
+            meanings[path] = f"{attribute.name} del {roles.get(m.role, m.role).lower()}: {attribute.definition}"
+    return meanings

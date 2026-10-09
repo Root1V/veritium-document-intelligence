@@ -62,6 +62,9 @@ class Settings(BaseSettings):
     # the same idempotency key waits for it instead of failing. A truncated
     # answer never validates, so it ends in human review, not in a hang.
     llm_max_output_tokens: int = 8192
+    # VRT-46: tell the extraction agent the business meaning of each field,
+    # from the semantic catalog. Measure it with an evaluation run first.
+    extraction_semantic_grounding: bool = False
 
     # --- Parsing / OCR backend selection ---
     # "docling" | "paddleocr" — overridable per document type later; Phase 0

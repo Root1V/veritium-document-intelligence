@@ -13,9 +13,10 @@ from idp.config import Settings
 from idp.domain.rule_draft import RuleDraft
 from idp.domain.semantic import SemanticCatalog
 from idp.llm.port import structured
+from idp.llm.prompts import prompt
 from idp.observability.otel import traced_llm_call
 
-_SYSTEM_PROMPT = """Eres un agente que traduce una descripcion en lenguaje natural de una regla de \
+_SYSTEM_PROMPT = prompt("draft_rule", """Eres un agente que traduce una descripcion en lenguaje natural de una regla de \
 validacion de negocio a una expresion CEL (Common Expression Language) segura y determinista, con \
 casos de prueba.
 
@@ -44,7 +45,7 @@ Si se puede (outcome="ok"), genera:
 4. message_pass / message_fail breves en español.
 5. rationale: la logica en 1-2 frases para que un humano la verifique sin leer CEL.
 6. test_cases: al menos un caso que cumple (expect "pass") y uno que no (expect "fail"), con valores \
-realistas en input (value, doc, case o request segun use la condicion)."""
+realistas en input (value, doc, case o request segun use la condicion).""")
 
 
 def draft_rule(
@@ -79,6 +80,6 @@ def draft_rule(
             purpose="draft_rule",
             role="reasoning",
             output=RuleDraft,
-            instructions=_SYSTEM_PROMPT,
+            instructions=_SYSTEM_PROMPT.render(),
             task=user_message,
         )

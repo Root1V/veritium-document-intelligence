@@ -11,13 +11,14 @@ from idp.domain.schemas.generic import GenericSchema
 from idp.extraction.base import ExtractionOutcome, attach_trace
 from idp.extraction.grounding import attach_grounding
 from idp.llm.port import structured
+from idp.llm.prompts import prompt
 from idp.observability.otel import traced_llm_call
 from idp.parsing.normalize import ParsedDocument
 
-_SYSTEM_PROMPT = """Eres un asistente de extraccion de datos. El documento no pudo clasificarse en un \
+_SYSTEM_PROMPT = prompt("extract_generic", """Eres un asistente de extraccion de datos. El documento no pudo clasificarse en un \
 tipo conocido. Extrae los pares clave-valor mas relevantes que encuentres (nombres, montos, fechas, \
 identificadores) y un resumen breve. Cada campo debe incluir su nivel de confianza (0-1) y el texto \
-exacto de origen."""
+exacto de origen.""")
 
 
 class GenericExtractor:
@@ -28,7 +29,7 @@ class GenericExtractor:
                 purpose="extract_generic",
                 role="reasoning",
                 output=GenericSchema,
-                instructions=_SYSTEM_PROMPT,
+                instructions=_SYSTEM_PROMPT.render(),
                 task=f"Texto del documento:\n\n{text}",
             )
         attach_trace(result, [])  # no-op: generic extraction never uses tool calls
