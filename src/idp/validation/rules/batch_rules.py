@@ -50,7 +50,7 @@ class DuplicateDocumentIdentifier(ValidationRule):
             category=self.category,
             passed=passed,
             severity=None if passed else Severity.WARNING,
-            message="Sin duplicados detectados en el batch." if passed else f"Identificador {current_id!r} duplicado en {len(duplicates)} documento(s) del mismo tipo en la solicitud.",
+            message="Sin documentos duplicados en el expediente." if passed else f"El identificador {current_id} aparece en {len(duplicates)} documento(s) más del mismo tipo en el expediente.",
             actual=current_id,
             confidence=1.0,
             confidence_method=ConfidenceMethod.DETERMINISTIC,

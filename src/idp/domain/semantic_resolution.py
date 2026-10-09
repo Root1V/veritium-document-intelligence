@@ -126,9 +126,21 @@ def resolve_case(
     return ConsolidatedView(catalog_version=catalog_version, attributes=resolved)
 
 
-def describe_conflict(resolved: ResolvedAttribute) -> str:
-    parts = [f"'{s.value}' ({s.document_type})" for s in resolved.sources]
-    return f"{resolved.role}.{resolved.attribute}: " + " vs ".join(parts)
+def describe_conflict(resolved: ResolvedAttribute, names: dict[str, str] | None = None) -> str:
+    """One sentence a person can read: 'DNI del titular: los documentos no
+    coinciden — 42285866 (Carta, Solicitud) frente a 42785091 (Seguro).'
+    ``names`` gives the business name of attributes, roles and document
+    types by key; a key without one is shown as is."""
+    names = names or {}
+    by_value: dict[str, list[str]] = {}
+    for s in resolved.sources:
+        documents = by_value.setdefault(str(s.value), [])
+        if (name := names.get(s.document_type, s.document_type)) not in documents:
+            documents.append(name)
+    values = " frente a ".join(f"{value} ({', '.join(documents)})" for value, documents in by_value.items())
+    attribute = names.get(resolved.attribute, resolved.attribute)
+    role = names.get(resolved.role, resolved.role)
+    return f"{attribute} del {role.lower()}: los documentos no coinciden — {values}."
 
 
 def _source_for(doc: DocumentExtraction, mapping: FieldMapping) -> EvidenceSource | None:

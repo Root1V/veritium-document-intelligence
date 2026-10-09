@@ -81,13 +81,16 @@ def decide(inputs: VerdictInputs, definition: ProcessProfileDefinition | None) -
         for f in inputs.findings:
             binding = definition.binding_for(f.rule_id)
             if binding is not None and binding.blocking:
-                reasons.append(
+                # A finding may say several things, one per line (e.g. each attribute in conflict): one reason each.
+                reasons.extend(
                     VerdictReason(
                         kind="rule",
                         decision=binding.on_fail,
-                        message=f.message,
+                        message=line,
                         ref={"rule_id": f.rule_id, "document_id": str(f.document_id) if f.document_id else None},
                     )
+                    for line in f.message.splitlines()
+                    if line.strip()
                 )
     decision: Decision = "continue"
     for r in reasons:

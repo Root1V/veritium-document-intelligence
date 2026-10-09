@@ -34,7 +34,14 @@ from idp.persistence.repositories import (
     ValidationRuleRepository,
 )
 from idp.pipeline.case_evaluation import apply_binding, rules_for_profile
-from idp.pipeline.orchestrator import build_default_rules, case_document_fields, extraction_schema, load_semantic_catalog, resolve_semantic_view
+from idp.pipeline.orchestrator import (
+    build_default_rules,
+    case_document_fields,
+    display_names,
+    extraction_schema,
+    load_semantic_catalog,
+    resolve_semantic_view,
+)
 from idp.review.routing import find_review_candidates
 from idp.validation.base import ValidationRule
 from idp.validation.context import ValidationContext
@@ -77,6 +84,8 @@ async def simulate_case(
     type_catalog = await DocumentTypeRepository(session).load_catalog()
     threshold = definition.thresholds.field_confidence_min if definition.thresholds.field_confidence_min is not None else settings.review_confidence_threshold
     by_id = {d.id: d for d in documents}
+    loaded = await load_semantic_catalog(session, version.semantic_catalog_version)
+    names = display_names(loaded[0] if loaded else None, type_catalog)
 
     findings: list[FindingInput] = []
     for current in fields:
@@ -88,6 +97,7 @@ async def simulate_case(
             reference_data=ReferenceDataRepository(session),
             external_system=StubExternalSystemPort(),
             semantic_view=view,
+            names=names,
         )
         results = [apply_binding(r, definition) for r in await run_validation(rules, context)]
         findings += [FindingInput(rule_id=r.rule_id, message=r.message, document_id=current.document_id) for r in results if not r.passed]

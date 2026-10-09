@@ -29,7 +29,7 @@ export function ValidationIssuesList({ issues }: { issues: ValidationIssue[] }) 
             <Icon className={`mt-0.5 size-4 shrink-0 ${SEVERITY_CLASSES[issue.severity]}`} />
             <div className="flex flex-col gap-1">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="text-sm font-medium">{issue.message}</span>
+                <span className="whitespace-pre-line text-sm font-medium">{issue.message}</span>
                 <Badge variant="outline" className="text-xs">
                   {issue.category}
                 </Badge>

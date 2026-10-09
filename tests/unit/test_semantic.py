@@ -259,6 +259,11 @@ async def test_consistency_rule_flags_only_documents_involved_in_a_conflict():
     assert not result.passed and result.field_path == "titular.persona.dni"
     assert "12345678" in result.message and "87654321" in result.message
 
+    involved.names = {"persona.dni": "DNI", "titular": "Titular", "insurance_disclosure": "Declaración de salud", "loan_application": "Solicitud de crédito"}
+    assert (await rule.evaluate(involved)).message == (
+        "DNI del titular: los documentos no coinciden — 12345678 (Declaración de salud) frente a 87654321 (Solicitud de crédito)."
+    )
+
     bystander = make_context(make_document_fields("payslip", {}, payslip_id))
     bystander.semantic_view = view
     assert (await rule.evaluate(bystander)).passed

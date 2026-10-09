@@ -27,7 +27,7 @@ class ExpectedEmployeeCodeMatches(ValidationRule):
             passed=passed,
             severity=None if passed else Severity.ERROR,
             field_path="employee_code",
-            message="employee_code coincide con el payload de la solicitud." if passed else "employee_code no coincide con el payload de la solicitud.",
+            message="El código de empleado coincide con el enviado en la solicitud." if passed else "El código de empleado no coincide con el enviado en la solicitud.",
             expected=expected,
             actual=actual,
             confidence=1.0,

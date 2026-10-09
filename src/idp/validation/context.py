@@ -41,6 +41,10 @@ class ValidationContext:
     # Resolved once per case over all its documents (VRT-23); None when no
     # semantic catalog is in play.
     semantic_view: ConsolidatedView | None = None
+    # Business names by key — catalog attributes ('persona.dni'), roles
+    # ('titular') and document types ('payslip') — so a message speaks the
+    # reader's language, not the schema's.
+    names: dict[str, str] = field(default_factory=dict)
 
     def result_of(self, rule_id: str) -> ValidationResult | None:
         return self.rule_results.get(rule_id)

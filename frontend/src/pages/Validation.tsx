@@ -167,7 +167,7 @@ export function ValidationPage() {
                           <div className="flex items-start gap-2">
                             <Icon className={`mt-0.5 size-4 shrink-0 ${SEVERITY_CLASSES[issue.severity]}`} />
                             <div className="flex flex-col gap-0.5">
-                              <span className="text-xs font-medium">{issue.message}</span>
+                              <span className="whitespace-pre-line text-xs font-medium">{issue.message}</span>
                               <span className="text-xs text-muted-foreground">{issue.explanation}</span>
                             </div>
                           </div>

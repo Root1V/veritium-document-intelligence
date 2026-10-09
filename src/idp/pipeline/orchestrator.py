@@ -179,6 +179,15 @@ async def load_semantic_catalog(session: AsyncSession, catalog_version: int | No
     return (SemanticCatalog.model_validate(row.definition), row.version) if row is not None else None
 
 
+def display_names(catalog: SemanticCatalog | None, types: DocumentTypeCatalog) -> dict[str, str]:
+    """Business names by key of the document types and of the catalog's
+    attributes and roles — what validation messages show (ValidationContext.names)."""
+    names = {key: current[1].display_name for key in types.keys() if (current := types.current(key))}
+    if catalog is not None:
+        names |= {a.key: a.name for a in catalog.attributes} | {r.key: r.name for r in catalog.roles}
+    return names
+
+
 async def resolve_semantic_view(
     session: AsyncSession, documents: list[DocumentFields], *, catalog_version: int | None = None
 ) -> ConsolidatedView | None:
@@ -616,6 +625,7 @@ async def evaluate_case(settings: Settings, case_id: uuid.UUID, run_id: uuid.UUI
                 review_repo=review_repo,
                 type_catalog=type_catalog,
                 calibration=calibration,
+                names=display_names(semantic, type_catalog),
             )
 
         await refresh_conditions(session, case, run, semantic_view, definition)
@@ -717,6 +727,7 @@ async def _validate_document(
     review_repo: ReviewRepository,
     type_catalog: DocumentTypeCatalog,
     calibration: Calibration | None = None,
+    names: dict[str, str] | None = None,
 ) -> None:
     await document_repo.set_status(current.document_id, "validating")
     await session.commit()
@@ -728,6 +739,7 @@ async def _validate_document(
         reference_data=reference_data,
         external_system=external_system,
         semantic_view=semantic_view,
+        names=names or {},
     )
     try:
         with traced_stage("validate", case_id=str(case_id), document_id=str(current.document_id)):

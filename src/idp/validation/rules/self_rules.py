@@ -30,7 +30,7 @@ class PayslipArithmeticConsistency(ValidationRule):
                 rule_id=self.rule_id,
                 category=self.category,
                 passed=True,
-                message="Campos insuficientes para verificar aritmetica; regla omitida.",
+                message="Faltan datos de la boleta para verificar el neto; regla omitida.",
                 confidence=1.0,
                 confidence_method=ConfidenceMethod.DETERMINISTIC,
                 explanation="gross_pay, total_deductions o net_pay ausente en la extraccion.",
@@ -44,7 +44,9 @@ class PayslipArithmeticConsistency(ValidationRule):
             passed=passed,
             severity=None if passed else Severity.ERROR,
             field_path="net_pay",
-            message="gross_pay - total_deductions coincide con net_pay." if passed else "gross_pay - total_deductions no coincide con net_pay.",
+            message="El neto a pagar es igual al bruto menos los descuentos."
+            if passed
+            else f"El neto a pagar ({net:,.2f}) no es igual al bruto menos los descuentos ({expected_net:,.2f}).",
             expected=expected_net,
             actual=net,
             confidence=1.0,

@@ -332,7 +332,7 @@ export function CaseDetailPage() {
                         </Badge>
                         <code className="text-xs">{f.rule_id}</code>
                       </span>
-                      <span>{f.message}</span>
+                      <span className="whitespace-pre-line">{f.message}</span>
                       {f.document_id && <span className="text-xs text-muted-foreground">{docName(f.document_id)}</span>}
                     </button>
                     <ReprocessButton caseId={result.case.id} scope={{ kind: 'rule', rule_id: f.rule_id }} label="Re-evaluar regla" busy={busy} />

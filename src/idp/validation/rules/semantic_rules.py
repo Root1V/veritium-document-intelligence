@@ -35,14 +35,15 @@ class SemanticAttributeConsistency(ValidationRule):
                 confidence_method=ConfidenceMethod.FUZZY_DETERMINISTIC,
                 explanation="Todos los atributos semánticos que este documento comparte con otros coinciden.",
             )
-        details = [describe_conflict(c) for c in conflicts]
+        # One line per attribute: the verdict lists each one once, however many documents report it.
+        details = [describe_conflict(c, context.names) for c in conflicts]
         return ValidationResult(
             rule_id=self.rule_id,
             category=self.category,
             passed=False,
             severity=Severity.WARNING,
             field_path=",".join(f"{c.role}.{c.attribute}" for c in conflicts),
-            message=f"{len(conflicts)} atributo(s) no coinciden con otros documentos del expediente: " + "; ".join(details),
+            message="\n".join(details),
             expected={f"{c.role}.{c.attribute}": c.distinct_values for c in conflicts},
             actual=None,
             confidence=1.0,

@@ -110,6 +110,12 @@ def test_blocking_binding_uses_its_on_fail_and_non_blocking_does_not_decide():
     assert decide(VerdictInputs(findings=[FindingInput("a", "x", None)]), d).decision == "return_to_client"
 
 
+def test_a_finding_with_several_lines_gives_one_reason_per_line():
+    d = ProcessProfileDefinition(semantic_catalog_version=1, rule_bindings=[RuleBinding(rule_id="a", blocking=True, on_fail="human_review")])
+    reasons = decide(VerdictInputs(findings=[FindingInput("a", "DNI no coincide.\nPlazo no coincide.", None)]), d).reasons
+    assert [r.message for r in reasons] == ["DNI no coincide.", "Plazo no coincide."]
+
+
 def test_failed_document_needs_human_review():
     assert decide(VerdictInputs(failed_document_ids={uuid.uuid4()}), None).decision == "human_review"
 
