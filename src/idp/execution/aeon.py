@@ -79,14 +79,16 @@ def _headers(settings: Settings) -> dict[str, str]:
     return {"authorization": f"Bearer {settings.aeon_api_token.get_secret_value()}"}
 
 
-async def run_status(settings: Settings, client: httpx.AsyncClient, ref: str) -> str | None:
-    """The aeon run's status (PENDING, RUNNING, …, FAILED, CANCELLED), or
-    None when aeon does not know the run."""
+async def run_status(settings: Settings, client: httpx.AsyncClient, ref: str) -> tuple[str, dict[str, Any] | None] | None:
+    """The aeon run's status (PENDING, RUNNING, …, FAILED, CANCELLED) and,
+    when it ended badly, why — aeon's ``failure`` (kind, type, message,
+    activity; OBS-011). None when aeon does not know the run."""
     response = await client.get(f"{settings.aeon_runcontroller_url}/runs/{ref}", headers=_headers(settings), timeout=settings.aeon_request_timeout_seconds)
     if response.status_code == 404:
         return None
     response.raise_for_status()
-    return response.json()["status"]
+    body = response.json()
+    return body["status"], body.get("failure")
 
 
 class AeonExecutor:

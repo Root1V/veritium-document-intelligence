@@ -39,7 +39,11 @@ async def test_failed_aeon_runs_fail_the_case_run_and_running_ones_are_left(live
         ref = request.url.path.rsplit("/", 1)[-1]
         # Any other unfinished run in the dev database is reported RUNNING,
         # so this test never fails a real run.
-        return httpx.Response(200, json={"status": statuses.get(ref, "RUNNING")})
+        status = statuses.get(ref, "RUNNING")
+        body = {"status": status}
+        if status == "FAILED":  # aeon >= OBS-011 says why
+            body["failure"] = {"kind": "failed", "type": "PolicyDenied", "message": "denied by policy", "activity": "check_activity_policy_activity", "retryable": False}
+        return httpx.Response(200, json=body)
 
     try:
         async with httpx.AsyncClient(transport=httpx.MockTransport(aeon)) as client:
@@ -48,6 +52,7 @@ async def test_failed_aeon_runs_fail_the_case_run_and_running_ones_are_left(live
             runs = CaseRunRepository(session)
             failed_run, alive_run = await runs.get(failed_id), await runs.get(alive_id)
             assert failed_run.status == "failed" and "FAILED" in failed_run.error
+            assert "PolicyDenied: denied by policy" in failed_run.error and "check_activity_policy_activity" in failed_run.error
             assert alive_run.status == "running"
     finally:
         async with factory() as session:

@@ -37,12 +37,18 @@ async def reconcile(settings: Settings, client: httpx.AsyncClient) -> int:
     failed = 0
     for case_id, run_id, ref in runs:
         try:
-            status = await run_status(settings, client, ref)
+            found = await run_status(settings, client, ref)
         except httpx.HTTPError as exc:
             log.warning("reconcile: aeon no respondió por %s: %s", ref, exc)
             continue
+        status, failure = found if found is not None else (None, None)
         if status is None or status in _ENDED:
-            await fail_run(settings, case_id, run_id, f"la corrida de aeon {ref} terminó en {status or 'estado desconocido (aeon no la conoce)'}")
+            reason = f"la corrida de aeon {ref} terminó en {status or 'estado desconocido (aeon no la conoce)'}"
+            if failure:  # aeon's own words: the error type and message, and which step (OBS-011)
+                reason += f" — {failure.get('kind', '')} {failure.get('type') or ''}: {failure.get('message', '')}".rstrip()
+                if failure.get("activity"):
+                    reason += f" (en {failure['activity']})"
+            await fail_run(settings, case_id, run_id, reason)
             failed += 1
     return failed
 
