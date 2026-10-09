@@ -70,7 +70,7 @@ Estados: `done` · `todo` · `blocked` (espera a otro equipo) · `superseded` (a
 |---|---|---|---|
 | VRT-42 | Suites de evaluación | done | Casos desde CSV/Excel y golden sets armados con las correcciones humanas. |
 | VRT-43 | Exactitud por campo y calibración | done | Métricas por campo y confianza calibrada que decide automático vs. humano. |
-| VRT-44 | Simulación *what-if* y modo sombra | todo | Medir un cambio de perfil, regla o modelo contra expedientes históricos antes de publicarlo. |
+| VRT-44 | Simulación *what-if* y modo sombra | done | Medir un cambio de perfil, regla o modelo contra expedientes históricos antes de publicarlo. |
 | VRT-45 | Lentes de Riesgos y Legal | todo | Resúmenes y análisis de cláusulas contra un playbook, con evidencia citada. |
 | VRT-46 | Prompts versionados y grounding semántico | todo | Prompts versionados en synaptum; medir el efecto de inyectar las definiciones semánticas. |
 
