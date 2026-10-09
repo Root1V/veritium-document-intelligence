@@ -82,7 +82,7 @@ Estados: `done` · `todo` · `blocked` (espera a otro equipo) · `superseded` (a
 |---|---|---|---|
 | VRT-47 | Sesión de carga + verificación rápida | done | Carga directa desde el front-end y verificación síncrona en segundos. |
 | VRT-48 | *Bulk jobs* | done | Lotes masivos de expedientes de varios procesos, con resultado por expediente. |
-| VRT-49 | Eventos CloudEvents | todo | Entrada y salida por eventos sobre Kafka o HTTP (claim-check para los archivos). |
+| VRT-49 | Eventos CloudEvents | done | Entrada y salida por eventos sobre Kafka o HTTP (claim-check para los archivos). |
 | VRT-50 | Salida renderizable (A2UI) | todo | Capa de presentación declarativa sobre el resultado canónico. |
 | VRT-65 | Credenciales de sistema y límites por cliente | done | Un sistema se conecta con client credentials propias, revocables, y con cuota de llamadas. |
 
