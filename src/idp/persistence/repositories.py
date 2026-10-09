@@ -16,6 +16,7 @@ from sqlalchemy.orm import selectinload
 
 from idp.domain.calibration import Observation, field_key
 from idp.domain.document_type_catalog import DocumentTypeCatalog, DocumentTypeDefinition
+from idp.domain.lenses import SEED_LENSES, LensDefinition
 from idp.domain.document_type_seed import seed_definitions
 from idp.domain.process_profile import ProcessProfileDefinition
 from idp.domain.process_profile_seed import SEED_PROFILES
@@ -36,6 +37,8 @@ from idp.persistence.models import (
     EvalRun,
     EvalSuite,
     Extraction,
+    LensRecord,
+    LensResult,
     OutboxEvent,
     ProcessProfile,
     ProcessProfileVersion,
@@ -1288,3 +1291,41 @@ class CalibrationRepository:
 
     async def deactivate(self) -> None:
         await self._session.execute(update(CalibrationVersion).where(CalibrationVersion.status == "active").values(status="retired"))
+
+
+class LensRepository:
+    """Lenses and their results (VRT-45)."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def ensure_seed(self) -> None:
+        """The starting lenses, once; an edited lens is never overwritten."""
+        existing = set((await self._session.scalars(select(LensRecord.key))).all())
+        for lens in SEED_LENSES:
+            if lens.key not in existing:
+                self._session.add(LensRecord(key=lens.key, definition=lens.model_dump(mode="json"), updated_by="seed"))
+        await self._session.flush()
+
+    async def list_lenses(self) -> list[LensDefinition]:
+        rows = (await self._session.scalars(select(LensRecord).order_by(LensRecord.key))).all()
+        return [LensDefinition.model_validate(r.definition) for r in rows]
+
+    async def get(self, key: str) -> LensDefinition | None:
+        row = await self._session.scalar(select(LensRecord).where(LensRecord.key == key))
+        return LensDefinition.model_validate(row.definition) if row else None
+
+    async def save(self, lens: LensDefinition, *, by: str) -> None:
+        row = await self._session.scalar(select(LensRecord).where(LensRecord.key == lens.key))
+        if row is None:
+            self._session.add(LensRecord(key=lens.key, definition=lens.model_dump(mode="json"), updated_by=by))
+        else:
+            row.definition, row.updated_by = lens.model_dump(mode="json"), by
+        await self._session.flush()
+
+    async def results_for_case(self, case_id: uuid.UUID) -> list[LensResult]:
+        stmt = select(LensResult).where(LensResult.case_id == case_id).order_by(LensResult.created_at.desc())
+        return list((await self._session.scalars(stmt)).all())
+
+    async def get_result(self, result_id: uuid.UUID) -> LensResult | None:
+        return await self._session.get(LensResult, result_id, populate_existing=True)

@@ -35,6 +35,9 @@ import type {
   ReviewCorrectionRequest,
   ReviewCorrectionResponse,
   CalibrationDetail,
+  CaseLens,
+  LensDefinition,
+  LensResultView,
   CalibrationSummary,
   EvalRunDetail,
   EvalRunSummary,
@@ -745,5 +748,36 @@ export function useStopSimulation() {
   return useMutation({
     mutationFn: async (id: string) => (await apiClient.post<SimulationView>(`/v1/simulations/${id}/stop`)).data,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['simulations'] }),
+  })
+}
+
+// --- Lenses of Risk and Legal (VRT-45) ---------------------------------------
+
+export function useCaseLenses(caseId: string | undefined) {
+  return useQuery({
+    queryKey: ['cases', caseId, 'lenses'],
+    enabled: !!caseId,
+    queryFn: async () => (await apiClient.get<CaseLens[]>(`/v1/cases/${caseId}/lenses`)).data,
+    refetchInterval: (query) => (query.state.data?.some((l) => l.latest?.status === 'running') ? 3_000 : false),
+  })
+}
+
+export function useReadWithLens() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ caseId, key }: { caseId: string; key: string }) => (await apiClient.post<LensResultView>(`/v1/cases/${caseId}/lenses/${key}`)).data,
+    onSuccess: (_, { caseId }) => queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'lenses'] }),
+  })
+}
+
+export function useLenses() {
+  return useQuery({ queryKey: ['lenses'], queryFn: async () => (await apiClient.get<LensDefinition[]>('/v1/lenses')).data })
+}
+
+export function useSaveLens() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (lens: LensDefinition) => (await apiClient.put<LensDefinition>(`/v1/lenses/${lens.key}`, lens)).data,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['lenses'] }),
   })
 }

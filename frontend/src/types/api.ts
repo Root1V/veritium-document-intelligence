@@ -775,3 +775,69 @@ export interface SimulationDetail extends SimulationView {
     decided_at: string
   }[]
 }
+
+// --- Lenses of Risk and Legal (VRT-45) ---------------------------------------
+
+export interface PlaybookItem {
+  key: string
+  label: string
+  guidance: string
+  importance: 'alta' | 'media' | 'baja'
+}
+
+export interface LensDefinition {
+  key: string
+  name: string
+  area: 'riesgos' | 'legal'
+  description: string
+  kind: 'summary' | 'playbook'
+  document_types: string[]
+  instructions: string
+  playbook: PlaybookItem[]
+}
+
+export interface LensEvidence {
+  ref: string
+  document_id: string
+  document_name: string
+  page: number
+  bbox: [number, number, number, number]
+  text: string
+}
+
+export interface LensOutput {
+  headline: string
+  points: { text: string; evidence: LensEvidence[] }[]
+  attention: { text: string; evidence: LensEvidence[] }[]
+  checks: {
+    item_key: string
+    label: string
+    importance: 'alta' | 'media' | 'baja'
+    status: 'cumple' | 'no_cumple' | 'no_encontrado' | 'dudoso'
+    explanation: string
+    quote: string | null
+    quote_verified: boolean | null
+    evidence: LensEvidence[]
+  }[]
+  truncated: boolean
+  unknown_refs: number
+}
+
+export interface LensResultView {
+  id: string
+  lens_key: string
+  status: 'running' | 'done' | 'failed'
+  output: LensOutput | null
+  model: string | null
+  error: string | null
+  created_by: string
+  created_at: string
+  finished_at: string | null
+  outdated: boolean
+}
+
+export interface CaseLens {
+  lens: LensDefinition
+  applicable: boolean
+  latest: LensResultView | null
+}

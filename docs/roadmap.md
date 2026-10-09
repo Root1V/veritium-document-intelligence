@@ -271,7 +271,12 @@ Veritium pasa de "subir documentos sueltos" a ser una **capacidad de decisión d
 - Resultado en lenguaje de negocio: cuántos cambiarían, de qué decisión a cuál, y los motivos que aparecen o desaparecen (comparados por lo que tratan, no por su texto). UI en `/simulations`, con acceso desde el borrador en Perfiles.
 - Fuera: simular cambios de modelo o prompt (eso es VRT-42) y re-extraer en la simulación.
 ## VRT-45 — Lentes de Riesgos y Legal
-**Why:** las áreas aguas abajo necesitan comprender documentos, no solo validarlos. **Scope:** resúmenes y cláusulas contra un playbook, con evidencia citada.
+**Why:** las áreas aguas abajo necesitan comprender documentos, no solo validarlos.
+**Scope:**
+- Lentes como datos editables (`/lenses`): resumen con foco (Riesgos) o playbook de puntos con importancia (Legal), y los tipos de documento que leen. Semilla: resumen crediticio, carta de autorización de descuento, compra de deuda.
+- Leer un expediente con una lente: el modelo recibe primero los datos ya extraídos y conciliados ([fN]) y luego el texto OCR numerado ([dN:R]); cada afirmación cita referencias que se resuelven a página y recuadro. Citas inexistentes se descartan y una cita textual que no está en el documento se marca para verificar.
+- El texto OCR de cada archivo se guarda junto a él al procesarlo (los anteriores se leen una vez más la primera vez).
+- Fuera: lentes que corren solas en cada corrida y versionado de lentes (cada lectura guarda la definición que usó y se marca si la lente cambió).
 ## VRT-46 — Prompts versionados y grounding semántico
 **Why:** reproducibilidad y calidad de extracción medible. **Scope:** prompts versionados (synaptum, S-8) y la medición de inyectar definiciones semánticas.
 

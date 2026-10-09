@@ -11,12 +11,12 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from opentelemetry import trace
 
-from idp.api.routes import audit, auth, batches, calibration, cases, document_types, documents, evaluation, profiles, simulations, review, semantic_catalog, type_suggestions, users, validation, validation_rules, webhooks
+from idp.api.routes import audit, auth, batches, calibration, cases, document_types, documents, evaluation, lenses, profiles, simulations, review, semantic_catalog, type_suggestions, users, validation, validation_rules, webhooks
 from idp.config import get_settings
 from idp.llm.port import inference_lifespan
 from idp.observability.otel import setup_tracing
 from idp.persistence.db import get_session_factory
-from idp.persistence.repositories import DocumentTypeRepository, ProcessProfileRepository, SemanticCatalogRepository
+from idp.persistence.repositories import DocumentTypeRepository, LensRepository, ProcessProfileRepository, SemanticCatalogRepository
 from idp.storage.object_store import S3ObjectStore
 from idp.webhooks import dispatcher
 
@@ -32,6 +32,7 @@ def create_app() -> FastAPI:
             await SemanticCatalogRepository(session).ensure_seed()
             await ProcessProfileRepository(session).ensure_seed()
             await DocumentTypeRepository(session).ensure_seed()
+            await LensRepository(session).ensure_seed()
         stop = asyncio.Event()
         task = asyncio.create_task(dispatcher.run(settings, stop)) if settings.webhook_dispatcher_enabled else None
         async with inference_lifespan(settings):  # the in-process executor and rule drafting call models
@@ -70,6 +71,7 @@ def create_app() -> FastAPI:
     app.include_router(evaluation.router)
     app.include_router(calibration.router)
     app.include_router(simulations.router)
+    app.include_router(lenses.router)
 
     @app.get("/health")
     async def health() -> dict:

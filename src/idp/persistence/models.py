@@ -681,3 +681,36 @@ class SimulationResult(Base):
 
     simulation: Mapped["Simulation"] = relationship(back_populates="results")
     case: Mapped["Case"] = relationship()
+
+
+class LensRecord(Base):
+    """A lens an area uses to read cases (VRT-45): domain/lenses.py::
+    LensDefinition. Editable by an admin; each result keeps the definition
+    it was produced with."""
+
+    __tablename__ = "lenses"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    key: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    definition: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    updated_by: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class LensResult(Base):
+    """One reading of a case through a lens. Lifecycle: running -> done | failed."""
+
+    __tablename__ = "lens_results"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    case_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("cases.id", ondelete="CASCADE"), nullable=False)
+    lens_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    definition: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    status: Mapped[str] = mapped_column(String(16), default="running", server_default="running", nullable=False)
+    # domain/lenses.py::LensOutput
+    output: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    model: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by: Mapped[str] = mapped_column(String(256), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

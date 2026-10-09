@@ -7,6 +7,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { CheckCircle2, CircleAlert, Download, Loader2, RefreshCw } from 'lucide-react'
 import { toast } from 'sonner'
+import { LensesCard } from '@/components/cases/LensesCard'
 import { EvidenceViewer } from '@/components/documents/EvidenceViewer'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -292,6 +293,8 @@ export function CaseDetailPage() {
               ))}
             </CardContent>
           </Card>
+
+          <LensesCard caseId={result.case.id} onEvidence={(e) => setEvidence({ documentId: e.document_id, page: e.page, bbox: e.bbox, label: `${e.document_name} · pág. ${e.page + 1}` })} />
 
           {result.findings.length > 0 && (
             <Card>

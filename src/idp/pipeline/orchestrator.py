@@ -56,6 +56,7 @@ from idp.persistence.repositories import (
     ValidationRuleRepository,
 )
 from idp.parsing.normalize import ParsedDocument, slice_by_pages
+from idp.parsing.store import save_parsed
 from idp.pipeline.case_evaluation import apply_binding, profile_definition, refresh_conditions, refresh_verdict, rules_for_profile
 from idp.pipeline.provenance import build_provenance
 from idp.webhooks.events import emit_run_finished
@@ -342,6 +343,10 @@ async def _process_uploaded_file(
     await session.commit()
     file_bytes = await asyncio.to_thread(object_store.get, storage_key)
     parsed = await asyncio.to_thread(_parse_serialized, settings, backend, file_bytes, filename, document_id=str(document_id))
+    try:
+        await asyncio.to_thread(save_parsed, object_store, storage_key, parsed)  # for lenses (VRT-45)
+    except Exception:
+        logging.getLogger(__name__).warning("could not keep the parsed text of %s", storage_key, exc_info=True)
     segments = await asyncio.to_thread(segment_document, settings, parsed, document_id=str(document_id))
 
     if len(segments) <= 1:
