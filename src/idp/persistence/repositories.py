@@ -431,7 +431,19 @@ class ReviewRepository:
         return set((await self._session.scalars(stmt)).all())
 
     async def list_pending(self) -> list[ReviewItem]:
-        stmt = select(ReviewItem).where(ReviewItem.status == "pending")
+        # With what the queue shows next to each field: the document, its
+        # case, its extraction and its findings.
+        document = selectinload(ReviewItem.document)
+        stmt = (
+            select(ReviewItem)
+            .where(ReviewItem.status == "pending")
+            .options(
+                document.selectinload(Document.case),
+                document.selectinload(Document.extraction),
+                document.selectinload(Document.active_validation_issues),
+            )
+            .order_by(ReviewItem.created_at.desc())
+        )
         result = await self._session.execute(stmt)
         return list(result.scalars().all())
 

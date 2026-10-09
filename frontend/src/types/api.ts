@@ -84,6 +84,18 @@ export interface ReviewItem {
   confidence: number
   reason: 'low_confidence' | 'validation_issue'
   status: string
+  label: string
+  description: string | null
+  attribute: string | null
+  role: string | null
+  document_type: string | null
+  document_type_name: string | null
+  filename: string
+  case_id: string
+  case_ref: string | null
+  page: number | null
+  source_text: string | null
+  finding: string | null
 }
 
 export interface ReviewCorrectionRequest {

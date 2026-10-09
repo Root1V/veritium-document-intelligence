@@ -4,7 +4,6 @@ import { Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useCorrectionReasons, useReviewQueue, useSubmitCorrection } from '@/lib/queries'
 import { errorDetail } from '@/lib/apiErrors'
-import { humanizeFieldName } from '@/lib/extraction'
 import { canExecute } from '@/lib/auth'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -49,17 +48,40 @@ function ReviewRow({ item }: { item: ReviewItem }) {
   return (
     <Card>
       <CardContent className="flex flex-col gap-3 p-4">
-        <div className="flex flex-wrap items-center gap-2">
-          <Link to={`/documents/${item.document_id}`} className="text-sm font-medium hover:underline">
-            {humanizeFieldName(item.field_path)}
-          </Link>
-          <Badge variant="outline" className="text-xs">
-            {REASON_LABEL[item.reason] ?? item.reason}
-          </Badge>
-          <Badge variant="outline" className="text-xs">
-            confianza {(item.confidence * 100).toFixed(0)}%
-          </Badge>
+        <div className="flex flex-col gap-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-medium">{item.label}</span>
+            {item.role && (
+              <Badge variant="secondary" className="text-xs">
+                {item.role}
+              </Badge>
+            )}
+            <Badge variant="outline" className="text-xs">
+              {REASON_LABEL[item.reason] ?? item.reason}
+            </Badge>
+            <Badge variant="outline" className="text-xs">
+              confianza {(item.confidence * 100).toFixed(0)}%
+            </Badge>
+          </div>
+          {item.description && <span className="text-xs text-muted-foreground">{item.description}</span>}
+          <span className="text-xs text-muted-foreground">
+            {item.document_type_name ?? 'Documento sin tipo registrado'} ·{' '}
+            <Link to={`/documents/${item.document_id}`} className="underline-offset-4 hover:underline">
+              {item.filename}
+            </Link>
+            {item.page != null && ` · pág. ${item.page + 1}`} · expediente{' '}
+            <Link to={`/cases/${item.case_id}`} className="underline-offset-4 hover:underline">
+              {item.case_ref ?? item.case_id.slice(0, 8)}
+            </Link>
+          </span>
         </div>
+
+        {item.finding && <p className="text-sm text-amber-700 dark:text-amber-400">{item.finding}</p>}
+        {item.source_text && (
+          <p className="text-xs text-muted-foreground">
+            Texto en el documento: <span className="font-mono">«{item.source_text}»</span>
+          </p>
+        )}
 
         {!correcting ? (
           <div className="flex items-center justify-between gap-3">

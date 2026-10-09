@@ -31,7 +31,7 @@ class EmployeeCodeExistsInReferenceData(ValidationRule):
             passed=passed,
             severity=None if passed else Severity.ERROR,
             field_path="employee_code",
-            message="employee_code existe en el maestro de empleados." if passed else "employee_code no existe en el maestro de empleados.",
+            message="El código de empleado existe en el maestro de empleados." if passed else "El código de empleado no existe en el maestro de empleados.",
             actual=employee_code,
             confidence=1.0,
             confidence_method=ConfidenceMethod.DETERMINISTIC,

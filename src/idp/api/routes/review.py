@@ -5,6 +5,7 @@ coded reason and its justification (VRT-39), timestamp, model/prompt version).""
 
 from __future__ import annotations
 
+import re
 import uuid
 from typing import Any
 
@@ -14,9 +15,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from idp.api.deps import get_current_user, get_db_session, require_role
 from idp.domain.correction_reasons import CORRECTION_REASONS, REASONS_BY_CODE, CorrectionReason, ReasonCode
-from idp.persistence.models import User
-from idp.persistence.repositories import DocumentRepository, ReviewRepository
+from idp.domain.document_type_catalog import DocumentTypeCatalog
+from idp.domain.semantic import SemanticCatalog
+from idp.persistence.models import ReviewItem, User
+from idp.persistence.repositories import DocumentRepository, DocumentTypeRepository, ReviewRepository, SemanticCatalogRepository
 from idp.pipeline.case_evaluation import refresh_verdict
+from idp.review.labels import describe_field
 
 router = APIRouter(prefix="/review", tags=["review"], dependencies=[Depends(get_current_user)])
 
@@ -29,6 +33,20 @@ class ReviewItemResponse(BaseModel):
     confidence: float
     reason: str
     status: str
+    # What the reviewer reads instead of field_path (review/labels.py).
+    label: str
+    description: str | None
+    attribute: str | None
+    role: str | None
+    document_type: str | None
+    document_type_name: str | None
+    filename: str
+    case_id: uuid.UUID
+    case_ref: str | None
+    page: int | None
+    source_text: str | None
+    # The finding that sent a validation_issue item here.
+    finding: str | None
 
 
 class ReviewCorrectionRequest(BaseModel):
@@ -53,20 +71,68 @@ class ReviewCorrectionResponse(BaseModel):
 
 @router.get("", response_model=list[ReviewItemResponse])
 async def list_pending_review(session: AsyncSession = Depends(get_db_session)) -> list[ReviewItemResponse]:
-    repo = ReviewRepository(session)
-    items = await repo.list_pending()
-    return [
-        ReviewItemResponse(
-            id=item.id,
-            document_id=item.document_id,
-            field_path=item.field_path,
-            current_value=item.current_value,
-            confidence=item.confidence,
-            reason=item.reason,
-            status=item.status,
-        )
-        for item in items
-    ]
+    items = await ReviewRepository(session).list_pending()
+    type_catalog = await DocumentTypeRepository(session).load_catalog()
+    loaded = await SemanticCatalogRepository(session).load_active()
+    semantic = loaded[0] if loaded is not None else None
+    return [_describe(item, type_catalog, semantic) for item in items]
+
+
+def _describe(item: ReviewItem, type_catalog: DocumentTypeCatalog, semantic: SemanticCatalog | None) -> ReviewItemResponse:
+    document = item.document
+    extraction = document.extraction
+    definition = None
+    if document.document_type is not None and extraction is not None:
+        version = 1 if extraction.schema_version == "1.0" else int(extraction.schema_version)
+        definition = type_catalog.definition(document.document_type, version)
+    field = describe_field(
+        item.field_path,
+        document_type=document.document_type,
+        definition=definition,
+        catalog=semantic,
+        payload=extraction.payload if extraction is not None else None,
+    )
+    leaf = _leaf(extraction.payload if extraction is not None else None, item.field_path)
+    finding = next(
+        (i.message for i in document.active_validation_issues if i.field_path == item.field_path and i.severity in ("warning", "error")),
+        None,
+    )
+    return ReviewItemResponse(
+        id=item.id,
+        document_id=item.document_id,
+        field_path=item.field_path,
+        current_value=item.current_value,
+        confidence=item.confidence,
+        reason=item.reason,
+        status=item.status,
+        label=field.label,
+        description=field.description,
+        attribute=field.attribute,
+        role=field.role,
+        document_type=document.document_type,
+        document_type_name=definition.display_name if definition is not None else None,
+        filename=document.original_filename,
+        case_id=document.case_id,
+        case_ref=document.case.external_ref,
+        page=leaf.get("page"),
+        source_text=leaf.get("source_text"),
+        finding=finding if item.reason == "validation_issue" else None,
+    )
+
+
+def _leaf(payload: dict | None, field_path: str) -> dict:
+    """The stored Extracted[T] envelope at ``field_path`` ({} if absent)."""
+    node: Any = payload
+    for part in re.split(r"\.|\[(\d+)\]", field_path):
+        if not part:
+            continue
+        if isinstance(node, list) and part.isdigit():
+            node = node[int(part)] if int(part) < len(node) else None
+        elif isinstance(node, dict):
+            node = node.get(part)
+        else:
+            return {}
+    return node if isinstance(node, dict) else {}
 
 
 @router.get("/reasons", response_model=list[CorrectionReason])

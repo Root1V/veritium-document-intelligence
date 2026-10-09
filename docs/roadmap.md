@@ -234,6 +234,7 @@ Veritium pasa de "subir documentos sueltos" a ser una **capacidad de decisión d
 **Scope:**
 - Siete motivos codificados (`domain/correction_reasons.py`: error de OCR, otro dato, no extraído, formato, ilegible, decisión de negocio, valor correcto); obligatorio en `POST /review/{id}`, con sustento obligatorio para ilegible y decisión de negocio.
 - Ambos en el `audit_log`; `GET /audit/correction-summary` cuenta por motivo y tipo de documento; la cola de revisión y la auditoría los muestran.
+- La cola nombra cada campo por su atributo semántico y rol (o el campo del tipo / la clave genérica), con documento, página, texto fuente y el hallazgo que lo envió (`review/labels.py`).
 
 ## VRT-40 — Reproceso selectivo
 **Why:** corregir un campo no debe obligar a reprocesar todo el expediente. **Scope:** grafo campo → regla → veredicto; reproceso por atributo, documento, regla o expediente, cada uno como una corrida nueva e inmutable.
