@@ -60,7 +60,7 @@ Estados: `done` · `todo` · `blocked` (espera a otro equipo) · `superseded` (a
 | ID | Feature | Estado | Descripción |
 |---|---|---|---|
 | VRT-38 | Vista E2E del expediente | done | Resultado visual, entidades consolidadas y visor de evidencia (página y bbox). |
-| VRT-39 | Corrección con motivo y sustento | todo | Código de motivo obligatorio + sustento libre en cada corrección. |
+| VRT-39 | Corrección con motivo y sustento | done | Código de motivo obligatorio + sustento libre en cada corrección. |
 | VRT-40 | Reproceso selectivo | todo | Reprocesar un atributo, documento, regla o el expediente, según el grafo de dependencias. |
 | VRT-41 | Exportes | todo | PDF / JSON / YAML / Markdown desde el resultado canónico. |
 
