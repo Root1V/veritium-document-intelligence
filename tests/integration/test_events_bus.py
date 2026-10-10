@@ -59,7 +59,9 @@ def _command(type_: str, data: dict) -> dict:
 
 
 async def _answers(topic: str, ids: set[str], timeout: float = 30.0) -> dict[str, dict]:
-    consumer = AIOKafkaConsumer(topic, bootstrap_servers=BROKERS, auto_offset_reset="earliest", group_id=None)
+    # Any API sharing this database with the bus on may publish the outbox first, to its own topic
+    # (the default one): listening there too keeps the test true when a development API is running.
+    consumer = AIOKafkaConsumer(topic, "veritium.case-events.v1", bootstrap_servers=BROKERS, auto_offset_reset="earliest", group_id=None)
     await consumer.start()
     found: dict[str, dict] = {}
     try:

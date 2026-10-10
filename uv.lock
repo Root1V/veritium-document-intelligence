@@ -1548,7 +1548,7 @@ requires-dist = [
     { name = "pyyaml", specifier = ">=6.0.2" },
     { name = "rapidfuzz", specifier = ">=3.14.5" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.52" },
-    { name = "synaptum", specifier = "==1.0.0rc4" },
+    { name = "synaptum", specifier = "==1.0.0rc5" },
     { name = "temporalio", specifier = ">=1.8.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.52.4" },
 ]
@@ -3673,11 +3673,11 @@ wheels = [
 
 [[package]]
 name = "synaptum"
-version = "1.0.0rc4"
+version = "1.0.0rc5"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/18/2b/ec22ec91957ad1f84b0f0298a331f57300426003b3436b8276b0d24ed599/synaptum-1.0.0rc4.tar.gz", hash = "sha256:521c5a1ca8401a0036709fef2889a1d1453490b03c0daa8d09c00c9add64ce14", size = 602777, upload-time = "2026-10-08T03:10:22.202Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/71/17/31ebf4e28ded7c1d5f291bbe4f28149b338cf89f917ff3dfdb3f5b52f604/synaptum-1.0.0rc5.tar.gz", hash = "sha256:8a356668bd57a0e0a0efa99fcc861408c8dc175d14040d3217d4957203621ff4", size = 630143, upload-time = "2026-10-10T16:25:50.598Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/1d/37/52ee28bb22271de484982d6e37fe0e287a670f0ffd552b91598f63223de3/synaptum-1.0.0rc4-py3-none-any.whl", hash = "sha256:12ae2c04daabf18506bc0bec95598f7663d7017b2713c2856c46231318f5a55d", size = 136590, upload-time = "2026-10-08T03:10:20.756Z" },
+    { url = "https://files.pythonhosted.org/packages/09/69/25459df5172980e9d732b46524ace23ba70b4bddabd5e3af63acd78815c5/synaptum-1.0.0rc5-py3-none-any.whl", hash = "sha256:d1480958dba64824b66565ab8d735f794b48a00df904821e4fa936ddf4ffe6fa", size = 143839, upload-time = "2026-10-10T16:25:49.015Z" },
 ]
 
 [[package]]
