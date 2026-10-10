@@ -57,13 +57,6 @@ def caller() -> dict[str, Any]:
     return token.claims
 
 
-def require_role(*roles: str) -> dict[str, Any]:
-    claims = caller()
-    if claims["role"] not in roles:
-        raise ToolError(f"tu rol ({claims['role']}) no permite esta operación; se requiere {' o '.join(roles)}")
-    return claims
-
-
 def quota(settings: Settings):
     """Middleware: a connected system's calls count against its quota, as in the REST API."""
 

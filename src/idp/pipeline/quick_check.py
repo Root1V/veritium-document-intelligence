@@ -10,15 +10,19 @@ import asyncio
 import base64
 import io
 import logging
+from dataclasses import dataclass
 
 import numpy as np
 from PIL import Image, ImageOps, UnidentifiedImageError
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from idp.config import Settings
 from idp.domain.document_type_catalog import DocumentTypeCatalog
-from idp.domain.quick_check import FileFacts, PageStats
+from idp.domain.quick_check import Check, FileFacts, Level, PageStats, assess, verdict
 from idp.llm.port import inference
 from idp.llm.prompts import prompt
+from idp.persistence.repositories import DocumentTypeRepository
 
 log = logging.getLogger(__name__)
 MAX_PAGES_CHECKED = 3
@@ -98,3 +102,22 @@ async def quick_type(settings: Settings, image: Image.Image, catalog: DocumentTy
         return None
     word = answer.strip().strip("`'\".").split()[0].lower() if answer.strip() else ""
     return word if word in keys or word == "otro" else None
+
+
+@dataclass(frozen=True)
+class CheckedFile:
+    facts: FileFacts
+    detected_type: str | None  # a catalog type, 'otro', or None (unreadable, or the model did not answer in time)
+    detected_type_name: str | None
+    checks: list[Check]
+    verdict: Level
+
+
+async def check_file(settings: Settings, session: AsyncSession, data: bytes, *, expected_type: str | None = None) -> CheckedFile:
+    """The whole quick check of one file — for upload sessions and for MCP (VRT-53)."""
+    facts, first_page = await asyncio.to_thread(measure, data)
+    catalog = await DocumentTypeRepository(session).load_catalog()
+    detected = await quick_type(settings, first_page, catalog) if first_page is not None and facts.problem is None else None
+    names = {k: c[1].display_name for k in catalog.keys() if (c := catalog.current(k))}
+    checks = assess(facts, expected_type=expected_type, detected_type=detected, type_names=names)
+    return CheckedFile(facts=facts, detected_type=detected, detected_type_name=names.get(detected or ""), checks=checks, verdict=verdict(checks))

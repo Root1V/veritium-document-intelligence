@@ -950,3 +950,17 @@ export interface ApiClientView {
 export interface ApiClientWithSecret extends ApiClientView {
   client_secret: string
 }
+
+// --- Tool catalog (VRT-53) -----------------------------------------------------
+
+export interface ToolSpec {
+  name: string
+  title: string
+  description: string
+  kind: 'deterministic' | 'model'
+  cost: 'ninguno' | 'lectura' | 'modelo' | 'procesamiento'
+  exposure: 'internal' | 'mcp'
+  roles: string[]
+  read_only: boolean
+  idempotent: boolean
+}

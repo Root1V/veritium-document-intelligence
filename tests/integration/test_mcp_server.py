@@ -28,6 +28,7 @@ from idp.persistence.models import Case, CaseRun, OutboxEvent
 from idp.persistence.repositories import UserRepository
 from idp.pipeline import orchestrator
 from idp.storage.object_store import S3ObjectStore
+from idp.tools.catalog import exposed
 
 pytestmark = [pytest.mark.usefixtures("require_postgres", "require_minio")]
 
@@ -117,7 +118,7 @@ async def test_an_agent_uses_veritium_through_mcp(live_settings, server):
             assert TASKS in discovered["capabilities"]["extensions"]
             listed = _result(await _rpc(client, writer, "tools/list", {}))
             tools = {t["name"]: t for t in listed["tools"]}
-            assert {"list_processes", "submit_case", "add_documents", "get_case_status", "get_case_result", "find_cases"} <= tools.keys()
+            assert tools.keys() == {s.name for s in exposed()}, "the server exposes exactly the catalog's MCP tools"
             assert tools["get_case_result"]["annotations"]["readOnlyHint"] and "outputSchema" in tools["submit_case"]
             assert listed["ttlMs"] == 300_000
 
@@ -159,6 +160,18 @@ async def test_an_agent_uses_veritium_through_mcp(live_settings, server):
             assert status["structuredContent"]["steps"][0].startswith("Recibido")
             found = _result(await _rpc(client, reader, "tools/call", {"name": "find_cases", "arguments": {"external_ref": ref}}, name="find_cases"))
             assert [c["case_id"] for c in found["structuredContent"]["result"]] == [outcome["case_id"]]
+            # VRT-53: the tools for agents that serve a customer or an analyst, with the catalog's roles.
+            link = _result(await _rpc(client, writer, "tools/call", {"name": "request_documents_link", "arguments": {"case_id": outcome["case_id"]}}, name="request_documents_link"))
+            assert "/carga/" in link["structuredContent"]["upload_url"] and "#t=" in link["structuredContent"]["upload_url"]
+            checked = _result(await _rpc(client, reader, "tools/call", {"name": "quick_check_document", "arguments": {"url": document["url"]}}, name="quick_check_document"))
+            assert checked["structuredContent"]["verdict"] == "no se puede leer", checked  # not a real PDF
+            evidence = _result(await _rpc(client, reader, "tools/call", {"name": "get_field_evidence", "arguments": {"case_id": outcome["case_id"], "attribute": "DNI"}}, name="get_field_evidence"))
+            assert evidence["isError"] and "no tiene 'DNI'" in evidence["content"][0]["text"]
+            lenses = _result(await _rpc(client, reader, "tools/call", {"name": "list_lenses", "arguments": {}}, name="list_lenses"))["structuredContent"]["result"]
+            assert lenses and {"key", "name", "area", "kind"} <= lenses[0].keys()
+            lens_denied = _result(await _rpc(client, writer, "tools/call", {"name": "read_with_lens", "arguments": {"case_id": outcome["case_id"], "lens_key": lenses[0]["key"]}}, name="read_with_lens"))
+            assert lens_denied["isError"] and "rol (integracion)" in lens_denied["content"][0]["text"]
+
             uri = outcome["result_uri"]
             read = _result(await _rpc(client, reader, "resources/read", {"uri": uri}, name=uri))
             assert json.loads(read["contents"][0]["text"])["case"]["external_ref"] == ref

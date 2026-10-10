@@ -12,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from opentelemetry import trace
 
-from idp.api.routes import api_clients, audit, auth, batches, bulk_jobs, events, calibration, cases, document_types, documents, evaluation, lenses, profiles, prompts, simulations, upload_sessions, review, semantic_catalog, type_suggestions, users, validation, validation_rules, webhooks
+from idp.api.routes import api_clients, audit, auth, batches, bulk_jobs, events, tools, calibration, cases, document_types, documents, evaluation, lenses, profiles, prompts, simulations, upload_sessions, review, semantic_catalog, type_suggestions, users, validation, validation_rules, webhooks
 from idp.config import get_settings
 from idp.llm.port import inference_lifespan
 from idp.llm.prompts import current as current_prompts
@@ -98,12 +98,14 @@ def create_app() -> FastAPI:
     app.include_router(bulk_jobs.router)
     app.include_router(api_clients.router)
     app.include_router(events.router)
+    app.include_router(tools.router)
     app.include_router(auth.well_known)
 
     @app.get("/health")
     async def health() -> dict:
         return {"status": "ok"}
 
+    app.state.mcp = mcp  # the tool catalog's MCP descriptors (VRT-53)
     # A2A (VRT-52): its Agent Card and signing key at the root, the protocol under /a2a.
     add_a2a_routes_to_fastapi(app, agent_card_routes=a2a_server.card_routes(a2a))
 

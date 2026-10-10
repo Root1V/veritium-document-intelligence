@@ -28,11 +28,11 @@ from idp.api.case_service import dispatch_run, open_run, resolve_profile_version
 from idp.api.deps import get_app_settings, get_current_user, get_db_session, get_object_store, require_role
 from idp.config import Settings
 from idp.domain.process_profile import ProcessProfileDefinition
-from idp.domain.quick_check import Check, assess, verdict
+from idp.domain.quick_check import Check, verdict
 from idp.persistence.models import ProcessProfileVersion, UploadedFile, UploadSession, User
 from idp.persistence.repositories import CaseRepository, CaseRunRepository, DocumentRepository, DocumentTypeRepository
 from idp.pipeline.orchestrator import load_semantic_catalog
-from idp.pipeline.quick_check import measure, quick_type
+from idp.pipeline.quick_check import check_file
 from idp.validation.cel import CelEvaluationError, compile_expression, evaluate
 from idp.storage.object_store import S3ObjectStore
 
@@ -170,16 +170,8 @@ async def _view(session: AsyncSession, upload: UploadSession, settings: Settings
     )
 
 
-@router.post(
-    "", response_model=SessionCreated, status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_role("integracion", "operador", "admin"))],
-)
-async def open_session(
-    body: SessionRequest,
-    session: AsyncSession = Depends(get_db_session),
-    settings: Settings = Depends(get_app_settings),
-    user: User = Depends(get_current_user),
-) -> SessionCreated:
+async def create_session(session: AsyncSession, settings: Settings, body: SessionRequest, *, created_by: str) -> SessionCreated:
+    """Open an upload session — for this route and for MCP (VRT-53)."""
     if body.case_id is not None:
         case = await CaseRepository(session).get(body.case_id)
         if case is None:
@@ -192,13 +184,26 @@ async def open_session(
     token = secrets.token_urlsafe(32)
     upload = UploadSession(
         token_hash=_hash(token), profile_version_id=version_id, case_id=body.case_id, external_ref=body.external_ref,
-        request_input_payload=body.process_data, created_by=user.name,
+        request_input_payload=body.process_data, created_by=created_by,
         expires_at=datetime.now(UTC) + timedelta(minutes=body.minutes or settings.upload_session_minutes),
     )
     session.add(upload)
     await session.commit()
     # The token goes after '#': browsers never send it to a server in the URL.
     return SessionCreated(id=upload.id, token=token, upload_url=f"{settings.public_upload_base_url}/carga/{upload.id}#t={token}", expires_at=upload.expires_at)
+
+
+@router.post(
+    "", response_model=SessionCreated, status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_role("integracion", "operador", "admin"))],
+)
+async def open_session(
+    body: SessionRequest,
+    session: AsyncSession = Depends(get_db_session),
+    settings: Settings = Depends(get_app_settings),
+    user: User = Depends(get_current_user),
+) -> SessionCreated:
+    return await create_session(session, settings, body, created_by=user.name)
 
 
 @router.get("/{session_id}", response_model=SessionView)
@@ -227,12 +232,9 @@ async def upload_file(
     requirement = next((r for r in await _requirements(session, upload, list(upload.files)) if r.key == requirement_key), None) if requirement_key else None
 
     started = time.monotonic()
-    facts, first_page = await asyncio.to_thread(measure, data)
-    catalog = await DocumentTypeRepository(session).load_catalog()
-    detected = await quick_type(settings, first_page, catalog) if first_page is not None and facts.problem is None else None
-    names = {k: c[1].display_name for k in catalog.keys() if (c := catalog.current(k))}
     expected = requirement.document_types[0] if requirement and len(requirement.document_types) == 1 else None
-    checks = assess(facts, expected_type=expected, detected_type=detected, type_names=names)
+    checked = await check_file(settings, session, data, expected_type=expected)
+    facts, detected, checks = checked.facts, checked.detected_type, checked.checks
 
     file_id = uuid.uuid4()
     filename = file.filename or "documento"

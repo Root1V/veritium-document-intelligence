@@ -12,10 +12,12 @@ Long work is a task (tasks.py) for clients that support it."""
 
 from __future__ import annotations
 
+import functools
 import json
 import re
 import uuid
-from typing import Any
+from collections.abc import Awaitable, Callable
+from typing import Any, Literal
 
 from mcp.server.auth.settings import AuthSettings
 from mcp.server.caching import CacheHint
@@ -23,7 +25,8 @@ from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ResourceNotFoundError, ToolError
 from mcp.server.transport_security import TransportSecuritySettings
 from mcp_types import ToolAnnotations
-from pydantic import AnyHttpUrl, BaseModel, Field
+from fastapi import HTTPException
+from pydantic import AnyHttpUrl, BaseModel, Field, ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.applications import Starlette
 
@@ -32,23 +35,31 @@ from idp.config import Settings
 from idp.domain.case_progress import Progress, progress
 from idp.domain.process_profile import ProcessProfileDefinition
 from idp.events import inbound
+from idp.domain.lenses import LensOutput
+from idp.events.claim_check import ClaimCheckError, fetch
 from idp.events.inbound import DocumentRef
-from idp.mcp_server.auth import VeritiumTokenVerifier, caller, quota, require_role
+from idp.mcp_server.auth import VeritiumTokenVerifier, caller, quota
 from idp.mcp_server.tasks import CaseRunTasks
-from idp.api.case_outcome import VERDICT_LABEL, CaseOutcome, case_outcome
+from idp.api.case_outcome import VERDICT_LABEL, CaseOutcome, FieldEvidence, case_outcome, field_evidence
+from idp.api.routes.upload_sessions import SessionRequest, create_session
 from idp.persistence.db import get_session_factory
-from idp.persistence.models import Case
-from idp.persistence.repositories import CaseRepository, DocumentTypeRepository, ProcessProfileRepository
+from idp.persistence.models import Case, LensResult
+from idp.persistence.repositories import CaseRepository, DocumentTypeRepository, LensRepository, ProcessProfileRepository
+from idp.pipeline.lenses import launch
+from idp.pipeline.quick_check import check_file
+from idp.tools.catalog import ToolSpec, exposed
 
 INSTRUCTIONS = """Veritium revisa los documentos de un expediente (préstamos, convenios y otros procesos) y responde \
 qué debe hacer el proceso: continuar, revisión humana o devolver al cliente, con los motivos.
 1. list_processes: qué pide cada proceso.
-2. submit_case: abre el expediente con sus documentos (por referencia: s3:// o https:// de un origen autorizado).
+2. Si los documentos los tiene una persona: request_documents_link le da un enlace para subirlos desde el teléfono.
+   Si los tienes tú: quick_check_document revisa cada archivo en segundos y submit_case abre el expediente
+   (documentos por referencia: s3:// o https:// de un origen autorizado).
 3. El procesamiento toma minutos: sigue la tarea (tasks/get) o consulta get_case_status / get_case_result.
 4. Si faltan documentos, add_documents al mismo expediente.
+5. Para explicar: get_field_evidence dice de dónde sale un dato; read_with_lens da la lectura de Riesgos o Legal.
 Usa request_id al crear o agregar: repetir la llamada con el mismo request_id no duplica nada."""
 
-_WRITERS = ("integracion", "operador", "admin")
 
 
 class Requirement(BaseModel):
@@ -86,6 +97,50 @@ class CaseItem(BaseModel):
 
 
 _STATE = {"done": "listo", "running": "en curso", "pending": "pendiente", "failed": "con error"}
+_FILE_VERDICT = {"ok": "se puede leer", "warning": "se puede leer, con observaciones", "reject": "no se puede leer"}
+_LENS_KIND = {"summary": "resumen", "playbook": "revisión de cláusulas"}
+
+
+class DocumentsLink(BaseModel):
+    upload_url: str = Field(description="El enlace a enviar a la persona.")
+    expires_at: str
+    session_id: uuid.UUID
+
+
+class FileCheck(BaseModel):
+    verdict: str
+    observations: list[str]
+    detected_type: str | None = Field(description="Tipo reconocido en el catálogo, 'otro', o vacío si no se pudo.")
+    detected_type_name: str | None
+    pages: int
+
+
+class LensInfo(BaseModel):
+    key: str
+    name: str
+    area: str
+    kind: str
+    description: str
+
+
+class LensReading(BaseModel):
+    lens: str
+    status: Literal["en curso", "lista"]
+    reading: LensOutput | None = None
+    note: str | None = None
+
+
+def _guarded(tool: ToolSpec, fn: Callable[..., Awaitable[Any]]) -> Callable[..., Awaitable[Any]]:
+    """Who may call it comes from the catalog, in one place."""
+
+    @functools.wraps(fn)
+    async def call(*args: Any, **kwargs: Any) -> Any:
+        role = caller()["role"]
+        if role not in tool.roles:
+            raise ToolError(f"tu rol ({role}) no permite usar {tool.title.lower()}; se requiere {' o '.join(tool.roles)}")
+        return await fn(*args, **kwargs)
+
+    return call
 
 
 def _progress(case: Case) -> Progress:
@@ -123,7 +178,7 @@ def build(settings: Settings) -> MCPServer:
     )
 
     async def _command(type_: str, data: dict[str, Any], request_id: str | None) -> CaseOutcome:
-        claims = require_role(*_WRITERS)
+        claims = caller()
         source = f"mcp/{claims.get('api_client_id') or claims['name']}"
         answer = await inbound.handle(settings, {"specversion": "1.0", "id": request_id or uuid.uuid4().hex, "source": source, "type": type_, "data": data})
         if not answer.accepted or answer.case_id is None:
@@ -131,10 +186,7 @@ def build(settings: Settings) -> MCPServer:
         async with factory() as session:
             return await case_outcome(session, await _case(session, str(answer.case_id)))
 
-    @mcp.tool(title="Procesos disponibles", annotations=ToolAnnotations(read_only_hint=True, open_world_hint=False))
     async def list_processes() -> list[ProcessInfo]:
-        """Los procesos que Veritium sabe revisar y qué documentos pide cada uno."""
-        caller()
         async with factory() as session:
             catalog = await DocumentTypeRepository(session).load_catalog()
             names = {key: current[1].display_name for key in catalog.keys() if (current := catalog.current(key))}
@@ -155,30 +207,17 @@ def build(settings: Settings) -> MCPServer:
                 out.append(ProcessInfo(key=profile.key, name=profile.name, description=profile.description, version=version.version, requirements=requirements, process_data=fields))
             return out
 
-    @mcp.tool(title="Abrir un expediente", annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False, idempotent_hint=True, open_world_hint=False))
     async def submit_case(
-        profile: str,
-        documents: list[DocumentRef],
-        external_ref: str | None = None,
-        process_data: dict[str, Any] | None = None,
-        request_id: str | None = None,
+        profile: str, documents: list[DocumentRef], external_ref: str | None = None, process_data: dict[str, Any] | None = None, request_id: str | None = None
     ) -> CaseOutcome:
-        """Abre un expediente bajo un proceso (`profile`, de list_processes) con sus documentos por referencia
-        (`documents[].url`: s3:// o https:// de un origen autorizado). `external_ref` es tu identificador;
-        `request_id` hace la llamada repetible sin duplicar. Responde enseguida; el veredicto llega en minutos."""
         data = {"profile": profile, "external_ref": external_ref, "process_data": process_data, "documents": [d.model_dump() for d in documents]}
         return await _command(inbound.SUBMIT, data, request_id)
 
-    @mcp.tool(title="Agregar documentos", annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False, idempotent_hint=True, open_world_hint=False))
     async def add_documents(documents: list[DocumentRef], case_id: str | None = None, external_ref: str | None = None, request_id: str | None = None) -> CaseOutcome:
-        """Agrega documentos a un expediente (por `case_id` o por tu `external_ref`) y lo vuelve a revisar."""
         data = {"case_id": case_id, "external_ref": external_ref, "documents": [d.model_dump() for d in documents]}
         return await _command(inbound.ADD_DOCUMENTS, data, request_id)
 
-    @mcp.tool(title="Estado del expediente", annotations=ToolAnnotations(read_only_hint=True, open_world_hint=False))
     async def get_case_status(case_id: str) -> CaseStatus:
-        """En qué etapa va el expediente: recibido, lectura, clasificación, extracción, validación, decisión."""
-        caller()
         async with factory() as session:
             case = await _case(session, case_id)
             outcome = await case_outcome(session, case)
@@ -186,18 +225,11 @@ def build(settings: Settings) -> MCPServer:
             steps = [f"{s.label}: {_STATE[s.state]}" + (f" ({s.done} de {s.total})" if s.total else "") for s in p.steps]
             return CaseStatus(case_id=case.id, external_ref=case.external_ref, status=p.status_label, now=p.current, steps=steps, verdict_label=outcome.verdict_label)
 
-    @mcp.tool(title="Resultado del expediente", annotations=ToolAnnotations(read_only_hint=True, open_world_hint=False))
     async def get_case_result(case_id: str) -> CaseOutcome:
-        """El veredicto (continuar, revisión humana o devolver al cliente), sus motivos, lo que falta y los documentos.
-        El detalle completo, con la evidencia de cada dato, está en el recurso `result_uri`."""
-        caller()
         async with factory() as session:
             return await case_outcome(session, await _case(session, case_id))
 
-    @mcp.tool(title="Buscar expedientes", annotations=ToolAnnotations(read_only_hint=True, open_world_hint=False))
     async def find_cases(external_ref: str | None = None, limit: int = 10) -> list[CaseItem]:
-        """Expedientes por tu `external_ref`, o los más recientes."""
-        caller()
         async with factory() as session:
             cases = await CaseRepository(session).list(external_ref=external_ref, limit=max(1, min(limit, 50)))
             return [
@@ -207,6 +239,78 @@ def build(settings: Settings) -> MCPServer:
                 )
                 for c in cases
             ]
+
+    async def request_documents_link(
+        profile: str | None = None, case_id: str | None = None, external_ref: str | None = None, process_data: dict[str, Any] | None = None,
+        minutes: int | None = None,
+    ) -> DocumentsLink:
+        if not profile and not case_id:
+            raise ToolError("indica el proceso (`profile`) para un expediente nuevo o `case_id` para completar uno")
+        try:
+            body = SessionRequest(profile=profile or "", case_id=uuid.UUID(case_id) if case_id else None, external_ref=external_ref, process_data=process_data, minutes=minutes)
+            async with factory() as session:
+                created = await create_session(session, settings, body, created_by=caller()["name"])
+        except (ValueError, ValidationError) as exc:
+            raise ToolError(f"datos inválidos: {exc}") from exc
+        except HTTPException as exc:
+            raise ToolError(str(exc.detail)) from exc
+        return DocumentsLink(upload_url=created.upload_url, expires_at=created.expires_at.isoformat(), session_id=created.id)
+
+    async def quick_check_document(url: str, expected_type: str | None = None) -> FileCheck:
+        try:
+            data = await fetch(settings, url)
+        except ClaimCheckError as exc:
+            raise ToolError(str(exc)) from exc
+        async with factory() as session:
+            checked = await check_file(settings, session, data, expected_type=expected_type)
+        return FileCheck(
+            verdict=_FILE_VERDICT[checked.verdict], observations=[c.message for c in checked.checks], detected_type=checked.detected_type,
+            detected_type_name=checked.detected_type_name, pages=checked.facts.page_count,
+        )
+
+    async def get_field_evidence(case_id: str, attribute: str, role: str = "titular") -> FieldEvidence:
+        async with factory() as session:
+            try:
+                return await field_evidence(session, await _case(session, case_id), attribute, role)
+            except LookupError as exc:
+                raise ToolError(str(exc)) from exc
+
+    async def list_lenses() -> list[LensInfo]:
+        async with factory() as session:
+            return [LensInfo(key=lens.key, name=lens.name, area=lens.area, kind=_LENS_KIND[lens.kind], description=lens.description) for lens in await LensRepository(session).list_lenses()]
+
+    async def read_with_lens(case_id: str, lens_key: str) -> LensReading:
+        async with factory() as session:
+            case = await _case(session, case_id)
+            repo = LensRepository(session)
+            lens = await repo.get(lens_key)
+            if lens is None:
+                raise ToolError(f"no existe la lente '{lens_key}' (ver list_lenses)")
+            latest = next((r for r in await repo.results_for_case(case.id) if r.lens_key == lens_key), None)
+            current = latest is not None and latest.definition == lens.model_dump(mode="json")
+            if latest is not None and latest.status == "running":
+                return LensReading(lens=lens.name, status="en curso")
+            if latest is not None and latest.status == "done" and current:
+                return LensReading(lens=lens.name, status="lista", reading=LensOutput.model_validate(latest.output))
+            row = LensResult(case_id=case.id, lens_key=lens_key, definition=lens.model_dump(mode="json"), created_by=caller()["name"])
+            session.add(row)
+            await session.commit()
+            launch(settings, row.id)
+            note = f" (la anterior falló: {latest.error})" if latest is not None and latest.status == "failed" else ""
+            return LensReading(lens=lens.name, status="en curso", note=f"Lectura iniciada{note}; vuelve a llamar en alrededor de un minuto.")
+
+    tools: dict[str, Callable[..., Any]] = {
+        "list_processes": list_processes, "submit_case": submit_case, "add_documents": add_documents, "get_case_status": get_case_status,
+        "get_case_result": get_case_result, "find_cases": find_cases, "request_documents_link": request_documents_link,
+        "quick_check_document": quick_check_document, "get_field_evidence": get_field_evidence, "list_lenses": list_lenses, "read_with_lens": read_with_lens,
+    }
+    # The catalog decides what is exposed, how it is described and who may call it (VRT-53).
+    assert tools.keys() == {s.name for s in exposed()}, "el catálogo de tools y el servidor MCP no coinciden"
+    for s in exposed():
+        mcp.add_tool(
+            _guarded(s, tools[s.name]), name=s.name, title=s.title, description=s.description,
+            annotations=ToolAnnotations(title=s.title, read_only_hint=s.read_only, destructive_hint=False, idempotent_hint=s.idempotent, open_world_hint=False),
+        )
 
     @mcp.resource("veritium://cases/{case_id}/result", title="Resultado completo del expediente", mime_type="application/json")
     async def case_result(case_id: str) -> str:

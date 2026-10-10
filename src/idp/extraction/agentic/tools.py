@@ -20,6 +20,7 @@ from idp.llm.port import inference
 from idp.llm.prompts import prompt
 from idp.observability.otel import traced_tool_call
 from idp.parsing.normalize import ParsedDocument
+from idp.tools.catalog import spec
 
 _TABLE_PROMPT = prompt("read_table_region", "Describe el contenido de esta tabla de forma estructurada: encabezados, filas y valores relevantes.")
 _FIGURE_PROMPT = prompt("read_figure_region", "Describe el contenido de esta figura/grafico: tipo, ejes o etiquetas, y los datos o tendencias relevantes.")
@@ -65,21 +66,19 @@ async def _read_visual(parsed: ParsedDocument, region_id: int, *, purpose: str, 
 
 
 def region_tools(parsed: ParsedDocument) -> list[Tool]:
-    @tool(idempotent=True)
+    # Descriptions come from the tool catalog (VRT-53): it is what the model reads.
+    @tool(idempotent=True, description=spec("read_text_region").description)
     async def read_text_region(region_ids: list[int]) -> str:
-        """Lee el texto ya extraido (OCR) de una o varias regiones del documento por su region_id. Gratis, sin llamada a modelo de vision. Prefiere pasar VARIOS region_ids en una sola llamada (p. ej. todos los de una fila de tabla) en vez de una llamada por region — cada llamada consume un turno del presupuesto acotado del agente."""
         with traced_tool_call(tool_name="read_text_region", arguments={"region_ids": region_ids}):
             return _read_text(parsed, region_ids)
 
-    @tool(idempotent=True)
+    @tool(idempotent=True, description=spec("read_table_region").description)
     async def read_table_region(region_id: int) -> str:
-        """Envia la imagen recortada de una region de tipo tabla a un modelo de vision para interpretar su contenido estructurado."""
         with traced_tool_call(tool_name="read_table_region", arguments={"region_id": region_id}):
             return await _read_visual(parsed, region_id, purpose="read_table_region", prompt=str(_TABLE_PROMPT))
 
-    @tool(idempotent=True)
+    @tool(idempotent=True, description=spec("read_figure_region").description)
     async def read_figure_region(region_id: int) -> str:
-        """Envia la imagen recortada de una region de tipo figura/grafico a un modelo de vision para interpretar su contenido."""
         with traced_tool_call(tool_name="read_figure_region", arguments={"region_id": region_id}):
             return await _read_visual(parsed, region_id, purpose="read_figure_region", prompt=str(_FIGURE_PROMPT))
 

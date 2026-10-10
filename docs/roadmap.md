@@ -342,7 +342,7 @@ Veritium pasa de "subir documentos sueltos" a ser una **capacidad de decisión d
 **Why:** las validaciones y los agentes necesitan herramientas tipadas y gobernadas, sin definirlas dos veces. **Scope:**
 - Cada tool se define una sola vez (determinista o con modelo, costo, rol que la usa); de esa definición salen las tools internas (synaptum `@tool`) y las expuestas por MCP.
 - Criterio de exposición: MCP solo donde se cruza una frontera de proceso, dueño o confianza; los pasos internos (clasificar, extraer, leer regiones) no se exponen. Próximas a exponer: enlace de carga, verificación rápida, evidencia de un dato, lentes.
-- Las tools de terceros (RENIEC/SUNAT/SBS, VRT-60) se consumen por MCP desde el gateway de tools de aeon; las expuestas se registran en su catálogo.
+- Catálogo consultable (`GET /v1/tools`, pantalla «Catálogo de tools») y descriptores MCP con sus metadatos (`GET /v1/tools/mcp`) para federarlas; registrarlas en el catálogo de aeon espera `VRT-AEON-006`. Las tools de terceros (RENIEC/SUNAT/SBS, VRT-60) se consumirán por MCP desde el gateway de tools de aeon.
 ## VRT-54 — Asistente del usuario
 **Why:** ayudar a operar, buscar y diagnosticar sin conocer la plataforma por dentro. **Scope:** agente synaptum que consume el MCP de Veritium (`MCPTools`) con el token de la persona: mismos permisos, cuota y auditoría que ella, sin un segundo camino con privilegios.
 ## VRT-55 — Permisos de tools con Cedar

@@ -120,3 +120,13 @@ async def run_lens(settings: Settings, result_id: uuid.UUID) -> None:
             result.status, result.error = "failed", f"{type(exc).__name__}: {exc}"[:2000]
         result.finished_at = datetime.now(UTC)
         await session.commit()
+
+
+# Lens readings started outside a request (MCP, VRT-53): kept so they are not garbage-collected mid-run.
+_launched: set[asyncio.Task] = set()
+
+
+def launch(settings: Settings, result_id: uuid.UUID) -> None:
+    task = asyncio.create_task(run_lens(settings, result_id))
+    _launched.add(task)
+    task.add_done_callback(_launched.discard)

@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from '@/lib/apiClient'
 import { getToken } from '@/lib/auth'
 import type {
+  ToolSpec,
   ApiClientView,
   ApiClientWithSecret,
   BulkJobDetail,
@@ -891,4 +892,10 @@ export function useApiClientAction() {
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['api-clients'] }),
   })
+}
+
+// --- Tool catalog (VRT-53) -----------------------------------------------------
+
+export function useToolCatalog() {
+  return useQuery({ queryKey: ['tools'], queryFn: async () => (await apiClient.get<ToolSpec[]>('/v1/tools')).data, staleTime: 300_000 })
 }
