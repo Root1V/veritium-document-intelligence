@@ -27,6 +27,8 @@ generation (``finish_reason == "length"``) never validates, so it surfaces as
 from __future__ import annotations
 
 import asyncio
+import dataclasses
+import inspect
 import logging
 from collections.abc import AsyncGenerator, Coroutine, Iterable
 from contextlib import asynccontextmanager
@@ -35,7 +37,7 @@ from typing import Any, Literal, TypeVar
 from axonium import AsyncAxonium
 from axonium.config import Timeouts
 from pydantic import BaseModel
-from synaptum import Agent, FinalStep, Image, Limits, LocalGateway, MemoryCheckpointer, Phase, PromptTemplate, Sampling, Session, Text, ToolStep, generate
+from synaptum import Agent, FinalStep, FinishReason, Image, Limits, LocalGateway, MemoryCheckpointer, Phase, PromptTemplate, Request, Response, Sampling, Session, Text, ToolStep, generate
 from synaptum.providers.axonium import AxoniumModel
 
 from idp.config import Settings
@@ -96,6 +98,7 @@ class Inference:
                 timeouts=Timeouts(read=timeout, write=timeout),
             )
             model = AxoniumModel(client=self._client).complete
+        model = _breaking_loops(model)
         self._model_call = model
         self._gateway = LocalGateway(model=model, warn=False)
 
@@ -182,6 +185,27 @@ class Inference:
             call.close()
             raise RuntimeError("llamada síncrona al InferencePort desde su propio loop: usa await")
         return asyncio.run_coroutine_threadsafe(call, self._loop).result()
+
+
+# A turn that ran to the output cap is, measured on gpt-oss at temperature 0, a
+# reasoning loop — the same sentence written until the tokens run out (VRT-69) —
+# not unfinished work; and at temperature 0 the same request loops the same way.
+# It is asked once more, sampling differently.
+_LOOP_BREAK_TEMPERATURE = 0.6
+
+
+def _breaking_loops(model: Any) -> Any:
+    wants_ctx = len(inspect.signature(model).parameters) > 1
+
+    async def complete(request: Request, ctx: Any = None) -> Response:
+        call = (lambda r: model(r, ctx)) if wants_ctx else model
+        response = await call(request)
+        if response.finish_reason is FinishReason.LENGTH and not request.temperature:
+            log.info("inference: turno cortado al tope de %s tokens; se repite con temperatura %s", response.usage.output, _LOOP_BREAK_TEMPERATURE)
+            response = await call(dataclasses.replace(request, temperature=_LOOP_BREAK_TEMPERATURE))
+        return response
+
+    return complete
 
 
 _current: Inference | None = None

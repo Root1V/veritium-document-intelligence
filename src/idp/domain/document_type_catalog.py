@@ -25,7 +25,7 @@ from pydantic import BaseModel, Field, create_model, model_validator
 from pydantic.fields import FieldInfo
 from pydantic_core import PydanticUndefined
 
-from idp.domain.envelope import Extracted
+from idp.domain.envelope import Extracted, Read
 
 GENERIC = "generic"
 _SNAKE = re.compile(r"^[a-z][a-z0-9_]*$")
@@ -117,14 +117,14 @@ def _value_type(spec: FieldSpec) -> Any:
     return Literal[tuple(spec.enum_values or ())] if spec.type == "enum" else _PY_TYPES[spec.type]
 
 
-def _model(name: str, doc: str | None, specs: list[FieldSpec]) -> type[BaseModel]:
+def _model(name: str, doc: str | None, specs: list[FieldSpec], envelope: type[BaseModel] = Extracted) -> type[BaseModel]:
     fields: dict[str, Any] = {}
     for spec in specs:
         if spec.type == "list":
-            item = _model(spec.item_name or "", spec.item_description, spec.items or [])
+            item = _model(spec.item_name or "", spec.item_description, spec.items or [], envelope)
             fields[spec.name] = (list[item], Field(default_factory=list, description=spec.description))  # type: ignore[valid-type]
             continue
-        value = Extracted[_value_type(spec)] if spec.grounded else _value_type(spec)  # type: ignore[misc]
+        value = envelope[_value_type(spec)] if spec.grounded else _value_type(spec)  # type: ignore[index]
         if spec.required:
             fields[spec.name] = (value, Field(description=spec.description))
         else:
@@ -133,15 +133,17 @@ def _model(name: str, doc: str | None, specs: list[FieldSpec]) -> type[BaseModel
 
 
 @lru_cache(maxsize=256)
-def _compile(definition_json: str) -> type[BaseModel]:
+def _compile(definition_json: str, for_agent: bool = False) -> type[BaseModel]:
     d = DocumentTypeDefinition.model_validate_json(definition_json)
-    return _model(d.schema_title, d.schema_description, d.fields)
+    return _model(d.schema_title, d.schema_description, d.fields, Read if for_agent else Extracted)
 
 
-def compile_schema(definition: DocumentTypeDefinition) -> type[BaseModel]:
+def compile_schema(definition: DocumentTypeDefinition, *, for_agent: bool = False) -> type[BaseModel]:
     """The extraction schema for a type version. Cached by content: a
-    published version never changes, so it compiles once per process."""
-    return _compile(definition.model_dump_json())
+    published version never changes, so it compiles once per process.
+    ``for_agent``: the same fields as the extraction agent writes them
+    (``Read[T]``, without page and box), validated into the full schema after."""
+    return _compile(definition.model_dump_json(), for_agent)
 
 
 # --- seed: Pydantic class -> definition ------------------------------------
@@ -220,6 +222,6 @@ class DocumentTypeCatalog:
     def definition(self, key: str, version: int) -> DocumentTypeDefinition | None:
         return self._by_version.get((key, version))
 
-    def schema(self, key: str, version: int) -> type[BaseModel] | None:
+    def schema(self, key: str, version: int, *, for_agent: bool = False) -> type[BaseModel] | None:
         definition = self.definition(key, version)
-        return compile_schema(definition) if definition is not None else None
+        return compile_schema(definition, for_agent=for_agent) if definition is not None else None

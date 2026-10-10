@@ -23,6 +23,8 @@ Regiones detectadas en el documento:
 {regions}
 
 Herramientas disponibles:
+El texto_ocr de cada region ya es su texto completo, salvo que termine en "…" (recortado): no hace falta \
+leer con read_text_region una region cuyo texto ya tienes completo.
 - read_text_region(region_ids): lee texto OCR ya extraido de una o VARIAS regiones a la vez (sin costo). \
 SIEMPRE que necesites leer varias regiones relacionadas (p. ej. todos los codigos/conceptos/montos de una \
 tabla de ingresos o descuentos), pasalas TODAS juntas en una sola llamada (region_ids=[85,86,87,88,89,...]) \
@@ -41,17 +43,16 @@ leelas en la MENOR cantidad de llamadas posible agrupando varios region_ids por 
 tabla en una o dos llamadas a read_text_region, no una llamada por celda.
 3. Usa read_table_region/read_figure_region solo cuando el dato que necesitas esta en una tabla o figura \
 que no se puede leer como texto plano.
-4. Tienes un numero limitado de turnos. En cuanto tengas los campos requeridos (obligatorios) del esquema, \
-llama a submit — no es necesario agotar todas las regiones ni completar listas opcionales si el \
-presupuesto de turnos se esta agotando.
-5. Cada campo del esquema requiere: value, page, bbox, confidence (0-1), source_text (el texto exacto \
+4. Tienes un numero limitado de turnos. Entrega con submit todo lo que el documento trae: los campos y \
+las listas completas (p. ej. todos los conceptos de una boleta). Solo si se te acaban los turnos entrega lo \
+que tengas, con al menos los campos obligatorios.
+5. Cada campo del esquema requiere: value, confidence (0-1), source_text (el texto exacto \
 de donde se extrajo el valor) y region_id — esto es obligatorio para poder auditar la extraccion despues. \
 "region_id" DEBE ser el numero exacto de region_id (de la lista de regiones arriba) de donde sacaste el \
 valor — esto es CRITICO cuando el mismo dato (p. ej. un monto) aparece repetido en mas de una region o \
 pagina del documento (por ejemplo, un monto "solicitado" en una seccion y un monto "aprobado" distinto en \
 otra): el region_id es lo unico que distingue de forma inequivoca de cual de las dos ocurrencias sacaste \
-el valor. "page" DEBE ser exactamente el numero de "pagina" que aparece junto a ese region_id — nunca \
-asumas que todo esta en la pagina 0, especialmente en documentos de varias paginas.
+el valor. La pagina y la posicion las toma la plataforma del region_id: no las escribas.
 6. "value" debe ser el valor LIMPIO y semantico (sin el ":" u otro separador de la etiqueta del campo, \
 sin espacios sobrantes, sin el nombre de la etiqueta). "source_text" en cambio debe ser el texto CRUDO \
 tal como aparece en la region OCR, incluyendo cualquier separador o etiqueta — no los uniformes. \
@@ -66,13 +67,24 @@ _SELF_CHECK = (
 )
 
 
+_SHOWN = 120
+
+
+def _shown(text: str) -> str:
+    """A region's text as listed: whole, or cut with a mark the agent knows means 'read it'."""
+    return text if len(text) <= _SHOWN else text[:_SHOWN] + "…"
+
+
 def build_system_prompt(
     hint: str, schema_cls: type[BaseModel], parsed: ParsedDocument, grounding: dict[str, str] | None = None, *, self_check: bool = False
 ) -> PromptTemplate:
     """``hint`` is the document type's extraction hint (catalog, VRT-32);
     ``grounding`` the business meaning of each field (VRT-46); ``self_check``
     adds the step that reviews the draft before submitting (VRT-67)."""
-    regions = "\n".join(f"- region_id={b.region_id} tipo={b.block_type} pagina={b.page} texto_ocr={b.text[:80]!r}" for b in parsed.blocks)
+    # A layout box without text tells the agent nothing; a table or figure does (it can be read visually).
+    regions = "\n".join(
+        f"- region_id={b.region_id} tipo={b.block_type} pagina={b.page} texto_ocr={_shown(b.text)!r}" for b in parsed.blocks if b.text or b.block_type != "text"
+    )
     meaning = ""
     if grounding:
         lines = "\n".join(f"- {field}: {text}" for field, text in grounding.items())

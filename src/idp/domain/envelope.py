@@ -27,6 +27,18 @@ class ToolCallRecord(BaseModel):
     reasoning: str | None = None
 
 
+class Read(BaseModel, Generic[T]):
+    """What the extraction agent writes for one field (VRT-69): the value and
+    where it read it. Page and box are not asked of the model — grounding
+    takes them from the region (extraction/grounding.py) — and every token it
+    does not write is time saved: the agent's cost is its output."""
+
+    value: T
+    confidence: float = Field(ge=0.0, le=1.0)
+    source_text: str | None = None
+    region_id: int | None = None
+
+
 class Extracted(BaseModel, Generic[T]):
     """A single extracted field, grounded back to its source document."""
 

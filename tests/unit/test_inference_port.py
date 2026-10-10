@@ -60,10 +60,30 @@ async def test_an_invalid_answer_is_asked_again_showing_the_error():
 
 @pytest.mark.asyncio
 async def test_a_truncated_answer_is_not_half_an_object():
-    fake = FakeModel('{"tipo": "bol', '{"tipo": "bol', '{"tipo": "bol', finish=FinishReason.LENGTH)
+    fake = FakeModel(*['{"tipo": "bol'] * 6, finish=FinishReason.LENGTH)  # each turn, and its retry, cut off
     async with port.inference_lifespan(_settings(), model=fake, models=MODELS) as inference:
         with pytest.raises(NoObjectGeneratedError):
             await inference.structured(purpose="classify", role="reasoning", output=Clase, instructions="x", task="y")
+
+
+class LoopsOnce(FakeModel):
+    """At temperature 0 it writes until the cap (VRT-69); sampling differently, it answers."""
+
+    async def __call__(self, request: Request, ctx: object = None) -> Response:
+        self.requests.append(request)
+        if not request.temperature:
+            return Response(message=Message(Role.ASSISTANT, (Text("la region 337 podria ser..." * 50),)), finish_reason=FinishReason.LENGTH, model=request.model)
+        return Response(message=Message(Role.ASSISTANT, (Text(self.answers.pop(0)),)), finish_reason=FinishReason.STOP, model=request.model)
+
+
+@pytest.mark.asyncio
+async def test_a_turn_cut_at_the_cap_is_asked_once_more_sampling_differently():
+    fake = LoopsOnce('{"tipo": "boleta"}')
+    async with port.inference_lifespan(_settings(), model=fake, models=MODELS) as inference:
+        result = await inference.structured(purpose="classify", role="reasoning", output=Clase, instructions="x", task="y")
+    assert result == Clase(tipo="boleta")
+    assert [r.temperature for r in fake.requests] == [0, 0.6]
+    assert fake.requests[1].messages == fake.requests[0].messages, "the same turn, not one more"
 
 
 @pytest.mark.asyncio

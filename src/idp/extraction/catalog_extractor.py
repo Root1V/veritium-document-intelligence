@@ -30,10 +30,10 @@ def extract_catalog_type(
     version, definition = current
     schema_version = str(version)
     try:
-        result, trace = run_agentic_extraction(
+        draft, trace = run_agentic_extraction(
             settings,
             parsed,
-            catalog.schema(type_key, version),  # type: ignore[arg-type]
+            catalog.schema(type_key, version, for_agent=True),  # type: ignore[arg-type]
             # The version is part of what is extracted: a new schema is a new
             # request, never a replay of the previous version's.
             purpose=f"extract/{type_key}/v{version}",
@@ -44,6 +44,7 @@ def extract_catalog_type(
         )
     except ExtractionIncomplete as exc:
         return ExtractionOutcome(schema_instance=None, needs_review=True, review_reason=str(exc), extraction_method="agentic", schema_version=schema_version)
+    result = catalog.schema(type_key, version).model_validate(draft.model_dump())  # type: ignore[union-attr]
     attach_trace(result, trace)
     attach_grounding(result, parsed)
     return ExtractionOutcome(schema_instance=result, needs_review=False, extraction_method="agentic", schema_version=schema_version)

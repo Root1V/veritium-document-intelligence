@@ -302,7 +302,10 @@ Veritium pasa de "subir documentos sueltos" a ser una **capacidad de decisión d
 - Fuera: simular con expedientes pasados un cambio de prompt que influye en el veredicto, y aprobación por una segunda persona.
 
 ## VRT-69 — Agente de extracción eficiente
-**Why:** medido el 2026-10-10 sobre 3 documentos reales: la extracción tarda 84–364 s por documento (70–90% del total), en 1–4 turnos de 30–150 s, y cada turno reenvía el texto del documento (pico de 138k tokens/min contra un techo de 40k, `PRM-VRT-001`). **Scope:** primero medir tokens de entrada, salida y caché por turno; después recortar lo que viaja (solo las regiones relevantes, prefijo estable para la caché de prometheus) sin perder exactitud en las suites. Fuera: cambiar de modelo y el OCR (`VRT-PRM-006`).
+**Why:** la extracción es el 70–90% del tiempo de cada documento. Medido el 2026-10-10 (4 documentos reales, tokens por turno): el costo es lo que el modelo **escribe**, no lo que se le envía (entrada ≤13k tokens con ~95% servido de caché). La mayor pérdida son turnos en que gpt-oss, a temperatura 0, entra en un bucle de razonamiento hasta el tope de 8.192 tokens (3 de 6 turnos en una solicitud de préstamo: 17 min). **Scope:**
+- Hecho: un turno cortado al tope se repite una vez con temperatura 0.6; el agente escribe solo valor, confianza, texto y región (página y caja las pone la plataforma); la lista de regiones omite las vacías y marca con «…» las recortadas; las listas se entregan completas.
+- Descartado con medición: razonamiento «low» (−86% de tiempo, exactitud 83% → 74%) y temperatura 1.0 en todo (sin bucles, pero 69%).
+- Falta: confirmar el efecto con varias corridas sobre prometheus sin otros modelos compitiendo (el 2026-10-10 la generación cayó a un tercio y un turno superó el timeout de 180 s).
 
 ## F5 — Canales
 ## VRT-47 — Sesión de carga + verificación rápida
