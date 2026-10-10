@@ -95,7 +95,7 @@ Estados: `done` · `todo` · `blocked` (espera a otro equipo) · `superseded` (a
 | VRT-53 | Catálogo de tools | done | Cada tool definida una vez (tipo, costo, rol); de ahí salen las internas y las expuestas por MCP, registradas en aeon. |
 | VRT-54 | Asistente del usuario | todo | Asistente sobre synaptum que usa el MCP de Veritium con el token de la persona. |
 | VRT-55 | Permisos de tools con Cedar | blocked | Cedar de aeon sobre las tools expuestas y las de terceros (espera `VRT-AEON-006`, aeon `backlog.md:977`). |
-| VRT-66 | Agente investigador de discrepancias | todo | Ante cada hallazgo, investiga con tools y le deja al revisor diagnóstico, corrección sugerida y evidencia; no decide. |
+| VRT-66 | Agente investigador de discrepancias | done | Ante cada hallazgo, investiga con tools y le deja al revisor diagnóstico, corrección sugerida y evidencia; no decide. |
 | VRT-67 | Autovalidación de la extracción | done | El agente de extracción revisa su borrador con las reglas propias del documento y corrige antes de entregar. |
 | VRT-68 | Clasificación con escalamiento agéntico | todo | Una llamada para lo claro; un agente que revisa páginas cuando la confianza es baja o el PDF mezcla documentos. |
 
