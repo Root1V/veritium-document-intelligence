@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
-import { useCorrectionReasons, useReviewQueue, useSubmitCorrection } from '@/lib/queries'
+import { useCorrectionReasons, useDismissInvestigation, useInvestigationStats, useReviewQueue, useSubmitCorrection } from '@/lib/queries'
 import { errorDetail } from '@/lib/apiErrors'
 import { canExecute } from '@/lib/auth'
 import { Card, CardContent } from '@/components/ui/card'
@@ -15,6 +15,7 @@ import type { ReviewItem } from '@/types/api'
 const REASON_LABEL: Record<string, string> = {
   low_confidence: 'Confianza baja',
   validation_issue: 'Problema de validación',
+  investigation: 'Sugerencia del investigador',
 }
 
 function ReviewRow({ item }: { item: ReviewItem }) {
@@ -26,6 +27,19 @@ function ReviewRow({ item }: { item: ReviewItem }) {
   const [justification, setJustification] = useState('')
   const canCorrect = canExecute()
   const reason = reasons?.find((r) => r.code === reasonCode)
+  const dismiss = useDismissInvestigation()
+
+  // Fills the correction with the suggestion; the reviewer still chooses the reason and saves.
+  function applySuggestion() {
+    const suggestion = item.suggestion
+    if (!suggestion) return
+    if (suggestion.action === 'corregir_dato') setValue(String(suggestion.value ?? ''))
+    if (suggestion.action === 'confirmar_dato') {
+      setValue(String(item.current_value.value ?? ''))
+      setReasonCode('confirmed_correct')
+    }
+    setCorrecting(true)
+  }
 
   function handleSubmit() {
     if (!reason) {
@@ -77,6 +91,34 @@ function ReviewRow({ item }: { item: ReviewItem }) {
         </div>
 
         {item.finding && <p className="text-sm text-amber-700 dark:text-amber-400">{item.finding}</p>}
+        {item.suggestion && (
+          <div className="flex flex-col gap-1 rounded-md border border-sky-500/30 bg-sky-50/50 p-2 text-sm dark:bg-sky-950/20">
+            <span className="text-xs font-medium uppercase tracking-wide text-sky-700 dark:text-sky-400">
+              Sugerencia del investigador · {item.suggestion.action_label}
+              {item.suggestion.confidence !== null && ` · confianza ${Math.round(item.suggestion.confidence * 100)}%`}
+            </span>
+            <span>{item.suggestion.diagnosis}</span>
+            {canCorrect && (
+              <div className="flex flex-wrap items-center gap-2">
+                {item.suggestion.action === 'corregir_dato' && (
+                  <span>
+                    Valor sugerido: <strong>{String(item.suggestion.value)}</strong>
+                  </span>
+                )}
+                <Button size="sm" variant="outline" onClick={applySuggestion}>
+                  Usar sugerencia
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => dismiss.mutate(item.suggestion!.investigation_id, { onError: (e) => toast.error(errorDetail(e)) })}
+                >
+                  Descartar
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
         {item.source_text && (
           <p className="text-xs text-muted-foreground">
             Texto en el documento: <span className="font-mono">«{item.source_text}»</span>
@@ -140,12 +182,25 @@ function ReviewRow({ item }: { item: ReviewItem }) {
 
 export function ReviewQueuePage() {
   const { data: items, isLoading } = useReviewQueue()
+  const { data: stats } = useInvestigationStats()
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Cola de revisión</h1>
-        <p className="text-muted-foreground">Campos con baja confianza o con observaciones de validación.</p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Cola de revisión</h1>
+          <p className="text-muted-foreground">Campos con baja confianza o con observaciones de validación.</p>
+        </div>
+        {stats && stats.investigated > 0 && (
+          <div className="rounded-md border px-3 py-2 text-sm" title="De las correcciones que sugirió el investigador y que alguien ya resolvió.">
+            Sugerencias del investigador:{' '}
+            <strong>{stats.acceptance_rate === null ? '—' : `${Math.round(stats.acceptance_rate * 100)}% aceptadas`}</strong>
+            <span className="text-xs text-muted-foreground">
+              {' '}
+              · {stats.accepted} aplicadas, {stats.overridden} corregidas de otra forma, {stats.dismissed} descartadas
+            </span>
+          </div>
+        )}
       </div>
 
       {isLoading ? (

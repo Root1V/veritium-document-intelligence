@@ -5,8 +5,9 @@
 // reprocessed on its own as a new run (VRT-40), and the result exported (VRT-41).
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { CheckCircle2, CircleAlert, Download, Loader2, RefreshCw } from 'lucide-react'
+import { CheckCircle2, CircleAlert, Download, Loader2, RefreshCw, Search } from 'lucide-react'
 import { toast } from 'sonner'
+import { InvestigationPanel } from '@/components/cases/InvestigationPanel'
 import { LensesCard } from '@/components/cases/LensesCard'
 import { ProgressFunnel } from '@/components/cases/ProgressFunnel'
 import { EvidenceViewer } from '@/components/documents/EvidenceViewer'
@@ -16,8 +17,18 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { errorDetail } from '@/lib/apiErrors'
-import { canExecute } from '@/lib/auth'
-import { downloadCaseResult, useCaseProgress, useCaseResult, useDocumentTypeCatalog, useReprocessCase, useWaiveCondition, type CaseExportFormat } from '@/lib/queries'
+import { canExecute, isAISpecialist } from '@/lib/auth'
+import {
+  downloadCaseResult,
+  useCaseInvestigations,
+  useCaseProgress,
+  useCaseResult,
+  useDocumentTypeCatalog,
+  useInvestigate,
+  useReprocessCase,
+  useWaiveCondition,
+  type CaseExportFormat,
+} from '@/lib/queries'
 import { VERDICT_LABEL, VERDICT_VARIANT } from '@/lib/verdict'
 import type { CaseCondition, CaseResult, ReprocessScope } from '@/types/api'
 
@@ -173,6 +184,8 @@ function fieldEvidence(result: CaseResult, documentId: string, fieldPath: string
 export function CaseDetailPage() {
   const { caseId } = useParams<{ caseId: string }>()
   const { data: result, isLoading } = useCaseResult(caseId)
+  const { data: investigations } = useCaseInvestigations(caseId)
+  const investigate = useInvestigate(caseId ?? '')
   const { data: summary } = useCaseProgress(caseId)
   const { data: types } = useDocumentTypeCatalog()
   const [evidence, setEvidence] = useState<Evidence | null>(null)
@@ -199,6 +212,9 @@ export function CaseDetailPage() {
     return d ? `${d.document_type ? (typeName[d.document_type] ?? d.document_type) : 'Sin clasificar'} — ${d.filename}` : '—'
   }
   const busy = result.run?.status === 'pending' || result.run?.status === 'running'
+  const investigationOf = Object.fromEntries((investigations ?? []).filter((i) => i.validation_issue_id).map((i) => [i.validation_issue_id!, i]))
+  const investigating = (investigations ?? []).some((i) => i.status === 'running')
+  const canInvestigate = canExecute() || isAISpecialist()
   const segmented = new Set(result.documents.map((d) => d.parent_document_id).filter(Boolean))
   const selected = evidence ?? (result.documents[0] ? { documentId: result.documents[0].id, page: result.documents[0].page_start ?? 0, bbox: null, label: result.documents[0].filename } : null)
 
@@ -315,12 +331,26 @@ export function CaseDetailPage() {
 
           {result.findings.length > 0 && (
             <Card>
-              <CardHeader>
-                <CardTitle>Hallazgos ({result.findings.length})</CardTitle>
+              <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-2">
+                <div>
+                  <CardTitle>Hallazgos ({result.findings.length})</CardTitle>
+                  <CardDescription>Un agente puede investigar cada uno y dejarte un diagnóstico con evidencia; no decide por ti.</CardDescription>
+                </div>
+                {canInvestigate && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={investigate.isPending || investigating}
+                    onClick={() => investigate.mutate(undefined, { onError: (e) => toast.error(errorDetail(e)) })}
+                  >
+                    {investigating ? <Loader2 className="size-3.5 animate-spin" /> : <Search className="size-3.5" />} Investigar hallazgos
+                  </Button>
+                )}
               </CardHeader>
               <CardContent className="flex flex-col gap-2 text-sm">
                 {result.findings.map((f, i) => (
-                  <div key={i} className="flex items-start gap-2 rounded-md border p-2 hover:bg-muted/50">
+                  <div key={i} className="flex flex-col gap-2 rounded-md border p-2">
+                    <div className="flex items-start gap-2 hover:bg-muted/50">
                     <button
                       type="button"
                       className="flex flex-1 flex-col items-start gap-0.5 text-left"
@@ -336,6 +366,24 @@ export function CaseDetailPage() {
                       {f.document_id && <span className="text-xs text-muted-foreground">{docName(f.document_id)}</span>}
                     </button>
                     <ReprocessButton caseId={result.case.id} scope={{ kind: 'rule', rule_id: f.rule_id }} label="Re-evaluar regla" busy={busy} />
+                    {canInvestigate && !investigationOf[f.id] && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        disabled={investigate.isPending}
+                        onClick={() => investigate.mutate(f.id, { onError: (e) => toast.error(errorDetail(e)) })}
+                      >
+                        Investigar
+                      </Button>
+                    )}
+                    </div>
+                    {investigationOf[f.id] && (
+                      <InvestigationPanel
+                        investigation={investigationOf[f.id]}
+                        onRetry={canInvestigate ? () => investigate.mutate(f.id, { onError: (e) => toast.error(errorDetail(e)) }) : undefined}
+                        onEvidence={(documentId, page) => setEvidence({ documentId, page, bbox: null, label: `${docName(documentId)} · pág. ${page + 1}` })}
+                      />
+                    )}
                   </div>
                 ))}
               </CardContent>

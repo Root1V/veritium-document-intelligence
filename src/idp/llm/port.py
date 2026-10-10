@@ -117,8 +117,8 @@ class Inference:
         if self._client is not None:
             await self._client.aclose()
 
-    def _sampling(self) -> Sampling:
-        return Sampling(temperature=0, max_output_tokens=self._settings.llm_max_output_tokens)
+    def _sampling(self, temperature: float = 0.0) -> Sampling:
+        return Sampling(temperature=temperature, max_output_tokens=self._settings.llm_max_output_tokens)
 
     def _model(self, role: Role) -> str:
         return self.models[role]
@@ -141,7 +141,7 @@ class Inference:
         return await self._generate(purpose, "vision", [Text(prompt), Image(media_type=mime_type, data=image_b64)], max_steps=1)
 
     async def run_agent(
-        self, *, purpose: str, instructions: str | PromptTemplate, task: str, tools: list[Any], output: type[T], max_steps: int
+        self, *, purpose: str, instructions: str | PromptTemplate, task: str, tools: list[Any], output: type[T], max_steps: int, temperature: float = 0.0
     ) -> tuple[T, list[ToolStep]]:
         """A bounded tool-using agent on the reasoning model (VRT-30). The
         result arrives through synaptum's submit tool, validated against
@@ -158,7 +158,7 @@ class Inference:
             output=output,
             # A retryable refusal — e.g. the same request still running for an identical document — is waited out, not given up on.
             limits=Limits(max_steps=max_steps, max_retries=self._settings.llm_max_retries),
-            sampling=self._sampling(),
+            sampling=self._sampling(temperature),
             submit_tool=True,
         )
         session = Session(run_id=f"veritium/{purpose}", gateway=gateway, checkpointer=MemoryCheckpointer())

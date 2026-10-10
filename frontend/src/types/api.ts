@@ -82,7 +82,7 @@ export interface ReviewItem {
   field_path: string
   current_value: { value: unknown }
   confidence: number
-  reason: 'low_confidence' | 'validation_issue'
+  reason: 'low_confidence' | 'validation_issue' | 'investigation'
   status: string
   label: string
   description: string | null
@@ -96,6 +96,16 @@ export interface ReviewItem {
   page: number | null
   source_text: string | null
   finding: string | null
+  suggestion: ReviewSuggestion | null
+}
+
+export interface ReviewSuggestion {
+  investigation_id: string
+  action: 'corregir_dato' | 'confirmar_dato' | 'pedir_documento' | 'revisar_manualmente'
+  action_label: string
+  diagnosis: string
+  value: unknown
+  confidence: number | null
 }
 
 export interface ReviewCorrectionRequest {
@@ -560,6 +570,7 @@ export interface CaseCondition {
 }
 
 export interface CaseFinding {
+  id: string
   rule_id: string
   category: string
   severity: string
@@ -964,4 +975,41 @@ export interface ToolSpec {
   roles: string[]
   read_only: boolean
   idempotent: boolean
+}
+
+// --- Discrepancy investigator (VRT-66) -----------------------------------------
+
+export interface Investigation {
+  id: string
+  validation_issue_id: string | null
+  rule_id: string
+  finding: string
+  status: 'running' | 'done' | 'failed'
+  diagnosis: string | null
+  cause: string | null
+  cause_label: string | null
+  action: ReviewSuggestion['action'] | null
+  action_label: string | null
+  document_id: string | null
+  field_path: string | null
+  suggested_value: unknown
+  confidence: number | null
+  evidence: { document_id: string | null; document: string; page: number | null; text: string; verified: boolean }[]
+  tools_used: string[]
+  outcome: 'pending' | 'accepted' | 'overridden' | 'dismissed'
+  error: string | null
+  created_by: string
+  created_at: string
+  finished_at: string | null
+}
+
+export interface InvestigationStats {
+  investigated: number
+  with_correction: number
+  accepted: number
+  overridden: number
+  dismissed: number
+  pending: number
+  acceptance_rate: number | null
+  by_cause: Record<string, number>
 }

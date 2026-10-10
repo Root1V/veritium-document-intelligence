@@ -57,6 +57,11 @@ Playbook:
 
 async def lens_documents(settings: Settings, session: AsyncSession, case: Case, lens: LensDefinition) -> list[LensDocument]:
     """The case's logical documents the lens reads, with their text."""
+    return await case_documents(settings, session, case, document_types=lens.document_types)
+
+
+async def case_documents(settings: Settings, session: AsyncSession, case: Case, *, document_types: list[str] | None = None) -> list[LensDocument]:
+    """The case's logical documents (of ``document_types``, or all), with their text — for lenses and investigations."""
     documents = await DocumentRepository(session).list_for_case(case.id)
     segmented = {d.parent_document_id for d in documents if d.parent_document_id is not None}
     types = await DocumentTypeRepository(session).load_catalog()
@@ -64,7 +69,7 @@ async def lens_documents(settings: Settings, session: AsyncSession, case: Case, 
     parsed_by_file: dict[str, ParsedDocument] = {}
     out: list[LensDocument] = []
     for d in documents:
-        if d.id in segmented or d.status == "failed" or (lens.document_types and d.document_type not in lens.document_types):
+        if d.id in segmented or d.status == "failed" or (document_types and d.document_type not in document_types):
             continue
         parsed = parsed_by_file.get(d.storage_key) or await asyncio.to_thread(load_parsed, store, d.storage_key)
         if parsed is None:  # processed before the text was kept: read it once more, and keep it

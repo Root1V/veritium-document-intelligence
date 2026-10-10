@@ -5,6 +5,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from '@/lib/apiClient'
 import { getToken } from '@/lib/auth'
 import type {
+  Investigation,
+  InvestigationStats,
   ToolSpec,
   ApiClientView,
   ApiClientWithSecret,
@@ -228,6 +230,7 @@ export function useSubmitCorrection() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['review-queue'] })
+      queryClient.invalidateQueries({ queryKey: ['investigation-stats'] })
     },
   })
 }
@@ -909,4 +912,40 @@ export function useApiClientAction() {
 
 export function useToolCatalog() {
   return useQuery({ queryKey: ['tools'], queryFn: async () => (await apiClient.get<ToolSpec[]>('/v1/tools')).data, staleTime: 300_000 })
+}
+
+// --- Discrepancy investigator (VRT-66) -----------------------------------------
+
+export function useCaseInvestigations(caseId: string | undefined) {
+  return useQuery({
+    queryKey: ['investigations', caseId],
+    enabled: !!caseId,
+    queryFn: async () => (await apiClient.get<Investigation[]>(`/v1/cases/${caseId}/investigations`)).data,
+    refetchInterval: (query) => (query.state.data?.some((i) => i.status === 'running') ? 3_000 : false),
+  })
+}
+
+export function useInvestigate(caseId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (validationIssueId?: string) =>
+      (await apiClient.post<Investigation[]>(`/v1/cases/${caseId}/investigations`, validationIssueId ? { validation_issue_id: validationIssueId } : {})).data,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['investigations', caseId] }),
+  })
+}
+
+export function useDismissInvestigation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (id: string) => (await apiClient.post<Investigation>(`/v1/investigations/${id}/dismiss`)).data,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['investigations'] })
+      queryClient.invalidateQueries({ queryKey: ['review-queue'] })
+      queryClient.invalidateQueries({ queryKey: ['investigation-stats'] })
+    },
+  })
+}
+
+export function useInvestigationStats() {
+  return useQuery({ queryKey: ['investigation-stats'], queryFn: async () => (await apiClient.get<InvestigationStats>('/v1/investigations/stats')).data })
 }

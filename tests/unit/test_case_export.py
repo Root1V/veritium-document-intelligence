@@ -69,7 +69,7 @@ def _result() -> CaseResultV1:
                            parent_document_id=None, page_start=None, page_end=None, fields=None),
         ],
         findings=[
-            Finding(rule_id="batch.employee_name_matches_insured_name", category="cross_document", severity="error", document_id=PAYSLIP,
+            Finding(id=uuid.uuid4(), rule_id="batch.employee_name_matches_insured_name", category="cross_document", severity="error", document_id=PAYSLIP,
                     field_path="employee_name", message="Nombre no coincide | entre boleta y seguro.", expected=None, actual=None,
                     confidence=1.0, confidence_method="deterministic", explanation="")
         ],

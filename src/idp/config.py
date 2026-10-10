@@ -104,6 +104,8 @@ class Settings(BaseSettings):
     # a time (read_text_region calls are cheap but still cost a turn) —
     # raised after live testing against Prometheus-served gpt-oss-20b.
     extraction_max_turns: int = 20
+    # Turns the discrepancy investigator may take on one finding (VRT-66).
+    investigation_max_turns: int = 12
 
     # --- Review routing ---
     review_confidence_threshold: float = 0.75

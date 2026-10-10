@@ -13,16 +13,19 @@ from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from pydantic import BaseModel, Field, model_validator
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from idp.api.case_service import dispatch_run, open_reprocess_run
+from idp.api.routes.investigations import record_outcome
+from idp.pipeline.investigation import ACTION_LABEL
 from idp.api.deps import get_app_settings, get_current_user, get_db_session, require_role
 from idp.config import Settings
 from idp.domain.correction_reasons import CORRECTION_REASONS, REASONS_BY_CODE, CorrectionReason, ReasonCode
 from idp.domain.document_type_catalog import DocumentTypeCatalog
 from idp.domain.reprocess import ReprocessScope
 from idp.domain.semantic import SemanticCatalog
-from idp.persistence.models import ReviewItem, User
+from idp.persistence.models import Investigation, ReviewItem, User
 from idp.persistence.repositories import CaseRepository, CaseRunRepository, DocumentRepository, DocumentTypeRepository, ReviewRepository, SemanticCatalogRepository
 from idp.pipeline.case_evaluation import refresh_verdict
 from idp.pipeline.orchestrator import extraction_schema
@@ -30,6 +33,15 @@ from idp.review.corrections import apply_correction
 from idp.review.labels import describe_field
 
 router = APIRouter(prefix="/review", tags=["review"], dependencies=[Depends(get_current_user)])
+
+
+class Suggestion(BaseModel):
+    investigation_id: uuid.UUID
+    action: str
+    action_label: str
+    diagnosis: str
+    value: Any
+    confidence: float | None
 
 
 class ReviewItemResponse(BaseModel):
@@ -54,6 +66,9 @@ class ReviewItemResponse(BaseModel):
     source_text: str | None
     # The finding that sent a validation_issue item here.
     finding: str | None
+    # What the discrepancy investigator suggests for this field (VRT-66), if it looked into it.
+    suggestion: Suggestion | None = None
+
 
 
 class ReviewCorrectionRequest(BaseModel):
@@ -85,7 +100,30 @@ async def list_pending_review(session: AsyncSession = Depends(get_db_session)) -
     type_catalog = await DocumentTypeRepository(session).load_catalog()
     loaded = await SemanticCatalogRepository(session).load_active()
     semantic = loaded[0] if loaded is not None else None
-    return [_describe(item, type_catalog, semantic) for item in items]
+    suggestions = await _suggestions(session, [i.document_id for i in items])
+    return [_describe(item, type_catalog, semantic).model_copy(update={"suggestion": suggestions.get((item.document_id, item.field_path))}) for item in items]
+
+
+async def _suggestions(session: AsyncSession, document_ids: list[uuid.UUID]) -> dict[tuple[uuid.UUID, str], Suggestion]:
+    """The latest pending suggestion of the investigator per (document, field)."""
+    rows = (
+        await session.scalars(
+            select(Investigation)
+            .where(Investigation.document_id.in_(document_ids), Investigation.status == "done", Investigation.outcome == "pending")
+            .order_by(Investigation.finished_at.desc())
+        )
+    ).all()
+    out: dict[tuple[uuid.UUID, str], Suggestion] = {}
+    for r in rows:
+        if r.document_id is not None and r.field_path is not None and r.action is not None:
+            out.setdefault(
+                (r.document_id, r.field_path),
+                Suggestion(
+                    investigation_id=r.id, action=r.action, action_label=ACTION_LABEL.get(r.action, r.action), diagnosis=r.diagnosis or "",
+                    value=r.suggested_value, confidence=r.confidence,
+                ),
+            )
+    return out
 
 
 def _describe(item: ReviewItem, type_catalog: DocumentTypeCatalog, semantic: SemanticCatalog | None) -> ReviewItemResponse:
@@ -187,6 +225,8 @@ async def submit_correction(
         model_version=body.model_version,
         prompt_version=body.prompt_version,
     )
+    # Did the reviewer take the investigator's suggestion for this field? (VRT-66)
+    await record_outcome(session, document_id=document.id, field_path=item.field_path, corrected_value=body.corrected_value, reason_code=body.reason_code)
     # The case verdict depends on pending reviews (VRT-27): once a
     # document has none left it is done, and the verdict is recomputed.
     if not await repo.has_pending_for_document(document.id):

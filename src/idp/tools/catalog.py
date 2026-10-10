@@ -25,6 +25,7 @@ Exposure = Literal["internal", "mcp"]
 EVERYONE = ("visor", "operador", "admin", "integracion", "especialista_ia")
 WRITERS = ("integracion", "operador", "admin")
 AGENT = ("agente-extraccion",)  # Veritium's own extraction agent
+INVESTIGATOR = ("agente-investigador",)  # the discrepancy investigator (VRT-66)
 
 
 @dataclass(frozen=True)
@@ -68,6 +69,42 @@ _SPECS = (
         "tipo). Pasa en values los valores que vas a entregar, como {campo: valor}. Devuelve los problemas encontrados o 'Sin problemas'. "
         "Si hay problemas, relee las regiones y corrige; si el documento realmente dice eso, entregalo igual.",
         kind="deterministic", cost="ninguno", exposure="internal", roles=AGENT, read_only=True,
+    ),
+    # --- Internal: the discrepancy investigator's tools (VRT-66), over one case ---
+    ToolSpec(
+        "get_evidence", "Evidencia de un dato",
+        "De donde sale un dato consolidado del expediente: su valor, si los documentos coinciden, y en cada documento el valor leido, "
+        "la pagina y el texto de origen. attribute por clave ('persona.dni') o por nombre ('DNI'); role por defecto 'titular'.",
+        kind="deterministic", cost="lectura", exposure="internal", roles=INVESTIGATOR, read_only=True,
+    ),
+    ToolSpec(
+        "read_document", "Leer parte de un documento",
+        "Lee el texto (OCR) de un documento del expediente: de las regiones indicadas (region_ids) o de una pagina completa (page, desde 1). "
+        "Cada linea trae su region y pagina para citarla.",
+        kind="deterministic", cost="ninguno", exposure="internal", roles=INVESTIGATOR, read_only=True,
+    ),
+    ToolSpec(
+        "search_document", "Buscar en un documento",
+        "Busca un texto en un documento del expediente (sin importar tildes ni mayusculas, tolera pequenas diferencias) y devuelve las "
+        "regiones donde aparece, con su pagina.",
+        kind="deterministic", cost="ninguno", exposure="internal", roles=INVESTIGATOR, read_only=True,
+    ),
+    ToolSpec(
+        "read_region_image", "Mirar una region",
+        "Envia la imagen recortada de una region de un documento a un modelo de vision y devuelve lo que dice — para cuando el texto OCR "
+        "parece mal leido.",
+        kind="model", cost="modelo", exposure="internal", roles=INVESTIGATOR, read_only=True,
+    ),
+    ToolSpec(
+        "compare_names", "Comparar dos nombres",
+        "Compara dos nombres de persona tolerando orden, tildes, iniciales y apellidos omitidos; devuelve la similitud (0-1) y si es "
+        "la misma persona, dudoso o distinta.",
+        kind="deterministic", cost="ninguno", exposure="internal", roles=INVESTIGATOR, read_only=True,
+    ),
+    ToolSpec(
+        "find_employee", "Buscar en el maestro de empleados",
+        "Busca en el maestro de empleados por codigo (exacto, o los mas parecidos si no existe) o por nombre (los mas parecidos).",
+        kind="deterministic", cost="lectura", exposure="internal", roles=INVESTIGATOR, read_only=True,
     ),
     # --- Exposed over MCP (VRT-51): the decision service ---
     ToolSpec(

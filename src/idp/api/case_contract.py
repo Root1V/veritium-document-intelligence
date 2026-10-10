@@ -96,6 +96,7 @@ class DocumentResult(BaseModel):
 
 
 class Finding(BaseModel):
+    id: uuid.UUID  # what an investigation of it refers to (VRT-66)
     rule_id: str
     category: str
     severity: str
@@ -177,6 +178,7 @@ async def build_case_result(session: AsyncSession, case: Case) -> CaseResultV1:
         ],
         findings=[
             Finding(
+                id=i.id,
                 rule_id=i.rule_id,
                 category=i.category,
                 severity=i.severity,

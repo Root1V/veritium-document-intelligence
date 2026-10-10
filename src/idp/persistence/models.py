@@ -10,6 +10,7 @@ not a schema rewrite.
 from __future__ import annotations
 
 import uuid
+from typing import Any
 from datetime import datetime
 
 from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func, text
@@ -211,7 +212,7 @@ class ReviewItem(Base):
     field_path: Mapped[str] = mapped_column(String(256), nullable=False)
     current_value: Mapped[dict] = mapped_column(JSONB, nullable=False)
     confidence: Mapped[float] = mapped_column(Float, nullable=False)
-    reason: Mapped[str] = mapped_column(String(64), nullable=False)  # low_confidence | validation_issue
+    reason: Mapped[str] = mapped_column(String(64), nullable=False)  # low_confidence | validation_issue | investigation (VRT-66)
     status: Mapped[str] = mapped_column(String(16), default="pending", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
@@ -796,6 +797,41 @@ class ApiClient(Base):
     revoked_by: Mapped[str | None] = mapped_column(String(256), nullable=True)
 
     user: Mapped["User"] = relationship()
+
+
+class Investigation(Base):
+    """An investigation of one validation finding (VRT-66): an agent looks
+    into it with tools and leaves the reviewer a diagnosis, a suggested
+    action and the evidence. It never decides nor corrects; ``outcome``
+    records what the reviewer did with the suggestion — the measure of
+    whether investigating is worth it. Lifecycle: running -> done | failed."""
+
+    __tablename__ = "investigations"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    case_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("cases.id", ondelete="CASCADE"), nullable=False, index=True)
+    validation_issue_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("validation_issues.id", ondelete="SET NULL"), nullable=True, index=True)
+    rule_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    finding: Mapped[str] = mapped_column(Text, nullable=False)  # the finding's message, as investigated
+    status: Mapped[str] = mapped_column(String(16), default="running", server_default="running", nullable=False)
+    diagnosis: Mapped[str | None] = mapped_column(Text, nullable=True)
+    cause: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    action: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # The suggested correction, when the action is to correct a datum.
+    document_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("documents.id", ondelete="SET NULL"), nullable=True)
+    field_path: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    suggested_value: Mapped[Any] = mapped_column(JSONB, nullable=True)
+    confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    evidence: Mapped[list | None] = mapped_column(JSONB, nullable=True)  # [{document_id, document, page, text, verified}]
+    trace: Mapped[list | None] = mapped_column(JSONB, nullable=True)  # the tools it used, in order
+    model: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # pending | accepted (the reviewer applied it) | overridden (corrected to something else) | dismissed
+    outcome: Mapped[str] = mapped_column(String(16), default="pending", server_default="pending", nullable=False)
+    created_by: Mapped[str] = mapped_column(String(256), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class A2ATask(Base):

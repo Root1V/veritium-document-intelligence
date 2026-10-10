@@ -349,7 +349,9 @@ Veritium pasa de "subir documentos sueltos" a ser una **capacidad de decisión d
 **Why:** gobernar qué agente usa qué tool donde hay frontera. **Scope:** políticas Cedar de aeon sobre las tools expuestas por Veritium y las de terceros; las tools internas del agente de extracción (en proceso, sobre un documento propio) quedan fuera.
 
 ## VRT-66 — Agente investigador de discrepancias
-**Why:** un 32 % de los documentos termina con campos para revisión humana, casi todos por hallazgos de validación; el revisor empieza cada uno desde cero. **Scope:** agente synaptum que, por hallazgo, consulta la evidencia de cada fuente, relee regiones o páginas, la definición del dato y la lente, y deja diagnóstico + corrección sugerida + evidencia. No decide ni corrige solo. Métrica: tiempo de revisión y % de sugerencias aceptadas.
+**Why:** un 32 % de los documentos termina con campos para revisión humana, casi todos por hallazgos de validación (maestro de empleados y consistencia entre documentos); el revisor empieza cada uno desde cero. **Scope:**
+- Agente synaptum con 6 tools internas del catálogo (evidencia de un dato, leer y buscar en un documento, mirar una región con visión, comparar nombres, maestro de empleados); deja diagnóstico, causa, acción sugerida y evidencia verificada contra el texto. No decide ni corrige: la sugerencia se aplica desde la cola de revisión.
+- A demanda (por hallazgo o por expediente) para controlar el costo de modelo. Métrica: % de sugerencias aceptadas, registrado solo al corregir el campo (`GET /v1/investigations/stats`).
 ## VRT-67 — Autovalidación de la extracción
 **Why:** muchos hallazgos (formato, aritmética interna) los puede detectar el propio agente antes de entregar, si tiene con qué. **Scope:**
 - Tool interna `check_draft`: corre sobre el borrador las reglas propias del documento (categoría SELF: aritmética interna, formato de cada atributo del catálogo semántico, reglas CEL propias); el agente corrige o, si el documento dice eso, entrega igual.
