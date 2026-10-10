@@ -123,14 +123,6 @@ class CasesOverview(BaseModel):
     needs_action: list[CaseRef] = Field(description="Hasta 10 que necesitan acción: primero los de devolver al cliente, luego los de revisión humana.")
 
 
-class ReviewQueue(BaseModel):
-    summary: str = Field(description="Los números en una frase, listos para leer.")
-    total: int = Field(description="Cuántos datos (no expedientes) esperan revisión, aunque se muestren menos.")
-    cases: int = Field(description="En cuántos expedientes distintos están esos datos.")
-    by_why: dict[str, int] = Field(description="Cuántos esperan por cada motivo, contando todos.")
-    items: list["PendingReview"]
-
-
 class PendingReview(BaseModel):
     case_id: uuid.UUID
     case_ref: str | None
@@ -140,6 +132,13 @@ class PendingReview(BaseModel):
     why: str = Field(description="Por qué espera revisión.")
     suggestion: str | None = Field(default=None, description="Lo que sugiere el investigador de discrepancias, si lo investigó.")
 
+
+class ReviewQueue(BaseModel):
+    summary: str = Field(description="Los números en una frase, listos para leer.")
+    total: int = Field(description="Cuántos datos (no expedientes) esperan revisión, aunque se muestren menos.")
+    cases: int = Field(description="En cuántos expedientes distintos están esos datos.")
+    by_why: dict[str, int] = Field(description="Cuántos esperan por cada motivo, contando todos.")
+    items: list[PendingReview]
 
 Verdict = Literal["continue", "human_review", "return_to_client"]
 CaseState = Literal["submitted", "uploaded", "processing", "completed", "failed"]

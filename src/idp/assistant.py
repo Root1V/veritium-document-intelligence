@@ -82,10 +82,13 @@ def task(conversation: list[Turn], case_id: uuid.UUID | None, today: date) -> st
     """The conversation so far, and the question to answer (the last turn)."""
     *earlier, question = conversation
     monday = today - timedelta(days=today.weekday())
+    yesterday = today - timedelta(days=1)
     lines = [
-        f"Hoy es {_WEEKDAY[today.weekday()]} {today.isoformat()} (calendario del negocio). Rangos de fecha para las herramientas, inclusive: "
-        f"hoy = {today} a {today}; ayer = {today - timedelta(days=1)} a {today - timedelta(days=1)}; esta semana = {monday} a {today}; "
-        f"semana pasada = {monday - timedelta(days=7)} a {monday - timedelta(days=1)}; este mes = {today.replace(day=1)} a {today}."
+        (
+            f"Hoy es {_WEEKDAY[today.weekday()]} {today.isoformat()} (calendario del negocio). Rangos de fecha para las herramientas, inclusive: "
+            f"hoy = {today} a {today}; ayer = {yesterday} a {yesterday}; esta semana = {monday} a {today}; "
+            f"semana pasada = {monday - timedelta(days=7)} a {monday - timedelta(days=1)}; este mes = {today.replace(day=1)} a {today}."
+        )
     ]
     if case_id is not None:
         lines.append(f"La persona esta viendo el expediente con id {case_id}.")
