@@ -348,6 +348,15 @@ Veritium pasa de "subir documentos sueltos" a ser una **capacidad de decisión d
 ## VRT-55 — Permisos de tools con Cedar
 **Why:** gobernar qué agente usa qué tool donde hay frontera. **Scope:** políticas Cedar de aeon sobre las tools expuestas por Veritium y las de terceros; las tools internas del agente de extracción (en proceso, sobre un documento propio) quedan fuera.
 
+## VRT-66 — Agente investigador de discrepancias
+**Why:** un 32 % de los documentos termina con campos para revisión humana, casi todos por hallazgos de validación; el revisor empieza cada uno desde cero. **Scope:** agente synaptum que, por hallazgo, consulta la evidencia de cada fuente, relee regiones o páginas, la definición del dato y la lente, y deja diagnóstico + corrección sugerida + evidencia. No decide ni corrige solo. Métrica: tiempo de revisión y % de sugerencias aceptadas.
+## VRT-67 — Autovalidación de la extracción
+**Why:** muchos hallazgos (formato, aritmética interna) los puede detectar el propio agente antes de entregar, si tiene con qué. **Scope:**
+- Tool interna `check_draft`: corre sobre el borrador las reglas propias del documento (categoría SELF: aritmética interna, formato de cada atributo del catálogo semántico, reglas CEL propias); el agente corrige o, si el documento dice eso, entrega igual.
+- Medible: opción de las corridas de evaluación para comparar con y sin autovalidación sobre el mismo golden set. Fuera: reglas entre documentos (eso es VRT-66).
+## VRT-68 — Clasificación con escalamiento agéntico
+**Why:** la clasificación es una sola llamada; los casos dudosos o los PDF mezclados quedan "genéricos" o mal clasificados. **Scope:** se mantiene la llamada única para los casos claros; con confianza baja o mezcla, un agente revisa páginas (texto, imagen, descripciones de los tipos). Métrica: % de genéricos y de mal clasificados en las suites.
+
 ## F7 — Hardening y producción
 ## VRT-56 — Ruta de inferencia gobernada
 **Why:** en producción todo el tráfico de modelo debe tener presupuestos, atribución y gobierno ([ADR-0006](adr/0006-inferencia-gobernada-por-fases.md)). **Scope:** adaptador gobernado del `InferencePort` y del `AgentRuntime`. `VRT-AEON-003` (A-2/A-3) entregada el 2026-10-08; falta S-4/S-5 (`VRT-SYN-003`) y, para un despliegue compartido, el tenant del run en la política y el techo (`VRT-AEON-005`).
