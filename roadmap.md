@@ -94,7 +94,7 @@ Estados: `done` · `todo` · `blocked` (espera a otro equipo) · `superseded` (a
 | VRT-51 | Servidor MCP | done | Spec 2026-07-28 + extensión Tasks para operaciones largas. |
 | VRT-52 | Servidor A2A | done | A2A v1.0; `input_required` = falta evidencia. |
 | VRT-53 | Catálogo de tools | done | Cada tool definida una vez (tipo, costo, rol); de ahí salen las internas y las expuestas por MCP, registradas en aeon. |
-| VRT-54 | Asistente del usuario | todo | Asistente sobre synaptum que usa el MCP de Veritium con el token de la persona. |
+| VRT-54 | Asistente del usuario | done | Asistente sobre synaptum que usa el MCP de Veritium con el token de la persona. |
 | VRT-55 | Permisos de tools con Cedar | todo | Cedar de aeon sobre las tools expuestas y las de terceros (aeon lo entregó: `AEON-VRT-002`). |
 | VRT-66 | Agente investigador de discrepancias | done | Ante cada hallazgo, investiga con tools y le deja al revisor diagnóstico, corrección sugerida y evidencia; no decide. |
 | VRT-67 | Autovalidación de la extracción | done | El agente de extracción revisa su borrador con las reglas propias del documento y corrige antes de entregar. |
