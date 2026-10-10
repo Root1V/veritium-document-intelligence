@@ -90,7 +90,7 @@ Estados: `done` · `todo` · `blocked` (espera a otro equipo) · `superseded` (a
 
 | ID | Feature | Estado | Descripción |
 |---|---|---|---|
-| VRT-51 | Servidor MCP | todo | Spec 2026-07-28 + extensión Tasks para operaciones largas. |
+| VRT-51 | Servidor MCP | done | Spec 2026-07-28 + extensión Tasks para operaciones largas. |
 | VRT-52 | Servidor A2A | todo | A2A v1.0; `input_required` = falta evidencia. |
 | VRT-53 | Catálogo de tools | todo | Tools tipadas (OCR, LLM, VLM, APIs, BD, CEL, imagen, firma) para validar y comprender. |
 | VRT-54 | Asistente del usuario | todo | Asistente sobre synaptum que usa las mismas tools MCP. |
