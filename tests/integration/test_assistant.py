@@ -53,7 +53,7 @@ async def test_answers_about_a_case_through_mcp_with_the_persons_token(live_sett
     made_up = str(uuid.uuid4())
     script = Script(
         calls("find_cases", external_ref=ref),
-        calls("submit", id="c2", answer=f"El expediente {ref} está en revisión humana.", case_ids=[str(case_id), made_up]),
+        calls("submit", id="c2", answer=f"El expediente {ref} está en revisión humana, como {made_up}."),
     )
     monkeypatch.setattr(app_module, "inference_lifespan", functools.partial(port.inference_lifespan, model=script, models={"reasoning": "razonador", "vision": "vlm"}))
     uv = uvicorn.Server(uvicorn.Config(create_app(), host="127.0.0.1", port=port_number, log_level="warning"))
@@ -73,8 +73,8 @@ async def test_answers_about_a_case_through_mcp_with_the_persons_token(live_sett
             reply = await client.post("/v1/assistant/messages", json=question, headers=h)
             assert reply.status_code == 200, reply.text
             body = reply.json()
-            assert body["answer"].startswith(f"El expediente {ref}")
-            assert body["cases"] == [{"id": str(case_id), "label": ref}], "only the case a tool returned becomes a link"
+            assert body["answer"] == f"El expediente {ref} está en revisión humana, como .", "an id no tool returned is not shown"
+            assert body["cases"] == [{"id": str(case_id), "label": ref}], "only a case a tool returned, and the answer names, becomes a link"
             assert body["consulted"] == ["Buscar expedientes"]
 
             offered = {t.name for t in script.requests[0].tools}

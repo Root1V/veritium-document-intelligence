@@ -13,6 +13,8 @@ import asyncio
 import json
 import socket
 import uuid
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import httpx
 import pytest
@@ -159,7 +161,21 @@ async def test_an_agent_uses_veritium_through_mcp(live_settings, server):
             status = _result(await _rpc(client, reader, "tools/call", {"name": "get_case_status", "arguments": {"case_id": outcome["case_id"]}}, name="get_case_status"))
             assert status["structuredContent"]["steps"][0].startswith("Recibido")
             found = _result(await _rpc(client, reader, "tools/call", {"name": "find_cases", "arguments": {"external_ref": ref}}, name="find_cases"))
-            assert [c["case_id"] for c in found["structuredContent"]["result"]] == [outcome["case_id"]]
+            assert found["structuredContent"]["total"] == 1 and [c["case_id"] for c in found["structuredContent"]["cases"]] == [outcome["case_id"]]
+            assert found["structuredContent"]["cases"][0]["name"] == ref
+            assert found["structuredContent"]["summary"] == "1 expediente cumple el filtro."
+            # By the day it arrived, in the business's calendar (VRT-54).
+            today = datetime.now(ZoneInfo(live_settings.business_timezone)).date()
+            by_day = {"external_ref": ref, "received_from": str(today), "received_to": str(today)}
+            assert _result(await _rpc(client, reader, "tools/call", {"name": "find_cases", "arguments": by_day}, name="find_cases"))["structuredContent"]["total"] == 1
+            before = {"external_ref": ref, "received_to": str(today - timedelta(days=1))}
+            assert _result(await _rpc(client, reader, "tools/call", {"name": "find_cases", "arguments": before}, name="find_cases"))["structuredContent"]["total"] == 0
+            overview = _result(await _rpc(client, reader, "tools/call", {"name": "cases_overview", "arguments": {"received_from": str(today)}}, name="cases_overview"))
+            assert overview["structuredContent"]["total"] >= 1 and sum(overview["structuredContent"]["by_status"].values()) == overview["structuredContent"]["total"]
+            queue = _result(await _rpc(client, reader, "tools/call", {"name": "get_review_queue", "arguments": {"case_id": outcome["case_id"]}}, name="get_review_queue"))
+            assert queue["structuredContent"] == {"summary": "0 datos esperan revisión en 0 expedientes.", "total": 0, "cases": 0, "by_why": {}, "items": []}
+            bad_day = await _rpc(client, reader, "tools/call", {"name": "find_cases", "arguments": {"received_from": "ayer"}}, name="find_cases")
+            assert bad_day.json()["result"]["isError"] is True
             # VRT-53: the tools for agents that serve a customer or an analyst, with the catalog's roles.
             link = _result(await _rpc(client, writer, "tools/call", {"name": "request_documents_link", "arguments": {"case_id": outcome["case_id"]}}, name="request_documents_link"))
             assert "/carga/" in link["structuredContent"]["upload_url"] and "#t=" in link["structuredContent"]["upload_url"]

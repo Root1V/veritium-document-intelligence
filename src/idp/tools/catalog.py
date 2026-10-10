@@ -135,7 +135,20 @@ _SPECS = (
         kind="deterministic", cost="lectura", exposure="mcp", roles=EVERYONE, read_only=True,
     ),
     ToolSpec(
-        "find_cases", "Buscar expedientes", "Expedientes por tu `external_ref`, o los más recientes.",
+        "find_cases", "Buscar expedientes",
+        "Expedientes por tu `external_ref`, por día de llegada (`received_from` / `received_to`, AAAA-MM-DD en el calendario del negocio), "
+        "por veredicto, estado o proceso; los más recientes primero.",
+        kind="deterministic", cost="lectura", exposure="mcp", roles=EVERYONE, read_only=True,
+    ),
+    ToolSpec(
+        "cases_overview", "Resumen de expedientes",
+        "Cuántos expedientes llegaron en un período (`received_from` / `received_to`, AAAA-MM-DD) y cómo van: por veredicto y por estado.",
+        kind="deterministic", cost="lectura", exposure="mcp", roles=EVERYONE, read_only=True,
+    ),
+    ToolSpec(
+        "get_review_queue", "Pendientes de revisión",
+        "Los datos que esperan revisión de una persona (de un expediente con `case_id`, o de todos): el valor leído, por qué espera y, si el "
+        "investigador lo revisó, su sugerencia.",
         kind="deterministic", cost="lectura", exposure="mcp", roles=EVERYONE, read_only=True,
     ),
     # --- Exposed over MCP (VRT-53): what agents that serve a customer or an analyst need ---

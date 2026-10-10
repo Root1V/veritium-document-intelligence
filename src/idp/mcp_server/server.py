@@ -16,8 +16,11 @@ import functools
 import json
 import re
 import uuid
+from collections import Counter
 from collections.abc import Awaitable, Callable
-from typing import Any, Literal
+from datetime import date, datetime, time, timedelta
+from typing import Annotated, Any, Literal
+from zoneinfo import ZoneInfo
 
 from mcp.server.auth.settings import AuthSettings
 from mcp.server.caching import CacheHint
@@ -32,7 +35,7 @@ from starlette.applications import Starlette
 
 from idp.api.case_contract import build_case_result, latest_run
 from idp.config import Settings
-from idp.domain.case_progress import Progress, progress
+from idp.domain.case_progress import CASE_STATUS, Progress, progress
 from idp.domain.process_profile import ProcessProfileDefinition
 from idp.events import inbound
 from idp.domain.lenses import LensOutput
@@ -41,6 +44,7 @@ from idp.events.inbound import DocumentRef
 from idp.mcp_server.auth import VeritiumTokenVerifier, caller, quota
 from idp.mcp_server.tasks import CaseRunTasks
 from idp.api.case_outcome import VERDICT_LABEL, CaseOutcome, FieldEvidence, case_outcome, field_evidence
+from idp.api.routes.review import list_pending_review
 from idp.api.routes.upload_sessions import SessionRequest, create_session
 from idp.persistence.db import get_session_factory
 from idp.persistence.models import Case, LensResult
@@ -90,13 +94,59 @@ class CaseStatus(BaseModel):
 class CaseItem(BaseModel):
     case_id: uuid.UUID
     external_ref: str | None
+    name: str = Field(description="Cómo nombrarlo ante una persona: su external_ref, o el inicio de su id si no tiene.")
     process: str | None
     status: str
     verdict_label: str | None
+    documents: list[str] = Field(description="Sus documentos, por tipo (o nombre de archivo si no se clasificó).")
     created_at: str
 
 
+class CaseList(BaseModel):
+    summary: str = Field(description="Los números en una frase, listos para leer.")
+    total: int = Field(description="Cuántos expedientes cumplen el filtro, aunque se muestren menos.")
+    cases: list[CaseItem]
+
+
+class CaseRef(BaseModel):
+    case_id: uuid.UUID
+    name: str
+    verdict_label: str | None
+
+
+class CasesOverview(BaseModel):
+    summary: str = Field(description="Los números en una frase, listos para leer.")
+    period: str
+    total: int
+    by_verdict: dict[str, int] = Field(description="Cuántos por veredicto; 'Sin veredicto todavía' para los que siguen en proceso.")
+    by_status: dict[str, int]
+    needs_action: list[CaseRef] = Field(description="Hasta 10 que necesitan acción: primero los de devolver al cliente, luego los de revisión humana.")
+
+
+class ReviewQueue(BaseModel):
+    summary: str = Field(description="Los números en una frase, listos para leer.")
+    total: int = Field(description="Cuántos datos (no expedientes) esperan revisión, aunque se muestren menos.")
+    cases: int = Field(description="En cuántos expedientes distintos están esos datos.")
+    by_why: dict[str, int] = Field(description="Cuántos esperan por cada motivo, contando todos.")
+    items: list["PendingReview"]
+
+
+class PendingReview(BaseModel):
+    case_id: uuid.UUID
+    case_ref: str | None
+    document: str
+    field: str
+    value: Any = Field(description="El valor leído hoy.")
+    why: str = Field(description="Por qué espera revisión.")
+    suggestion: str | None = Field(default=None, description="Lo que sugiere el investigador de discrepancias, si lo investigó.")
+
+
+Verdict = Literal["continue", "human_review", "return_to_client"]
+CaseState = Literal["submitted", "uploaded", "processing", "completed", "failed"]
+Day = Annotated[str | None, Field(description="Fecha AAAA-MM-DD en el calendario del negocio, inclusive.")]
+
 _STATE = {"done": "listo", "running": "en curso", "pending": "pendiente", "failed": "con error"}
+_REVIEW_REASON = {"low_confidence": "confianza baja", "validation_issue": "problema de validación", "investigation": "sugerencia del investigador"}
 _FILE_VERDICT = {"ok": "se puede leer", "warning": "se puede leer, con observaciones", "reject": "no se puede leer"}
 _LENS_KIND = {"summary": "resumen", "playbook": "revisión de cláusulas"}
 
@@ -156,6 +206,28 @@ async def _case(session: AsyncSession, case_id: str) -> Case:
     if case is None:
         raise ToolError(f"no existe el expediente {case_id}")
     return case
+
+
+def _count(n: int, one: str, many: str) -> str:
+    return f"{n} {one if n == 1 else many}"
+
+
+def _name(case: Case) -> str:
+    """How a person calls a case: its own reference, or the start of its id."""
+    return case.external_ref or f"Expediente {str(case.id)[:8]}"
+
+
+def _days(settings: Settings, received_from: str | None, received_to: str | None) -> tuple[datetime | None, datetime | None]:
+    """[start, end) in the business's calendar for the days given, inclusive."""
+    zone = ZoneInfo(settings.business_timezone)
+    try:
+        first = date.fromisoformat(received_from) if received_from else None
+        last = date.fromisoformat(received_to) if received_to else None
+    except ValueError as exc:
+        raise ToolError(f"fecha inválida ({exc}); usa AAAA-MM-DD") from exc
+    start = datetime.combine(first, time.min, zone) if first else None
+    end = datetime.combine(last + timedelta(days=1), time.min, zone) if last else None
+    return start, end
 
 
 def build(settings: Settings) -> MCPServer:
@@ -229,16 +301,76 @@ def build(settings: Settings) -> MCPServer:
         async with factory() as session:
             return await case_outcome(session, await _case(session, case_id))
 
-    async def find_cases(external_ref: str | None = None, limit: int = 10) -> list[CaseItem]:
+    zone = ZoneInfo(settings.business_timezone)
+
+    async def find_cases(
+        external_ref: str | None = None, received_from: Day = None, received_to: Day = None, verdict: Verdict | None = None,
+        status: CaseState | None = None, process: Annotated[str | None, Field(description="`key` del proceso (list_processes).")] = None, limit: int = 10,
+    ) -> CaseList:
+        start, end = _days(settings, received_from, received_to)
+        filters = {"created_from": start, "created_to": end, "verdict": verdict, "status": status, "profile_key": process}
         async with factory() as session:
-            cases = await CaseRepository(session).list(external_ref=external_ref, limit=max(1, min(limit, 50)))
-            return [
+            repo = CaseRepository(session)
+            cases = await repo.list(external_ref=external_ref, **filters, limit=max(1, min(limit, 50)))
+            total = await repo.count(external_ref=external_ref, **filters)
+            catalog = await DocumentTypeRepository(session).load_catalog()
+        names = {key: current[1].display_name for key in catalog.keys() if (current := catalog.current(key))}
+        return CaseList(
+            summary=f"{_count(total, 'expediente cumple', 'expedientes cumplen')} el filtro" + (f"; se muestran los {len(cases)} más recientes." if len(cases) < total else "."),
+            total=total,
+            cases=[
                 CaseItem(
-                    case_id=c.id, external_ref=c.external_ref, process=c.profile_version.profile.name if c.profile_version else None,
-                    status=_progress(c).status_label, verdict_label=VERDICT_LABEL.get(c.verdict or ""), created_at=c.created_at.isoformat(),
+                    case_id=c.id, external_ref=c.external_ref, name=_name(c),
+                    process=c.profile_version.profile.name if c.profile_version else None, status=_progress(c).status_label,
+                    verdict_label=VERDICT_LABEL.get(c.verdict or ""),
+                    documents=[names.get(d.document_type or "", d.original_filename) for d in c.documents if d.status != "segmented"],
+                    created_at=c.created_at.astimezone(zone).isoformat(),
                 )
                 for c in cases
-            ]
+            ],
+        )
+
+    async def cases_overview(received_from: Day = None, received_to: Day = None, process: str | None = None) -> CasesOverview:
+        start, end = _days(settings, received_from, received_to)
+        async with factory() as session:
+            repo = CaseRepository(session)
+            counts = await repo.counts(created_from=start, created_to=end, profile_key=process)
+            flagged = [
+                c for verdict in ("return_to_client", "human_review")
+                for c in await repo.list(created_from=start, created_to=end, profile_key=process, verdict=verdict, limit=10)
+            ][:10]
+        by_verdict: dict[str, int] = {}
+        by_status: dict[str, int] = {}
+        for verdict, status, n in counts:
+            label = VERDICT_LABEL.get(verdict or "", "Sin veredicto todavía")
+            by_verdict[label] = by_verdict.get(label, 0) + n
+            by_status[CASE_STATUS.get(status, status)] = by_status.get(CASE_STATUS.get(status, status), 0) + n
+        period = f"{received_from or 'inicio'} al {received_to or 'hoy'}"
+        needs_action = [CaseRef(case_id=c.id, name=_name(c), verdict_label=VERDICT_LABEL.get(c.verdict or "")) for c in flagged]
+        total = sum(by_verdict.values())
+        acting = sum(n for label, n in by_verdict.items() if label in (VERDICT_LABEL["return_to_client"], VERDICT_LABEL["human_review"]))
+        summary = f"Del {period} llegaron {_count(total, 'expediente', 'expedientes')}"
+        summary += (": " + ", ".join(f"{n} {label.lower()}" for label, n in by_verdict.items()) + "." if total else ".")
+        if acting > len(needs_action):
+            summary += f" Necesitan acción {acting}; se nombran {len(needs_action)}."
+        return CasesOverview(summary=summary, period=period, total=total, by_verdict=by_verdict, by_status=by_status, needs_action=needs_action)
+
+    async def get_review_queue(case_id: str | None = None, limit: int = 20) -> ReviewQueue:
+        async with factory() as session:
+            if case_id is not None:
+                case_id = str((await _case(session, case_id)).id)
+            items = [i for i in await list_pending_review(session) if case_id is None or str(i.case_id) == case_id]
+        pending = [
+            PendingReview(
+                case_id=i.case_id, case_ref=i.case_ref, document=i.document_type_name or i.filename, field=i.label, value=i.current_value.get("value"),
+                why=i.finding or _REVIEW_REASON.get(i.reason, i.reason),
+                suggestion=f"{i.suggestion.action_label}: {i.suggestion.value} — {i.suggestion.diagnosis}" if i.suggestion else None,
+            )
+            for i in items
+        ]
+        cases = len({p.case_id for p in pending})
+        summary = f"{_count(len(pending), 'dato espera', 'datos esperan')} revisión en {_count(cases, 'expediente', 'expedientes')}."
+        return ReviewQueue(summary=summary, total=len(pending), cases=cases, by_why=dict(Counter(p.why for p in pending).most_common()), items=pending[: max(1, min(limit, 50))])
 
     async def request_documents_link(
         profile: str | None = None, case_id: str | None = None, external_ref: str | None = None, process_data: dict[str, Any] | None = None,
@@ -301,7 +433,8 @@ def build(settings: Settings) -> MCPServer:
 
     tools: dict[str, Callable[..., Any]] = {
         "list_processes": list_processes, "submit_case": submit_case, "add_documents": add_documents, "get_case_status": get_case_status,
-        "get_case_result": get_case_result, "find_cases": find_cases, "request_documents_link": request_documents_link,
+        "get_case_result": get_case_result, "find_cases": find_cases, "cases_overview": cases_overview, "get_review_queue": get_review_queue,
+        "request_documents_link": request_documents_link,
         "quick_check_document": quick_check_document, "get_field_evidence": get_field_evidence, "list_lenses": list_lenses, "read_with_lens": read_with_lens,
     }
     # The catalog decides what is exposed, how it is described and who may call it (VRT-53).

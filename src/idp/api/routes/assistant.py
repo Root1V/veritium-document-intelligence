@@ -44,6 +44,11 @@ class AssistantResponse(BaseModel):
     consulted: list[str]
 
 
+def _names(text: str, label: str) -> bool:
+    """Whether the answer names the case (the model may write EXP‑123 with a non-breaking hyphen)."""
+    return label.casefold() in text.replace("\u2011", "-").replace("\u2010", "-").casefold()
+
+
 @router.post("/messages", response_model=AssistantResponse)
 async def ask(
     body: AssistantRequest,
@@ -58,6 +63,10 @@ async def ask(
     except Exception as exc:
         log.warning("assistant: no respondió (%s: %s)", type(exc).__name__, exc)
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="El asistente no pudo responder esta vez. Intenta de nuevo.") from exc
-    labels = {c.id: c.external_ref for c in (await session.scalars(select(Case).where(Case.id.in_(reply.case_ids)))).all()}
-    cases = [CaseLink(id=i, label=labels[i] or f"Expediente {str(i)[:8]}") for i in reply.case_ids if i in labels]
-    return AssistantResponse(answer=reply.answer, cases=cases, consulted=reply.consulted)
+    found = (await session.scalars(select(Case).where(Case.id.in_(reply.seen)))).all()
+    labels = {c.id: c.external_ref or f"Expediente {str(c.id)[:8]}" for c in found}
+    # A person reads case names, not ids: an id the model still wrote becomes the case's name, or goes.
+    answer = assistant.UUID.sub(lambda m: labels.get(uuid.UUID(m.group()), ""), reply.answer)
+    # A link for each case its tools returned that the answer names — never one it made up.
+    cases = [CaseLink(id=i, label=labels[i]) for i in reply.seen if i in labels and _names(answer, labels[i])]
+    return AssistantResponse(answer=answer, cases=cases, consulted=reply.consulted)

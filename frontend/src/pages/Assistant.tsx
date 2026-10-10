@@ -17,9 +17,11 @@ type Message = AssistantTurn & { reply?: AssistantReply }
 
 const EXAMPLES = [
   '¿Qué expedientes llegaron hoy y cómo van?',
-  '¿Por qué el expediente EXP-A2A-001 está en revisión humana?',
+  '¿Cuántos expedientes se devolvieron al cliente esta semana?',
+  '¿Qué tengo pendiente en la cola de revisión?',
   '¿Qué documentos pide el proceso de convenios?',
 ]
+const MAX_LINKS = 6
 const ABOUT_CASE = ['¿Por qué tiene este veredicto?', '¿Qué le falta?', '¿De dónde sale el ingreso del titular?']
 
 // The model may still mark emphasis with **…**: shown as bold, never as asterisks.
@@ -111,14 +113,19 @@ export function AssistantPage() {
               <div key={i} className="flex max-w-[95%] flex-col gap-2 rounded-lg bg-muted/50 px-3 py-2 text-sm">
                 <Text text={m.text} />
                 {m.reply && m.reply.cases.length > 0 && (
-                  <div className="flex flex-wrap gap-2">
-                    {m.reply.cases.map((c) => (
+                  <div className="flex flex-wrap items-center gap-2">
+                    {m.reply.cases.slice(0, MAX_LINKS).map((c) => (
                       <Link key={c.id} to={`/cases/${c.id}`}>
                         <Badge variant="outline" className="hover:bg-accent">
-                          Ver expediente {c.label}
+                          Ver {c.label}
                         </Badge>
                       </Link>
                     ))}
+                    {m.reply.cases.length > MAX_LINKS && (
+                      <Link to="/cases" className="text-xs text-muted-foreground underline">
+                        y {m.reply.cases.length - MAX_LINKS} más en Expedientes
+                      </Link>
+                    )}
                   </div>
                 )}
                 {m.reply && m.reply.consulted.length > 0 && (

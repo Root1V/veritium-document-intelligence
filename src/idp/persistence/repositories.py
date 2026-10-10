@@ -134,7 +134,18 @@ class CaseRepository:
         case_id = await self._session.scalar(stmt)
         return await self.get(case_id) if case_id is not None else None
 
-    async def list(self, *, external_ref: str | None = None, limit: int = 50, offset: int = 0) -> list[Case]:
+    async def list(
+        self,
+        *,
+        external_ref: str | None = None,
+        created_from: datetime | None = None,
+        created_to: datetime | None = None,
+        verdict: str | None = None,
+        status: str | None = None,
+        profile_key: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[Case]:
         stmt = select(Case).options(
             selectinload(Case.profile_version).selectinload(ProcessProfileVersion.profile),
             # what the list shows of each case's progress (VRT-64)
@@ -143,8 +154,48 @@ class CaseRepository:
         )
         if external_ref is not None:
             stmt = stmt.where(Case.external_ref == external_ref)
+        stmt = self._filtered(stmt, created_from=created_from, created_to=created_to, verdict=verdict, status=status, profile_key=profile_key)
         stmt = stmt.order_by(Case.created_at.desc()).limit(limit).offset(offset)
         return list((await self._session.scalars(stmt)).all())
+
+    async def count(
+        self, *, external_ref: str | None = None, created_from: datetime | None = None, created_to: datetime | None = None, verdict: str | None = None,
+        status: str | None = None, profile_key: str | None = None,
+    ) -> int:
+        stmt = select(func.count()).select_from(Case)
+        if external_ref is not None:
+            stmt = stmt.where(Case.external_ref == external_ref)
+        stmt = self._filtered(stmt, created_from=created_from, created_to=created_to, verdict=verdict, status=status, profile_key=profile_key)
+        return int((await self._session.execute(stmt)).scalar_one())
+
+    async def counts(
+        self, *, created_from: datetime | None = None, created_to: datetime | None = None, profile_key: str | None = None
+    ) -> list[tuple[str | None, str, int]]:
+        """(verdict, status, how many) of the cases received in [created_from, created_to)."""
+        stmt = select(Case.verdict, Case.status, func.count()).group_by(Case.verdict, Case.status)
+        stmt = self._filtered(stmt, created_from=created_from, created_to=created_to, profile_key=profile_key)
+        return [(v, s, n) for v, s, n in (await self._session.execute(stmt)).all()]
+
+    @staticmethod
+    def _filtered(
+        stmt: Any, *, created_from: datetime | None = None, created_to: datetime | None = None, verdict: str | None = None,
+        status: str | None = None, profile_key: str | None = None,
+    ) -> Any:
+        if created_from is not None:
+            stmt = stmt.where(Case.created_at >= created_from)
+        if created_to is not None:
+            stmt = stmt.where(Case.created_at < created_to)
+        if verdict is not None:
+            stmt = stmt.where(Case.verdict == verdict)
+        if status is not None:
+            stmt = stmt.where(Case.status == status)
+        if profile_key is not None:
+            stmt = stmt.where(
+                Case.profile_version_id.in_(
+                    select(ProcessProfileVersion.id).join(ProcessProfile, ProcessProfileVersion.profile_id == ProcessProfile.id).where(ProcessProfile.key == profile_key)
+                )
+            )
+        return stmt
 
     async def set_status(self, case_id: uuid.UUID, status: str) -> None:
         case = await self._session.get(Case, case_id)

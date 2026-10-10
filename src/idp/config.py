@@ -167,6 +167,8 @@ class Settings(BaseSettings):
     # Where this API is reached from outside: the MCP resource URL and the
     # issuer clients get tokens from (POST /auth/token) derive from it.
     public_api_base_url: str = "http://localhost:8010"
+    # The business's calendar: "today", "this week" and the dates people filter cases by.
+    business_timezone: str = "America/Lima"
     # Host headers the MCP endpoint accepts (DNS-rebinding protection).
     mcp_allowed_hosts: list[str] = ["127.0.0.1:*", "localhost:*", "[::1]:*"]
     mcp_task_poll_interval_ms: int = 5000
