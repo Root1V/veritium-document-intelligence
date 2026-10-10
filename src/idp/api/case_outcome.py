@@ -1,6 +1,6 @@
-"""What the MCP tools answer (VRT-51): short, in business words, enough for
-an agent to decide its next step; the full result contract stays one
-resource away (``veritium://cases/{id}/result``)."""
+"""Where a case stands, short and in business words — what an agent gets
+from the MCP tools (VRT-51) and the A2A tasks (VRT-52) to decide its next
+step. The full result contract stays one read away."""
 
 from __future__ import annotations
 

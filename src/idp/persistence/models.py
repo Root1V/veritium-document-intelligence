@@ -798,6 +798,23 @@ class ApiClient(Base):
     user: Mapped["User"] = relationship()
 
 
+class A2ATask(Base):
+    """An A2A task (VRT-52): the protocol's snapshot of it, whose it is, and
+    the case it works on. Its progress and outcome are the case's runs;
+    reading a task that a restart left "working" reconciles it with the run."""
+
+    __tablename__ = "a2a_tasks"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    context_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    owner: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    case_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("cases.id", ondelete="SET NULL"), nullable=True)
+    state: Mapped[str] = mapped_column(String(32), nullable=False)
+    snapshot: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class BulkJob(Base):
     """Many cases handed over at once (VRT-48): an archive with one folder
     per case. Its cases run in the ``bulk`` lane and are released a few at a

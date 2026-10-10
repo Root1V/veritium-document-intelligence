@@ -29,8 +29,9 @@ _OPERATOR, _PASSWORD = "test-operador-masivo@example.com", "test-password-masivo
 
 
 def _zip(**extra: bytes) -> bytes:
+    """The same files give the same bytes (fixed timestamps), as a client retrying the same archive would send."""
     buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w") as zf:
+    with _FixedTimeZip(buf, "w") as zf:
         zf.writestr("manifiesto.csv", "expediente;perfil;nacionalidad\nEXP-A;convenios;PE\nEXP-Z;convenios;PE\n")
         zf.writestr("EXP-A/solicitud.pdf", b"%PDF-1.4 a")
         zf.writestr("EXP-A/boleta.png", b"png")
@@ -40,6 +41,11 @@ def _zip(**extra: bytes) -> bytes:
         for name, content in extra.items():
             zf.writestr(name, content)
     return buf.getvalue()
+
+
+class _FixedTimeZip(zipfile.ZipFile):
+    def writestr(self, name, data, *args, **kwargs):  # type: ignore[override]
+        return super().writestr(zipfile.ZipInfo(name, date_time=(2026, 1, 1, 0, 0, 0)), data, *args, **kwargs)
 
 
 @pytest.fixture
@@ -79,7 +85,7 @@ async def test_a_bulk_job_runs_its_cases_a_few_at_a_time(live_settings, no_pipel
             assert sorted(str(s["reference"]) for s in sent.json()["skipped"]) == ["EXP-B", "EXP-Z", "None"]
 
             again = await client.post("/v1/bulk-jobs", headers=key, files={"archive": ("lote.zip", _zip(), "application/zip")})
-            assert again.json()["id"] == job_id and again.json()["replayed"]
+            assert again.status_code == 202 and again.json()["id"] == job_id and again.json()["replayed"], again.text
             other = await client.post("/v1/bulk-jobs", headers=key, files={"archive": ("lote.zip", _zip(**{"EXP-C/a.pdf": b"c"}), "application/zip")})
             assert other.status_code == 422
             assert (await client.post("/v1/bulk-jobs", headers=jwt, files={"archive": ("x.zip", b"no zip", "application/zip")})).status_code == 422

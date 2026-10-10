@@ -15,9 +15,9 @@ from idp.config import Settings
 from idp.domain.reprocess import ReprocessScope
 from idp.execution.port import executor_for
 from idp.persistence.models import Case, CaseRun, Document, ProcessProfileVersion
-from idp.persistence.repositories import CaseRunRepository, DocumentRepository, ProcessProfileRepository, ReviewRepository
+from idp.persistence.repositories import CaseRepository, CaseRunRepository, DocumentRepository, ProcessProfileRepository, ReviewRepository
 from idp.pipeline.orchestrator import case_rules, fail_run
-from idp.storage.object_store import ObjectStore
+from idp.storage.object_store import ObjectStore, S3ObjectStore
 
 
 @dataclass(frozen=True)
@@ -141,3 +141,60 @@ async def dispatch_run(session: AsyncSession, settings: Settings, case: Case, ru
     if ref is not None:
         run.execution_ref = ref
         await session.commit()
+
+
+class CaseRefused(Exception):
+    """A case that cannot be opened or completed, with the reason in words."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
+async def open_case(
+    settings: Settings,
+    session: AsyncSession,
+    *,
+    profile: str,
+    profile_version: int | None,
+    external_ref: str | None,
+    channel: str,
+    process_data: dict | None,
+    uploads: list[Upload],
+    idempotency_key: str,
+    tenant: str = "default",
+) -> tuple[Case, CaseRun]:
+    """Open a case with its documents and its first run (not yet handed to
+    the executor) — for the channels that are not ``POST /v1/cases``: the
+    event bus, MCP, A2A."""
+    try:
+        version = await resolve_profile_version(session, profile, profile_version)
+    except HTTPException as exc:
+        raise CaseRefused(str(exc.detail)) from exc
+    if not uploads:
+        raise CaseRefused("el expediente debe traer al menos un documento")
+    case = await CaseRepository(session).create(
+        tenant=tenant,
+        request_input_payload=process_data,
+        profile_version_id=version.id,
+        external_ref=external_ref,
+        channel=channel,
+        idempotency_key=idempotency_key[:256],
+        idempotency_fingerprint=request_fingerprint(
+            profile_key=profile, profile_version=profile_version, external_ref=external_ref, channel=channel, process_data=process_data, uploads=uploads
+        ),
+    )
+    await store_uploads(session, S3ObjectStore(settings), case, uploads)
+    return case, await open_run(session, case, trigger="submit")
+
+
+async def add_to_case(settings: Settings, session: AsyncSession, case: Case, uploads: list[Upload]) -> CaseRun:
+    """Add documents to a case and open the run that re-evaluates it."""
+    if not uploads:
+        raise CaseRefused("no se recibió ningún documento")
+    if await CaseRunRepository(session).has_active_run(case.id):
+        raise CaseRefused("el expediente tiene una corrida en curso; reintentar cuando termine")
+    await store_uploads(session, S3ObjectStore(settings), case, uploads)
+    run = await open_run(session, case, trigger="documents_added")
+    case.status = "uploaded"
+    return run

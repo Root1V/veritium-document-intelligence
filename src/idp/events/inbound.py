@@ -18,19 +18,16 @@ import mimetypes
 import uuid
 from typing import Any, Literal
 
-from fastapi import HTTPException
 from pydantic import BaseModel, Field, ValidationError, model_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from idp.api.case_service import Upload, open_run, request_fingerprint, resolve_profile_version, store_uploads
+from idp.api.case_service import CaseRefused, Upload, add_to_case, open_case
 from idp.config import Settings
 from idp.events.claim_check import ClaimCheckError, fetch
 from idp.execution.handover import hand_over
 from idp.persistence.db import get_session_factory
 from idp.persistence.models import Case, CaseRun, OutboxEvent
-from idp.persistence.repositories import CaseRepository, CaseRunRepository
-from idp.storage.object_store import S3ObjectStore
 from idp.webhooks.events import COMMAND_ACCEPTED, COMMAND_REJECTED, emit_command_answer
 
 SUBMIT = "pe.veritium.case.submit"
@@ -73,10 +70,7 @@ class Answer(BaseModel):
     replayed: bool = False
 
 
-class Rejected(Exception):
-    def __init__(self, reason: str) -> None:
-        super().__init__(reason)
-        self.reason = reason
+Rejected = CaseRefused  # one refusal for every channel
 
 
 # --- CloudEvents bindings ----------------------------------------------------
@@ -147,25 +141,10 @@ async def _uploads(settings: Settings, documents: list[DocumentRef]) -> list[Upl
 
 
 async def _submit(settings: Settings, session: AsyncSession, event: dict[str, Any], data: SubmitData) -> tuple[Case, CaseRun]:
-    try:
-        version = await resolve_profile_version(session, data.profile, data.profile_version)
-    except HTTPException as exc:
-        raise Rejected(str(exc.detail)) from exc
-    uploads = await _uploads(settings, data.documents)
-    case = await CaseRepository(session).create(
-        tenant=_TENANT,
-        request_input_payload=data.process_data,
-        profile_version_id=version.id,
-        external_ref=data.external_ref,
-        channel=data.channel,
-        idempotency_key=f"ce:{event['source']}:{event['id']}"[:256],
-        idempotency_fingerprint=request_fingerprint(
-            profile_key=data.profile, profile_version=data.profile_version, external_ref=data.external_ref, channel=data.channel,
-            process_data=data.process_data, uploads=uploads,
-        ),
+    return await open_case(
+        settings, session, profile=data.profile, profile_version=data.profile_version, external_ref=data.external_ref, channel=data.channel,
+        process_data=data.process_data, uploads=await _uploads(settings, data.documents), idempotency_key=f"ce:{event['source']}:{event['id']}", tenant=_TENANT,
     )
-    await store_uploads(session, S3ObjectStore(settings), case, uploads)
-    return case, await open_run(session, case, trigger="submit")
 
 
 async def _add_documents(settings: Settings, session: AsyncSession, data: AddDocumentsData) -> tuple[Case, CaseRun]:
@@ -173,13 +152,7 @@ async def _add_documents(settings: Settings, session: AsyncSession, data: AddDoc
     case = await session.scalar(stmt)
     if case is None:
         raise Rejected("no existe el expediente indicado")
-    if await CaseRunRepository(session).has_active_run(case.id):
-        raise Rejected("el expediente tiene una corrida en curso; reintentar cuando termine")
-    uploads = await _uploads(settings, data.documents)
-    await store_uploads(session, S3ObjectStore(settings), case, uploads)
-    run = await open_run(session, case, trigger="documents_added")
-    case.status = "uploaded"
-    return case, run
+    return case, await add_to_case(settings, session, case, await _uploads(settings, data.documents))
 
 
 async def handle(settings: Settings, event: dict[str, Any]) -> Answer:

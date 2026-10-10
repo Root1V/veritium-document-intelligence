@@ -334,7 +334,10 @@ Veritium pasa de "subir documentos sueltos" a ser una **capacidad de decisión d
 - Extensión Tasks: crear o completar un expediente devuelve una tarea cuyo id es la corrida persistida (`tasks/get` sirve desde cualquier instancia).
 - Mismas identidades, roles y cuota que la API (login o credenciales de sistema de VRT-65; metadata RFC 9728/8414). Fuera: MRTR/elicitación y `notifications/tasks` (las tareas se consultan por sondeo).
 ## VRT-52 — Servidor A2A
-**Why:** delegación entre agentes con un ciclo de vida estándar. **Scope:** A2A v1.0, con Agent Card firmada e `input_required` = falta evidencia.
+**Why:** delegación entre agentes con un ciclo de vida estándar. **Scope:**
+- A2A v1.0 con el SDK oficial: JSON-RPC en `/a2a/` y HTTP+JSON en `/a2a/rest`; Agent Card en `/.well-known/agent-card.json`, firmada (JWS ES256 sobre RFC 8785) con la clave pública en `/.well-known/jwks.json`.
+- Una tarea es un expediente: el primer mensaje lo abre (parte de datos + documentos por url autorizada o contenido) y la tarea sigue su corrida; `input-required` = faltan documentos, que se envían en la misma tarea; el veredicto llega en el artefacto `resultado`.
+- Tareas en Postgres por dueño (mismas identidades, roles y cuota que la API); una tarea que un reinicio dejó en curso se resuelve desde su corrida al leerla. Fuera: notificaciones push (hay webhooks) y compatibilidad A2A 0.3.
 ## VRT-53 — Catálogo de tools
 **Why:** las validaciones y los agentes necesitan herramientas tipadas y gobernadas, sin definirlas dos veces. **Scope:**
 - Cada tool se define una sola vez (determinista o con modelo, costo, rol que la usa); de esa definición salen las tools internas (synaptum `@tool`) y las expuestas por MCP.

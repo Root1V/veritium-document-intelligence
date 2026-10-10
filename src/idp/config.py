@@ -156,6 +156,17 @@ class Settings(BaseSettings):
     mcp_allowed_hosts: list[str] = ["127.0.0.1:*", "localhost:*", "[::1]:*"]
     mcp_task_poll_interval_ms: int = 5000
 
+    # --- A2A server (VRT-52) ---
+    # The Agent Card is signed (JWS ES256 over its RFC 8785 form) with this
+    # EC P-256 private key in PEM; its public half is served as JWKS. Unset
+    # in development: an ephemeral key per process. Required in production.
+    a2a_signing_key: SecretStr | None = None
+    a2a_signing_kid: str = "veritium-a2a-1"
+    # A task follows its case run: how often it looks, and for how long
+    # before leaving it "working" for the client to poll (GetTask).
+    a2a_poll_interval_seconds: float = 3.0
+    a2a_max_wait_minutes: float = 30.0
+
     # --- Event bus (VRT-49) ---
     # Kafka protocol (Redpanda in development: docker compose up -d redpanda).
     # Unset = no bus: events still go out by webhook, commands come in by
@@ -176,6 +187,8 @@ class Settings(BaseSettings):
         # Anyone who knows the default could sign a token for any user or system (VRT-65).
         if self.environment == "prod" and self.jwt_secret_key == DEV_JWT_SECRET:
             raise ValueError("JWT_SECRET_KEY debe definirse en producción (no la clave de desarrollo)")
+        if self.environment == "prod" and self.a2a_signing_key is None:
+            raise ValueError("A2A_SIGNING_KEY debe definirse en producción: la Agent Card se publica firmada")
         return self
 
 

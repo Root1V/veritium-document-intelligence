@@ -35,7 +35,7 @@ from idp.events import inbound
 from idp.events.inbound import DocumentRef
 from idp.mcp_server.auth import VeritiumTokenVerifier, caller, quota, require_role
 from idp.mcp_server.tasks import CaseRunTasks
-from idp.mcp_server.views import VERDICT_LABEL, CaseOutcome, case_outcome
+from idp.api.case_outcome import VERDICT_LABEL, CaseOutcome, case_outcome
 from idp.persistence.db import get_session_factory
 from idp.persistence.models import Case
 from idp.persistence.repositories import CaseRepository, DocumentTypeRepository, ProcessProfileRepository

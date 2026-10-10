@@ -6,6 +6,7 @@ import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
+from a2a.server.routes import add_a2a_routes_to_fastapi
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -21,7 +22,7 @@ from idp.persistence.db import get_session_factory
 from idp.persistence.repositories import DocumentTypeRepository, LensRepository, ProcessProfileRepository, PromptEditRepository, PromptRepository, SemanticCatalogRepository
 from idp.storage.object_store import S3ObjectStore
 from idp.events import bus
-from idp import mcp_server
+from idp import a2a_server, mcp_server
 from idp.pipeline import bulk
 from idp.webhooks import dispatcher
 
@@ -30,6 +31,7 @@ def create_app() -> FastAPI:
     settings = get_settings()
     setup_tracing(settings)
     mcp = mcp_server.build(settings)
+    a2a = a2a_server.build(settings)
     mcp_app = mcp_server.app(mcp, settings)  # before the lifespan: it creates the session manager the lifespan runs
 
     @asynccontextmanager
@@ -52,6 +54,7 @@ def create_app() -> FastAPI:
         # The MCP server (VRT-51) and the in-process executor / rule drafting, which call models.
         async with mcp.session_manager.run(), inference_lifespan(settings):
             yield
+        await a2a.handler.aclose()
         stop.set()
         await feeder
         if events is not None:
@@ -101,6 +104,14 @@ def create_app() -> FastAPI:
     async def health() -> dict:
         return {"status": "ok"}
 
+    # A2A (VRT-52): its Agent Card and signing key at the root, the protocol under /a2a.
+    add_a2a_routes_to_fastapi(app, agent_card_routes=a2a_server.card_routes(a2a))
+
+    @app.get("/.well-known/jwks.json", include_in_schema=False)
+    async def jwks() -> dict:
+        return a2a.jwks
+
+    app.mount("/a2a", a2a.app)
     # Last: /mcp and its metadata (RFC 9728) — everything the API routes above do not take.
     app.mount("/", mcp_app)
     return app

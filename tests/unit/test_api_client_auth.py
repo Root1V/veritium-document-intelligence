@@ -18,7 +18,9 @@ def test_quota_per_client_and_per_minute():
     assert limiter.check("a", 2, now=60.0) is None, "a new minute"
 
 
-def test_production_refuses_the_development_jwt_key():
+def test_production_refuses_the_development_jwt_key_and_an_unsigned_agent_card():
     with pytest.raises(ValidationError, match="JWT_SECRET_KEY"):
         Settings(environment="prod", jwt_secret_key="dev-insecure-change-me")
-    assert Settings(environment="prod", jwt_secret_key="una-clave-propia").environment == "prod"
+    with pytest.raises(ValidationError, match="A2A_SIGNING_KEY"):
+        Settings(environment="prod", jwt_secret_key="una-clave-propia")
+    assert Settings(environment="prod", jwt_secret_key="una-clave-propia", a2a_signing_key="pem").environment == "prod"

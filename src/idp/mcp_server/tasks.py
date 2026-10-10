@@ -26,7 +26,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from idp.config import Settings
-from idp.mcp_server.views import case_outcome
+from idp.api.case_outcome import case_outcome
 from idp.persistence.db import get_session_factory
 from idp.persistence.models import CaseRun
 from idp.persistence.repositories import CaseRepository
