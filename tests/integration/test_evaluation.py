@@ -43,7 +43,7 @@ def stub_model(monkeypatch):
     monkeypatch.setattr(
         runner,
         "extract_document",
-        lambda settings, parsed, document_type, catalog, document_id, grounding=None: answer.update(grounding=grounding) or ExtractionOutcome(
+        lambda settings, parsed, document_type, catalog, document_id, grounding=None, checker=None: answer.update(grounding=grounding, checker=checker) or ExtractionOutcome(
             schema_instance=PayslipSchema(
                 employee_name=e("SALAS SIGUAS, KATERIN"), period=e("01/2026"), gross_pay=e(6618.0), total_deductions=e(2313.86), net_pay=e(answer["net_pay"])
             ),
@@ -111,7 +111,14 @@ async def test_a_suite_from_a_table_runs_and_compares(live_settings, stub_model)
             run3 = (await client.get(f"/v1/eval-runs/{grounded['id']}", headers=h)).json()
             assert run3["provenance"]["semantic_grounding"] is True
             assert "net_pay" in (stub_model["grounding"] or {}), "the extraction got the business meaning of the fields"
-            second = grounded
+            assert stub_model["checker"] is None, "self-check is off by default (VRT-67)"
+
+            # Measuring self-check (VRT-67): the extraction gets the document's own rules to check its draft.
+            checked = (await client.post(f"/v1/eval-suites/{suite_id}/runs", headers=h, json={"self_check": True})).json()
+            run4 = (await client.get(f"/v1/eval-runs/{checked['id']}", headers=h)).json()
+            assert run4["provenance"]["self_check"] is True
+            assert stub_model["checker"] is not None and any(r.rule_id == "self.payslip_arithmetic_consistency" for r in stub_model["checker"].rules)
+            second = checked
 
             suites = (await client.get("/v1/eval-suites", headers=h)).json()
             assert next(s for s in suites if s["id"] == suite_id)["latest_run"]["id"] == second["id"]

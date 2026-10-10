@@ -354,6 +354,7 @@ Veritium pasa de "subir documentos sueltos" a ser una **capacidad de decisión d
 **Why:** muchos hallazgos (formato, aritmética interna) los puede detectar el propio agente antes de entregar, si tiene con qué. **Scope:**
 - Tool interna `check_draft`: corre sobre el borrador las reglas propias del documento (categoría SELF: aritmética interna, formato de cada atributo del catálogo semántico, reglas CEL propias); el agente corrige o, si el documento dice eso, entrega igual.
 - Medible: opción de las corridas de evaluación para comparar con y sin autovalidación sobre el mismo golden set. Fuera: reglas entre documentos (eso es VRT-66).
+- Apagada por defecto: medido el 2026-10-10, solo 2 de 74 documentos con hallazgos tenían uno que pudiera detectar (el resto: maestro de empleados y consistencia entre documentos), y cada revisión es un turno más del modelo.
 ## VRT-68 — Clasificación con escalamiento agéntico
 **Why:** la clasificación es una sola llamada; los casos dudosos o los PDF mezclados quedan "genéricos" o mal clasificados. **Scope:** se mantiene la llamada única para los casos claros; con confianza baja o mezcla, un agente revisa páginas (texto, imagen, descripciones de los tipos). Métrica: % de genéricos y de mal clasificados en las suites.
 

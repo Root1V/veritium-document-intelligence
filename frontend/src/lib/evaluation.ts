@@ -45,5 +45,7 @@ export function configChanges(before: EvalRunSummary['provenance'], after: EvalR
   }
   if (Boolean(before.semantic_grounding) !== Boolean(after.semantic_grounding))
     out.push(after.semantic_grounding ? 'Se agregó el significado de negocio de cada campo' : 'Se quitó el significado de negocio de cada campo')
+  if (before.self_check !== undefined && after.self_check !== undefined && before.self_check !== after.self_check)
+    out.push(after.self_check ? 'Se activó la autovalidación del borrador' : 'Se desactivó la autovalidación del borrador')
   return out
 }

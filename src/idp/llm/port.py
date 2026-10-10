@@ -156,7 +156,8 @@ class Inference:
             instructions=instructions,
             tools=tools,
             output=output,
-            limits=Limits(max_steps=max_steps),
+            # A retryable refusal — e.g. the same request still running for an identical document — is waited out, not given up on.
+            limits=Limits(max_steps=max_steps, max_retries=self._settings.llm_max_retries),
             sampling=self._sampling(),
             submit_tool=True,
         )

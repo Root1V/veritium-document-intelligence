@@ -652,13 +652,14 @@ export interface EvalRunSummary {
   finished_at: string | null
   error: string | null
   metrics: EvalMetrics | null
-  options: { semantic_grounding?: boolean; prompt_drafts?: string[] } | null
+  options: { semantic_grounding?: boolean; prompt_drafts?: string[]; self_check?: boolean } | null
   provenance: {
     models?: Record<string, string>
     code_version?: string
     document_types?: Record<string, number>
     prompts?: Record<string, string>
     semantic_grounding?: boolean
+    self_check?: boolean
   } | null
 }
 

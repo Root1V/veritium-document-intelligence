@@ -62,6 +62,10 @@ class Settings(BaseSettings):
     # Per-request timeout for axonium's calls to prometheus. Without an explicit bound, a stalled connection blocks a
     # document's processing indefinitely — confirmed in practice.
     llm_request_timeout_seconds: float = 180.0
+    # How many times the extraction agent retries a model call the provider
+    # declares retryable (rate limit, the same request still in flight),
+    # waiting what it asks each time (synaptum caps a wait at 30 s).
+    llm_max_retries: int = 8
     # Ceiling on what one model call may generate. Without it a runaway
     # generation (a repetition loop) runs for many minutes, and a retry with
     # the same idempotency key waits for it instead of failing. A truncated
@@ -70,6 +74,11 @@ class Settings(BaseSettings):
     # VRT-46: tell the extraction agent the business meaning of each field,
     # from the semantic catalog. Measure it with an evaluation run first.
     extraction_semantic_grounding: bool = False
+    # The extraction agent reviews its draft with the document's own rules
+    # before submitting (VRT-67). Off by default: measured on 2026-10-10, only
+    # 2 of 74 documents with findings had one it could catch, and each check
+    # is one more model turn. Evaluation runs can turn it on to compare.
+    extraction_self_check: bool = False
 
     # --- Upload sessions and quick check (VRT-47) ---
     upload_session_minutes: int = 30

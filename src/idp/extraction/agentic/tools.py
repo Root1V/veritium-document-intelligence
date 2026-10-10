@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import io
+from typing import Any
 
 from PIL import Image
 from synaptum import Tool, tool
@@ -19,6 +20,7 @@ from synaptum import Tool, tool
 from idp.llm.port import inference
 from idp.llm.prompts import prompt
 from idp.observability.otel import traced_tool_call
+from idp.extraction.self_check import DraftChecker
 from idp.parsing.normalize import ParsedDocument
 from idp.tools.catalog import spec
 
@@ -83,3 +85,15 @@ def region_tools(parsed: ParsedDocument) -> list[Tool]:
             return await _read_visual(parsed, region_id, purpose="read_figure_region", prompt=str(_FIGURE_PROMPT))
 
     return [read_text_region, read_table_region, read_figure_region]
+
+
+def draft_tool(checker: DraftChecker) -> Tool:
+    """The self-check (VRT-67): the document's own rules on the agent's draft."""
+
+    @tool(idempotent=True, description=spec("check_draft").description)
+    async def check_draft(values: dict[str, Any]) -> str:
+        with traced_tool_call(tool_name="check_draft", arguments={"fields": sorted(values)}):
+            problems = await checker.check(values)
+        return "Sin problemas." if not problems else "Problemas encontrados:\n" + "\n".join(f"- {p}" for p in problems)
+
+    return check_draft

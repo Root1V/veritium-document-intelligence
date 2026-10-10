@@ -171,6 +171,7 @@ export function EvaluationSuitePage() {
   const runSuite = useRunEvalSuite()
   const [selected, setSelected] = useState<string | null>(null)
   const [withMeaning, setWithMeaning] = useState(false)
+  const [selfCheck, setSelfCheck] = useState(false)
   const { data: prompts } = usePrompts()
   const drafts = (prompts ?? []).filter((p) => p.draft)
   const [chosenDrafts, setChosenDrafts] = useState<string[]>([])
@@ -197,7 +198,7 @@ export function EvaluationSuitePage() {
             <Button
               disabled={busy || runSuite.isPending}
               onClick={() =>
-                runSuite.mutate({ suiteId: suite.id, semanticGrounding: withMeaning || undefined, promptDrafts: chosenDrafts }, {
+                runSuite.mutate({ suiteId: suite.id, semanticGrounding: withMeaning || undefined, promptDrafts: chosenDrafts, selfCheck }, {
                   onSuccess: (r) => {
                     setSelected(r.id)
                     toast.success('Corrida en curso.')
@@ -213,6 +214,12 @@ export function EvaluationSuitePage() {
             <label className="flex items-center gap-2 text-sm" title="Le dice al modelo qué significa cada campo para el negocio, según el catálogo semántico.">
               <input type="checkbox" checked={withMeaning} onChange={(e) => setWithMeaning(e.target.checked)} />
               Probar con el significado de negocio de cada campo
+            </label>
+          )}
+          {(canExecute() || isAISpecialist()) && (
+            <label className="flex items-center gap-2 text-sm" title="El agente revisa su borrador con las reglas propias del documento y corrige antes de entregar.">
+              <input type="checkbox" checked={selfCheck} onChange={(e) => setSelfCheck(e.target.checked)} />
+              Con autovalidación del borrador
             </label>
           )}
           {(canExecute() || isAISpecialist()) &&
@@ -238,6 +245,7 @@ export function EvaluationSuitePage() {
             <Button key={r.id} size="sm" variant={r.id === current?.id ? 'default' : 'outline'} onClick={() => setSelected(r.id)}>
               {new Date(r.created_at).toLocaleString()} · {r.status === 'completed' ? percent(r.metrics?.fields) : r.status}
               {r.provenance?.semantic_grounding && ' · con significado'}
+              {r.provenance?.self_check && ' · con autovalidación'}
               {r.options?.prompt_drafts?.length ? ' · con borrador' : ''}
             </Button>
           ))}

@@ -19,7 +19,8 @@ from synaptum import LimitExceeded, NoObjectGeneratedError, Text, ToolStep
 from idp.config import Settings
 from idp.domain.envelope import ToolCallRecord
 from idp.extraction.agentic.prompts import build_system_prompt
-from idp.extraction.agentic.tools import region_tools
+from idp.extraction.agentic.tools import draft_tool, region_tools
+from idp.extraction.self_check import DraftChecker
 from idp.llm.port import inference, model_for
 from idp.observability.otel import traced_llm_call
 from idp.parsing.normalize import ParsedDocument
@@ -47,6 +48,7 @@ def run_agentic_extraction(
     hint: str,
     correction_note: str | None = None,
     grounding: dict[str, str] | None = None,
+    checker: DraftChecker | None = None,
 ) -> tuple[BaseModel, list[ToolCallRecord]]:
     task = "Extrae los datos del documento segun el esquema objetivo."
     if correction_note:
@@ -57,9 +59,9 @@ def run_agentic_extraction(
             result, steps = port.run_sync(
                 port.run_agent(
                     purpose=purpose,
-                    instructions=build_system_prompt(hint, schema_cls, parsed, grounding),
+                    instructions=build_system_prompt(hint, schema_cls, parsed, grounding, self_check=checker is not None),
                     task=task,
-                    tools=region_tools(parsed),
+                    tools=region_tools(parsed) + ([draft_tool(checker)] if checker is not None else []),
                     output=schema_cls,
                     max_steps=settings.extraction_max_turns,
                 )

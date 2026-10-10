@@ -62,6 +62,13 @@ _SPECS = (
         "Envia la imagen recortada de una region de tipo figura/grafico a un modelo de vision para interpretar su contenido.",
         kind="model", cost="modelo", exposure="internal", roles=AGENT, read_only=True,
     ),
+    ToolSpec(
+        "check_draft", "Revisar el borrador",
+        "Revisa el borrador de la extraccion con las reglas propias del documento (aritmetica interna, formato de cada dato, reglas del "
+        "tipo). Pasa en values los valores que vas a entregar, como {campo: valor}. Devuelve los problemas encontrados o 'Sin problemas'. "
+        "Si hay problemas, relee las regiones y corrige; si el documento realmente dice eso, entregalo igual.",
+        kind="deterministic", cost="ninguno", exposure="internal", roles=AGENT, read_only=True,
+    ),
     # --- Exposed over MCP (VRT-51): the decision service ---
     ToolSpec(
         "list_processes", "Procesos disponibles", "Los procesos que Veritium sabe revisar y qué documentos pide cada uno.",

@@ -57,16 +57,24 @@ sin espacios sobrantes, sin el nombre de la etiqueta). "source_text" en cambio d
 tal como aparece en la region OCR, incluyendo cualquier separador o etiqueta — no los uniformes. \
 Ejemplo: si la region dice "Apellidos y Nombres : SALAS SIGUAS, KATERIN KAROLA", value debe ser \
 "SALAS SIGUAS, KATERIN KAROLA" (sin el ":" inicial) y source_text puede conservar el texto completo.
-""", filled=('hint', 'regions', 'schema', 'grounding'))
+{self_check}""", filled=('hint', 'regions', 'schema', 'grounding', 'self_check'))
 
 
-def build_system_prompt(hint: str, schema_cls: type[BaseModel], parsed: ParsedDocument, grounding: dict[str, str] | None = None) -> PromptTemplate:
+_SELF_CHECK = (
+    "7. Antes de llamar a submit, llama UNA vez a check_draft con los valores que vas a entregar ({campo: valor}). Si reporta problemas, "
+    "relee las regiones de esos campos y corrige; si el documento realmente dice eso, entregalo igual — no inventes valores para que cuadre.\n"
+)
+
+
+def build_system_prompt(
+    hint: str, schema_cls: type[BaseModel], parsed: ParsedDocument, grounding: dict[str, str] | None = None, *, self_check: bool = False
+) -> PromptTemplate:
     """``hint`` is the document type's extraction hint (catalog, VRT-32);
-    ``grounding`` the business meaning of each field (VRT-46). Without it
-    the prompt is the same text it always was."""
+    ``grounding`` the business meaning of each field (VRT-46); ``self_check``
+    adds the step that reviews the draft before submitting (VRT-67)."""
     regions = "\n".join(f"- region_id={b.region_id} tipo={b.block_type} pagina={b.page} texto_ocr={b.text[:80]!r}" for b in parsed.blocks)
     meaning = ""
     if grounding:
         lines = "\n".join(f"- {field}: {text}" for field, text in grounding.items())
         meaning = f"\nSignificado de negocio de los campos (te ayuda a ubicar el dato correcto; no cambia el formato del esquema):\n{lines}\n"
-    return _EXTRACTION.render(hint=hint, regions=regions, schema=schema_cls.model_json_schema(), grounding=meaning)
+    return _EXTRACTION.render(hint=hint, regions=regions, schema=schema_cls.model_json_schema(), grounding=meaning, self_check=_SELF_CHECK if self_check else "")

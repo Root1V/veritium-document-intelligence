@@ -100,6 +100,9 @@ class RunOptions(BaseModel):
         default=None, description="Probar con (true) o sin (false) el significado de negocio de cada campo; si falta, como está configurado."
     )
     prompt_drafts: list[uuid.UUID] | None = Field(default=None, description="Borradores de instrucciones a probar en esta corrida (VRT-63).")
+    self_check: bool | None = Field(
+        default=None, description="Probar con (true) o sin (false) que el agente revise su borrador antes de entregar (VRT-67); si falta, como está configurado."
+    )
 
 
 class GoldenSetRequest(BaseModel):

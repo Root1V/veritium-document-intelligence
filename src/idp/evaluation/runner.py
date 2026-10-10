@@ -14,6 +14,7 @@ changes the request and is measured fresh."""
 from __future__ import annotations
 
 import asyncio
+import functools
 import time
 import uuid
 from datetime import UTC, datetime
@@ -28,7 +29,7 @@ from idp.persistence.db import get_session_factory
 from idp.persistence.models import EvalCase, EvalResult
 from idp.llm.prompts import trial
 from idp.persistence.repositories import DocumentTypeRepository, EvaluationRepository, PromptEditRepository
-from idp.pipeline.orchestrator import extraction_grounding, parse_example
+from idp.pipeline.orchestrator import draft_checker, extraction_grounding, parse_example
 from idp.pipeline.provenance import build_provenance
 from idp.pipeline.stages import classify_document, extract_document
 from idp.storage.object_store import S3ObjectStore
@@ -51,7 +52,7 @@ def outcome_of(result: EvalResult, case: EvalCase) -> CaseOutcome:
     )
 
 
-async def _evaluate(settings: Settings, case: EvalCase, run_id: uuid.UUID, catalog: DocumentTypeCatalog, grounding: bool) -> EvalResult:
+async def _evaluate(settings: Settings, case: EvalCase, run_id: uuid.UUID, catalog: DocumentTypeCatalog, grounding: bool, self_check: bool) -> EvalResult:
     started = time.monotonic()
     label = f"eval-{case.id}"
     predicted: str | None = None
@@ -65,8 +66,11 @@ async def _evaluate(settings: Settings, case: EvalCase, run_id: uuid.UUID, catal
         predicted, confidence = classification.document_type, classification.confidence
         async with get_session_factory(settings)() as session:
             meanings = await extraction_grounding(settings, session, predicted, enabled=grounding)
+            checker = await draft_checker(settings, session, predicted, catalog, enabled=self_check)
         try:
-            outcome = await asyncio.to_thread(extract_document, settings, parsed, predicted, catalog, document_id=label, grounding=meanings)
+            outcome = await asyncio.to_thread(
+                functools.partial(extract_document, settings, parsed, predicted, catalog, document_id=label, grounding=meanings, checker=checker)
+            )
             payload: dict[str, Any] | None = outcome.schema_instance.model_dump(mode="json") if outcome.schema_instance is not None else None
         except ExtractionIncomplete:
             payload = None  # measured as every expected field missing
@@ -117,9 +121,11 @@ async def _run_evaluation(settings: Settings, run_id: uuid.UUID) -> None:
                     provenance.pop(key, None)
                 provenance["document_types"] = {key: current[0] for key in catalog.keys() if (current := catalog.current(key)) is not None}
                 provenance["semantic_grounding"] = (run.options or {}).get("semantic_grounding", settings.extraction_semantic_grounding)
+                provenance["self_check"] = (run.options or {}).get("self_check", settings.extraction_self_check)
                 run.status, run.started_at, run.provenance = "running", datetime.now(UTC), provenance
                 await session.commit()
             grounding = bool((run.provenance or {}).get("semantic_grounding"))
+            self_check = bool((run.provenance or {}).get("self_check"))
             done = {r.case_id for r in run.results}
             pending = [c for c in run.suite.cases if c.id not in done]
 
@@ -127,7 +133,7 @@ async def _run_evaluation(settings: Settings, run_id: uuid.UUID) -> None:
 
         async def one(case: EvalCase) -> None:
             async with semaphore:
-                result = await _evaluate(settings, case, run_id, catalog, grounding)
+                result = await _evaluate(settings, case, run_id, catalog, grounding, self_check)
             async with factory() as session:
                 await EvaluationRepository(session).save_result(result)
                 await session.commit()

@@ -10,6 +10,7 @@ from idp.domain.document_type_catalog import DocumentTypeCatalog
 from idp.extraction.agentic.loop import ExtractionIncomplete, run_agentic_extraction
 from idp.extraction.base import ExtractionOutcome, attach_trace
 from idp.extraction.grounding import attach_grounding
+from idp.extraction.self_check import DraftChecker
 from idp.parsing.normalize import ParsedDocument
 
 
@@ -21,6 +22,7 @@ def extract_catalog_type(
     correction_note: str | None = None,
     *,
     grounding: dict[str, str] | None = None,
+    checker: DraftChecker | None = None,
 ) -> ExtractionOutcome:
     current = catalog.current(type_key)
     if current is None:
@@ -38,6 +40,7 @@ def extract_catalog_type(
             hint=definition.extraction_hint,
             correction_note=correction_note,
             grounding=grounding,
+            checker=checker,
         )
     except ExtractionIncomplete as exc:
         return ExtractionOutcome(schema_instance=None, needs_review=True, review_reason=str(exc), extraction_method="agentic", schema_version=schema_version)

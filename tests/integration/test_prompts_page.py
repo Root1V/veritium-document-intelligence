@@ -34,5 +34,5 @@ async def test_every_prompt_in_use_is_listed_with_its_version(live_settings):
     extraction = prompts["extract_agentic"]
     assert extraction["label"] == "Extracción de datos" and extraction["since"] is not None
     assert extraction["version"] == next(p.version for p in current() if p.name == "extract_agentic")
-    assert set(extraction["placeholders"]) == {"hint", "regions", "schema", "grounding"}
+    assert set(extraction["placeholders"]) == {"hint", "regions", "schema", "grounding", "self_check"}
     assert len(prompts) == len(current())

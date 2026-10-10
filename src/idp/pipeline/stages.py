@@ -14,6 +14,7 @@ from idp.domain.schemas.generic import GenericSchema
 from idp.domain.type_suggestion import DocumentTypeProposal
 from idp.extraction.base import ExtractionOutcome
 from idp.extraction.catalog_extractor import extract_catalog_type
+from idp.extraction.self_check import DraftChecker
 from idp.extraction.generic import GenericExtractor
 from idp.observability.otel import traced_stage
 from idp.parsing.base import ParserBackend
@@ -45,11 +46,12 @@ def extract_document(
     document_id: str,
     correction_note: str | None = None,
     grounding: dict[str, str] | None = None,
+    checker: DraftChecker | None = None,
 ) -> ExtractionOutcome:
     with traced_stage("extract", document_id=document_id, document_type=document_type):
         if document_type == GENERIC:
             return GenericExtractor().extract(parsed, settings, correction_note)
-        return extract_catalog_type(parsed, settings, catalog, document_type, correction_note, grounding=grounding)
+        return extract_catalog_type(parsed, settings, catalog, document_type, correction_note, grounding=grounding, checker=checker)
 
 
 def suggest_type(settings: Settings, generic_result: GenericSchema, catalog: DocumentTypeCatalog, *, document_id: str) -> DocumentTypeProposal:

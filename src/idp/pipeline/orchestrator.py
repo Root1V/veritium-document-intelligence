@@ -14,6 +14,7 @@ promotion is mechanical, not a rewrite.
 from __future__ import annotations
 
 import asyncio
+import functools
 import logging
 import threading
 import uuid
@@ -34,6 +35,7 @@ from idp.domain.reprocess import ReprocessScope, changed_reads, rules_to_reevalu
 from idp.domain.semantic import SemanticCatalog, field_meanings
 from idp.domain.semantic_resolution import ConsolidatedView, DocumentExtraction, resolve_case
 from idp.extraction.agentic.loop import ExtractionIncomplete
+from idp.extraction.self_check import DraftChecker
 from idp.observability.otel import traced_stage
 from idp.parsing.base import ParserBackend
 from idp.parsing.docling_backend import DoclingBackend
@@ -251,8 +253,11 @@ async def _classify_and_extract(
     await session.commit()
 
     grounding = await extraction_grounding(settings, session, classification.document_type)
+    checker = await draft_checker(settings, session, classification.document_type, type_catalog)
     outcome = await asyncio.to_thread(
-        extract_document, settings, parsed, classification.document_type, type_catalog, document_id=str(document_id), grounding=grounding
+        functools.partial(
+            extract_document, settings, parsed, classification.document_type, type_catalog, document_id=str(document_id), grounding=grounding, checker=checker
+        )
     )
 
     if outcome.schema_instance is None:
@@ -294,6 +299,23 @@ async def extraction_grounding(settings: Settings, session: AsyncSession, docume
         return None
     loaded = await SemanticCatalogRepository(session).load_active()
     return field_meanings(loaded[0], document_type) or None if loaded else None
+
+
+async def draft_checker(
+    settings: Settings, session: AsyncSession, document_type: str, type_catalog: DocumentTypeCatalog, *, enabled: bool | None = None
+) -> DraftChecker | None:
+    """The document's own rules for the extraction agent to check its draft
+    with (VRT-67), when self-check is on: ``enabled`` overrides the setting,
+    for an evaluation."""
+    if not (settings.extraction_self_check if enabled is None else enabled) or document_type == GENERIC:
+        return None
+    current = type_catalog.current(document_type)
+    if current is None:
+        return None
+    loaded = await load_semantic_catalog(session, None)
+    semantic = loaded[0] if loaded else None
+    rules = await build_default_rules(settings, session) + (format_rules(semantic) if semantic else [])
+    return DraftChecker(rules, semantic, document_type, type_catalog.schema(document_type, current[0]))  # type: ignore[arg-type]
 
 
 async def _suggest_type_if_promising(
