@@ -13,6 +13,7 @@ import { NewDocumentTypePage } from '@/pages/NewDocumentType'
 import { SemanticCatalogPage } from '@/pages/SemanticCatalog'
 import { ProfilesPage } from '@/pages/Profiles'
 import { ToolCatalogPage } from '@/pages/ToolCatalog'
+import { AssistantPage } from '@/pages/Assistant'
 import { ApiClientsPage } from '@/pages/ApiClients'
 import { BulkJobDetailPage, BulkJobsPage } from '@/pages/BulkJobs'
 import { CasesPage } from '@/pages/Cases'
@@ -142,6 +143,14 @@ export default function App() {
         element={
           <ProtectedRoute>
             <ToolCatalogPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/asistente"
+        element={
+          <ProtectedRoute>
+            <AssistantPage />
           </ProtectedRoute>
         }
       />

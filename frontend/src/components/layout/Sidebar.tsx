@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom'
-import { LayoutDashboard, Upload, Files, ClipboardCheck, Sparkles, BookOpen, History, LogOut, FileStack, Users, ShieldCheck, ListChecks, Network, Workflow, FolderOpen, FolderArchive, FlaskConical, Gauge, SplitSquareHorizontal, Scale, MessageSquareText, KeyRound, Wrench } from 'lucide-react'
+import { LayoutDashboard, Upload, Files, ClipboardCheck, Sparkles, BookOpen, History, LogOut, FileStack, Users, ShieldCheck, ListChecks, Network, Workflow, FolderOpen, FolderArchive, FlaskConical, Gauge, SplitSquareHorizontal, Scale, MessageSquareText, KeyRound, Wrench, Bot } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { canExecute, clearSession, getUserName, getUserRole, isAdmin } from '@/lib/auth'
 import { Badge } from '@/components/ui/badge'
@@ -16,6 +16,7 @@ const NAV_ITEMS = [
   { to: '/', label: 'Inicio', icon: LayoutDashboard, end: true, requiresExecute: false },
   { to: '/upload', label: 'Subir documentos', icon: Upload, requiresExecute: true },
   { to: '/cases', label: 'Expedientes', icon: FolderOpen, requiresExecute: false },
+  { to: '/asistente', label: 'Asistente', icon: Bot, requiresExecute: false },
   { to: '/bulk', label: 'Cargas masivas', icon: FolderArchive, requiresExecute: false },
   { to: '/documents', label: 'Documentos', icon: Files, requiresExecute: false },
   { to: '/review', label: 'Cola de revisión', icon: ClipboardCheck, requiresExecute: false },

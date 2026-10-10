@@ -293,7 +293,7 @@ async def investigate(settings: Settings, investigation_id: uuid.UUID) -> None:
             instructions = _INSTRUCTIONS.render(finding=_finding_text(issue, documents), documents=listed, fields=fields)
             tools = investigator_tools(settings, case, documents)
             answer, steps = None, []
-            for attempt, temperature in enumerate(_TEMPERATURES):
+            for attempt, temperature in enumerate(RETRY_TEMPERATURES):
                 try:
                     answer, steps = await inference().run_agent(
                         purpose=f"investigate/{issue.rule_id}", instructions=instructions, task="Investiga el hallazgo y entrega tu conclusión.",
@@ -303,9 +303,9 @@ async def investigate(settings: Settings, investigation_id: uuid.UUID) -> None:
                 except ProviderError as exc:
                     # The model sometimes writes a malformed tool call; at temperature 0 the same request fails the same
                     # way, so the retry varies the sampling. Anything else is not the model's format, and is not retried.
-                    if attempt == len(_TEMPERATURES) - 1 or not _malformed(exc):
+                    if attempt == len(RETRY_TEMPERATURES) - 1 or not malformed(exc):
                         raise
-                    log.info("investigation %s: tool call malformed (%s); retrying at temperature %s", investigation_id, exc, _TEMPERATURES[attempt + 1])
+                    log.info("investigation %s: tool call malformed (%s); retrying at temperature %s", investigation_id, exc, RETRY_TEMPERATURES[attempt + 1])
             if answer is None:
                 raise ValueError("el investigador no entregó una conclusión")
             for key, value in finalize(answer, documents, fields_by_document).items():
@@ -324,10 +324,10 @@ async def investigate(settings: Settings, investigation_id: uuid.UUID) -> None:
 
 
 # A malformed tool call from the model is retried once, sampling differently.
-_TEMPERATURES = (0.0, 0.4)
+RETRY_TEMPERATURES = (0.0, 0.4)
 
 
-def _malformed(error: ProviderError) -> bool:
+def malformed(error: ProviderError) -> bool:
     text = str(error)
     return error.status == 500 or "Argumentos ilegibles" in text
 

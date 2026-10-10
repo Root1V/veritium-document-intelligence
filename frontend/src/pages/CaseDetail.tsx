@@ -235,7 +235,10 @@ export function CaseDetailPage() {
             instrucciones usadas
           </Link>
         )}
-        <Link to="/cases" className="ml-auto text-sm underline">
+        <Link to={`/asistente?case=${result.case.id}`} className="ml-auto text-sm underline">
+          Preguntar al asistente
+        </Link>
+        <Link to="/cases" className="text-sm underline">
           Volver a expedientes
         </Link>
       </div>

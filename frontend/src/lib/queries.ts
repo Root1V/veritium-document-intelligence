@@ -5,6 +5,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from '@/lib/apiClient'
 import { getToken } from '@/lib/auth'
 import type {
+  AssistantReply,
+  AssistantTurn,
   Investigation,
   InvestigationStats,
   ToolSpec,
@@ -948,4 +950,11 @@ export function useDismissInvestigation() {
 
 export function useInvestigationStats() {
   return useQuery({ queryKey: ['investigation-stats'], queryFn: async () => (await apiClient.get<InvestigationStats>('/v1/investigations/stats')).data })
+}
+
+export function useAskAssistant() {
+  return useMutation({
+    mutationFn: async (body: { conversation: AssistantTurn[]; case_id?: string }) =>
+      (await apiClient.post<AssistantReply>('/v1/assistant/messages', body)).data,
+  })
 }

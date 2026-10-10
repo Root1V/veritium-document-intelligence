@@ -1013,3 +1013,16 @@ export interface InvestigationStats {
   acceptance_rate: number | null
   by_cause: Record<string, number>
 }
+
+// --- User's assistant (VRT-54) -------------------------------------------------
+
+export interface AssistantTurn {
+  role: 'user' | 'assistant'
+  text: string
+}
+
+export interface AssistantReply {
+  answer: string
+  cases: { id: string; label: string }[]
+  consulted: string[]
+}

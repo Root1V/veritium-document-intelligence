@@ -108,6 +108,8 @@ class Settings(BaseSettings):
     extraction_max_turns: int = 20
     # Turns the discrepancy investigator may take on one finding (VRT-66).
     investigation_max_turns: int = 12
+    # Turns the user's assistant may take on one question (VRT-54).
+    assistant_max_turns: int = 8
 
     # --- Review routing ---
     review_confidence_threshold: float = 0.75
