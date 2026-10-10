@@ -62,10 +62,12 @@ class Settings(BaseSettings):
     # Per-request timeout for axonium's calls to prometheus. Without an explicit bound, a stalled connection blocks a
     # document's processing indefinitely — confirmed in practice.
     llm_request_timeout_seconds: float = 180.0
-    # How many times the extraction agent retries a model call the provider
-    # declares retryable (rate limit, the same request still in flight),
-    # waiting what it asks each time (synaptum caps a wait at 30 s).
-    llm_max_retries: int = 8
+    # How many times an agent retries a model call the provider declares
+    # retryable (rate limit, the same request still in flight), waiting what
+    # it asks each time (synaptum caps a wait at 30 s). Kept low: a 5xx is
+    # retryable too, and a deterministic one (VRT-PRM-005) costs a call per
+    # retry (synaptum's note on VRT-SYN-005).
+    llm_max_retries: int = 3
     # Ceiling on what one model call may generate. Without it a runaway
     # generation (a repetition loop) runs for many minutes, and a retry with
     # the same idempotency key waits for it instead of failing. A truncated
