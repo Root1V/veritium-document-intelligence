@@ -301,6 +301,9 @@ Veritium pasa de "subir documentos sueltos" a ser una **capacidad de decisión d
 - Texto en vigor: borrador en prueba > publicado (BD, tabla `prompt_edits` con la auditoría) > código; la API lo aplica al publicar y el worker en el siguiente ciclo (~30 s). La versión sigue siendo la huella del texto efectivo.
 - Fuera: simular con expedientes pasados un cambio de prompt que influye en el veredicto, y aprobación por una segunda persona.
 
+## VRT-69 — Agente de extracción eficiente
+**Why:** medido el 2026-10-10 sobre 3 documentos reales: la extracción tarda 84–364 s por documento (70–90% del total), en 1–4 turnos de 30–150 s, y cada turno reenvía el texto del documento (pico de 138k tokens/min contra un techo de 40k, `PRM-VRT-001`). **Scope:** primero medir tokens de entrada, salida y caché por turno; después recortar lo que viaja (solo las regiones relevantes, prefijo estable para la caché de prometheus) sin perder exactitud en las suites. Fuera: cambiar de modelo y el OCR (`VRT-PRM-006`).
+
 ## F5 — Canales
 ## VRT-47 — Sesión de carga + verificación rápida
 **Why:** el canal en línea no puede esperar el pipeline completo: quien sube una foto mala debe saberlo mientras aún puede repetirla.
@@ -346,7 +349,7 @@ Veritium pasa de "subir documentos sueltos" a ser una **capacidad de decisión d
 ## VRT-54 — Asistente del usuario
 **Why:** ayudar a operar, buscar y diagnosticar sin conocer la plataforma por dentro. **Scope:** agente synaptum que consume el MCP de Veritium (`MCPTools`) con el token de la persona: mismos permisos, cuota y auditoría que ella, sin un segundo camino con privilegios. Solo usa las tools de lectura; las que cambian algo (abrir expediente, pedir documentos, lentes) quedan como botones en la UI. La conversación vive en el cliente.
 ## VRT-55 — Permisos de tools con Cedar
-**Why:** gobernar qué agente usa qué tool donde hay frontera. **Scope:** políticas Cedar de aeon sobre las tools expuestas por Veritium y las de terceros; las tools internas del agente de extracción (en proceso, sobre un documento propio) quedan fuera.
+**Why:** gobernar qué agente usa qué tool donde hay frontera. **Scope:** políticas Cedar de aeon sobre las tools expuestas por Veritium y las de terceros; las tools internas del agente de extracción (en proceso, sobre un documento propio) quedan fuera. aeon entregó la fuente MCP federada (`AEON-VRT-002`): el aislamiento por tenant de lo que devuelve una tool queda de nuestro lado.
 
 ## VRT-66 — Agente investigador de discrepancias
 **Why:** un 32 % de los documentos termina con campos para revisión humana, casi todos por hallazgos de validación (maestro de empleados y consistencia entre documentos); el revisor empieza cada uno desde cero. **Scope:**
