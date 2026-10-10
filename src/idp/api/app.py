@@ -21,6 +21,7 @@ from idp.persistence.db import get_session_factory
 from idp.persistence.repositories import DocumentTypeRepository, LensRepository, ProcessProfileRepository, PromptEditRepository, PromptRepository, SemanticCatalogRepository
 from idp.storage.object_store import S3ObjectStore
 from idp.events import bus
+from idp import mcp_server
 from idp.pipeline import bulk
 from idp.webhooks import dispatcher
 
@@ -28,6 +29,8 @@ from idp.webhooks import dispatcher
 def create_app() -> FastAPI:
     settings = get_settings()
     setup_tracing(settings)
+    mcp = mcp_server.build(settings)
+    mcp_app = mcp_server.app(mcp, settings)  # before the lifespan: it creates the session manager the lifespan runs
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
@@ -46,7 +49,8 @@ def create_app() -> FastAPI:
         feeder = asyncio.create_task(bulk.run(settings, stop))  # releases bulk jobs' cases a few at a time (VRT-48)
         # The event bus, when configured: outbox out, commands in (VRT-49).
         events = asyncio.create_task(bus.run(settings, stop)) if settings.event_bus_brokers else None
-        async with inference_lifespan(settings):  # the in-process executor and rule drafting call models
+        # The MCP server (VRT-51) and the in-process executor / rule drafting, which call models.
+        async with mcp.session_manager.run(), inference_lifespan(settings):
             yield
         stop.set()
         await feeder
@@ -91,11 +95,14 @@ def create_app() -> FastAPI:
     app.include_router(bulk_jobs.router)
     app.include_router(api_clients.router)
     app.include_router(events.router)
+    app.include_router(auth.well_known)
 
     @app.get("/health")
     async def health() -> dict:
         return {"status": "ok"}
 
+    # Last: /mcp and its metadata (RFC 9728) — everything the API routes above do not take.
+    app.mount("/", mcp_app)
     return app
 
 

@@ -150,6 +150,14 @@ class Settings(BaseSettings):
     webhook_dispatch_interval_seconds: float = 2.0
     webhook_request_timeout_seconds: float = 10.0
 
+    # --- MCP server (VRT-51) ---
+    # Where this API is reached from outside: the MCP resource URL and the
+    # issuer clients get tokens from (POST /auth/token) derive from it.
+    public_api_base_url: str = "http://localhost:8010"
+    # Host headers the MCP endpoint accepts (DNS-rebinding protection).
+    mcp_allowed_hosts: list[str] = ["127.0.0.1:*", "localhost:*", "[::1]:*"]
+    mcp_task_poll_interval_ms: int = 5000
+
     # --- Event bus (VRT-49) ---
     # Kafka protocol (Redpanda in development: docker compose up -d redpanda).
     # Unset = no bus: events still go out by webhook, commands come in by

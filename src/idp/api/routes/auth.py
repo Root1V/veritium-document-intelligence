@@ -83,3 +83,19 @@ async def token(
     if client is None or client.revoked_at is not None or not hmac.compare_digest(client.secret_hash, hash_client_secret(client_secret or "")):
         return _oauth_error("invalid_client", status.HTTP_401_UNAUTHORIZED, "credenciales de sistema inválidas o revocadas")
     return TokenResponse(access_token=create_client_token(settings, user_id=client.user_id, client_id=client.client_id), expires_in=settings.api_client_token_minutes * 60)
+
+
+# RFC 8414 metadata lives at the root, beside the issuer — not under /auth.
+well_known = APIRouter(tags=["auth"])
+
+
+@well_known.get("/.well-known/oauth-authorization-server", include_in_schema=False)
+async def authorization_server_metadata(settings: Settings = Depends(get_app_settings)) -> dict:
+    """So an OAuth client (e.g. an MCP client, VRT-51) finds where to get tokens."""
+    base = settings.public_api_base_url.rstrip("/")
+    return {
+        "issuer": base,
+        "token_endpoint": f"{base}/auth/token",
+        "grant_types_supported": ["client_credentials"],
+        "token_endpoint_auth_methods_supported": ["client_secret_basic", "client_secret_post"],
+    }

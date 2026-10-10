@@ -329,7 +329,10 @@ Veritium pasa de "subir documentos sueltos" a ser una **capacidad de decisión d
 
 ## F6 — Agéntico
 ## VRT-51 — Servidor MCP
-**Why:** otros agentes deben poder usar Veritium como tool. **Scope:** spec 2026-07-28 + Tasks; tools y recursos sobre el mismo núcleo.
+**Why:** otros agentes deben poder usar Veritium como tool. **Scope:**
+- `/mcp` (Streamable HTTP, spec 2026-07-28, sin estado; clientes 2025-11-25 también): tools `list_processes`, `submit_case`, `add_documents`, `get_case_status`, `get_case_result`, `find_cases` y el recurso `veritium://cases/{id}/result`.
+- Extensión Tasks: crear o completar un expediente devuelve una tarea cuyo id es la corrida persistida (`tasks/get` sirve desde cualquier instancia).
+- Mismas identidades, roles y cuota que la API (login o credenciales de sistema de VRT-65; metadata RFC 9728/8414). Fuera: MRTR/elicitación y `notifications/tasks` (las tareas se consultan por sondeo).
 ## VRT-52 — Servidor A2A
 **Why:** delegación entre agentes con un ciclo de vida estándar. **Scope:** A2A v1.0, con Agent Card firmada e `input_required` = falta evidencia.
 ## VRT-53 — Catálogo de tools
