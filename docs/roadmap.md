@@ -359,6 +359,7 @@ Veritium pasa de "subir documentos sueltos" a ser una **capacidad de decisión d
 - Apagada por defecto: medido el 2026-10-10, solo 2 de 74 documentos con hallazgos tenían uno que pudiera detectar (el resto: maestro de empleados y consistencia entre documentos), y cada revisión es un turno más del modelo.
 ## VRT-68 — Clasificación con escalamiento agéntico
 **Why:** la clasificación es una sola llamada; los casos dudosos o los PDF mezclados quedan "genéricos" o mal clasificados. **Scope:** se mantiene la llamada única para los casos claros; con confianza baja o mezcla, un agente revisa páginas (texto, imagen, descripciones de los tipos). Métrica: % de genéricos y de mal clasificados en las suites.
+- **Medido el 2026-10-10, sin construir:** de 188 documentos, 16 quedaron "genéricos", pero fue porque se clasificaron antes de existir su tipo. Reclasificados hoy con una sola llamada, 10 de 10 salen bien (el único genérico real sigue genérico). La confianza no sirve de señal de escalamiento: siempre ≥ 0,8. Se reabre si las suites muestran errores de clasificación.
 
 ## F7 — Hardening y producción
 ## VRT-56 — Ruta de inferencia gobernada
