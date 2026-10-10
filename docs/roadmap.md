@@ -336,11 +336,14 @@ Veritium pasa de "subir documentos sueltos" a ser una **capacidad de decisión d
 ## VRT-52 — Servidor A2A
 **Why:** delegación entre agentes con un ciclo de vida estándar. **Scope:** A2A v1.0, con Agent Card firmada e `input_required` = falta evidencia.
 ## VRT-53 — Catálogo de tools
-**Why:** las validaciones y los agentes necesitan herramientas tipadas y gobernadas. **Scope:** registro de tools deterministas o probabilísticas, con permisos y costo.
+**Why:** las validaciones y los agentes necesitan herramientas tipadas y gobernadas, sin definirlas dos veces. **Scope:**
+- Cada tool se define una sola vez (determinista o con modelo, costo, rol que la usa); de esa definición salen las tools internas (synaptum `@tool`) y las expuestas por MCP.
+- Criterio de exposición: MCP solo donde se cruza una frontera de proceso, dueño o confianza; los pasos internos (clasificar, extraer, leer regiones) no se exponen. Próximas a exponer: enlace de carga, verificación rápida, evidencia de un dato, lentes.
+- Las tools de terceros (RENIEC/SUNAT/SBS, VRT-60) se consumen por MCP desde el gateway de tools de aeon; las expuestas se registran en su catálogo.
 ## VRT-54 — Asistente del usuario
-**Why:** ayudar a operar, buscar y diagnosticar sin conocer la plataforma por dentro. **Scope:** agente synaptum que consume las mismas tools MCP.
+**Why:** ayudar a operar, buscar y diagnosticar sin conocer la plataforma por dentro. **Scope:** agente synaptum que consume el MCP de Veritium (`MCPTools`) con el token de la persona: mismos permisos, cuota y auditoría que ella, sin un segundo camino con privilegios.
 ## VRT-55 — Permisos de tools con Cedar
-**Why:** gobernar qué agente usa qué tool. **Scope:** políticas Cedar de aeon sobre el catálogo de tools.
+**Why:** gobernar qué agente usa qué tool donde hay frontera. **Scope:** políticas Cedar de aeon sobre las tools expuestas por Veritium y las de terceros; las tools internas del agente de extracción (en proceso, sobre un documento propio) quedan fuera.
 
 ## F7 — Hardening y producción
 ## VRT-56 — Ruta de inferencia gobernada
