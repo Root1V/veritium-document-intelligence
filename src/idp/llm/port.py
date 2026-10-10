@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import AsyncGenerator, Coroutine
+from collections.abc import AsyncGenerator, Coroutine, Iterable
 from contextlib import asynccontextmanager
 from typing import Any, Literal, TypeVar
 
@@ -45,16 +45,45 @@ log = logging.getLogger(__name__)
 Role = Literal["reasoning", "vision"]
 T = TypeVar("T", bound=BaseModel)
 
+# Which model serves each role is not configured here: it is the one model of
+# that modality this client may call in prometheus (``models.mine()``), so
+# the client's ``model:<id>`` grants decide it, in one place.
+_MODALITY: dict[Role, str] = {"reasoning": "text", "vision": "vision"}
+
+
+class ModelResolutionError(RuntimeError):
+    pass
+
+
+def pick_models(catalog: Iterable[Any]) -> dict[Role, str]:
+    """The model for each role among the ones granted to this client: exactly
+    one per modality, or an error saying what to ask the prometheus operator."""
+    granted = list(catalog)
+    models: dict[Role, str] = {}
+    problems = []
+    for role, modality in _MODALITY.items():
+        ids = sorted(m.id for m in granted if m.modality == modality)
+        if len(ids) == 1:
+            models[role] = ids[0]
+        elif not ids:
+            problems.append(f"ningún modelo de modalidad '{modality}' (pide el permiso model:<id> para el rol {role})")
+        else:
+            problems.append(f"varios modelos de modalidad '{modality}' ({', '.join(ids)}): deja uno solo para el rol {role}")
+    if problems:
+        raise ModelResolutionError("las credenciales de prometheus (AXONIUM_CLIENT_ID) tienen " + "; ".join(problems))
+    return models
+
 # Turns for a structured call: the first answer plus two corrections shown
 # the validation error (what instructor's max_retries=2 used to give).
 STRUCTURED_MAX_STEPS = 3
 
 
 class Inference:
-    def __init__(self, settings: Settings, *, model: Any = None) -> None:
+    def __init__(self, settings: Settings, *, model: Any = None, models: dict[Role, str] | None = None) -> None:
         """``model`` replaces axonium with any ``(Request) -> Response``
-        callable — for tests."""
+        callable, and ``models`` the role → model id discovery — for tests."""
         self._settings = settings
+        self._models = models
         self._loop = asyncio.get_running_loop()
         self._client = None
         if model is None:
@@ -70,6 +99,20 @@ class Inference:
         self._model_call = model
         self._gateway = LocalGateway(model=model, warn=False)
 
+    async def open(self) -> None:
+        if self._models is None:
+            if self._client is None:
+                raise RuntimeError("con un modelo falso, indica models={'reasoning': ..., 'vision': ...}")
+            self._models = pick_models(await self._client.models.mine())
+            log.info("inference: modelos por rol según prometheus %s", self._models)
+
+    @property
+    def models(self) -> dict[Role, str]:
+        """Role → model id, as resolved at open."""
+        if self._models is None:
+            raise RuntimeError("InferencePort sin abrir")
+        return self._models
+
     async def aclose(self) -> None:
         if self._client is not None:
             await self._client.aclose()
@@ -78,7 +121,7 @@ class Inference:
         return Sampling(temperature=0, max_output_tokens=self._settings.llm_max_output_tokens)
 
     def _model(self, role: Role) -> str:
-        return self._settings.reasoning_model if role == "reasoning" else self._settings.vision_model
+        return self.models[role]
 
     async def _generate(self, purpose: str, role: Role, task: Any, **kwargs: Any) -> Any:
         model = self._model(role)
@@ -109,7 +152,7 @@ class Inference:
         gateway = LocalGateway(model=self._model_call, tools=tools, warn=False)
         agent = Agent(
             "veritium-extractor",
-            model=self._settings.reasoning_model,
+            model=self._model("reasoning"),
             instructions=instructions,
             tools=tools,
             output=output,
@@ -144,10 +187,11 @@ _current: Inference | None = None
 
 
 @asynccontextmanager
-async def inference_lifespan(settings: Settings, *, model: Any = None) -> AsyncGenerator[Inference]:
+async def inference_lifespan(settings: Settings, *, model: Any = None, models: dict[Role, str] | None = None) -> AsyncGenerator[Inference]:
     global _current
-    _current = Inference(settings, model=model)
+    _current = Inference(settings, model=model, models=models)
     try:
+        await _current.open()
         yield _current
     finally:
         await _current.aclose()
@@ -158,6 +202,16 @@ def inference() -> Inference:
     if _current is None:
         raise RuntimeError("InferencePort no iniciado: se abre en el lifespan de la API o al arrancar el worker")
     return _current
+
+
+def model_for(role: Role) -> str:
+    """The model id serving ``role`` (for spans and records)."""
+    return inference().models[role]
+
+
+def resolved_models() -> dict[Role, str] | None:
+    """Role → model id, or None when the port is not open (e.g. a test without models)."""
+    return dict(_current.models) if _current is not None and _current._models is not None else None
 
 
 def structured(*, purpose: str, role: Role, output: type[T], instructions: str | PromptTemplate, task: str) -> T:

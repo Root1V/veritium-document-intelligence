@@ -18,7 +18,7 @@ from pydantic import BaseModel, Field, model_validator
 from idp.config import Settings
 from idp.domain.document_type_catalog import DocumentTypeCatalog, DocumentTypeDefinition, FieldSpec
 from idp.domain.semantic import SemanticCatalog
-from idp.llm.port import structured
+from idp.llm.port import model_for, structured
 from idp.llm.prompts import prompt
 from idp.observability.otel import traced_llm_call
 from idp.parsing.normalize import ParsedDocument
@@ -108,7 +108,7 @@ def propose_type_from_example(
     task = f"Texto del documento de ejemplo:\n\n{parsed.full_text[:8000]}"
     if name_hint:
         task = f"El usuario lo llama: {name_hint}\n\n{task}"
-    with traced_llm_call(role="reasoning", model=settings.reasoning_model):
+    with traced_llm_call(role="reasoning", model=model_for("reasoning")):
         return structured(
             purpose="propose_type_from_example",
             role="reasoning",

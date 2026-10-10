@@ -16,15 +16,15 @@ cada item, en [`docs/roadmap.md`](docs/roadmap.md).
 
 - Python 3.13, [`uv`](https://docs.astral.sh/uv/)
 - Docker (Postgres + MinIO via `docker-compose.yml`)
-- Un endpoint OpenAI-compatible ya corriendo para los roles `reasoning` y
-  `vision` (p. ej. tu propio proyecto de serving Prometheus, o cualquier
-  servidor vLLM/llama.cpp). Este proyecto **nunca** despliega ni administra
-  esa infraestructura — solo apunta a ella via configuracion.
+- Prometheus corriendo y un cliente de Veritium en él (client credentials) con
+  permiso sobre un modelo de texto y uno de visión. Veritium llega a los
+  modelos **solo** por el SDK de axonium y toma de esos permisos qué modelo usa
+  en cada rol; nunca despliega ni administra esa infraestructura.
 
 ## Arranque rapido
 
 ```bash
-cp .env.example .env   # ajusta REASONING_BASE_URL / VISION_BASE_URL a tus endpoints reales
+cp .env.example .env   # completa AXONIUM_CLIENT_ID / AXONIUM_CLIENT_SECRET (cliente de Veritium en prometheus)
 docker compose up -d
 uv sync --extra docling --extra paddleocr
 uv run alembic upgrade head

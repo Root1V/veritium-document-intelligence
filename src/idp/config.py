@@ -1,11 +1,11 @@
 """Central configuration. Everything that was a hardcoded literal in the PoC
-(model names, endpoint URLs, thresholds, truncation limits) lives here as a
-single ``Settings`` object, sourced from environment variables / ``.env``.
+(endpoint URLs, thresholds, truncation limits) lives here as a single
+``Settings`` object, sourced from environment variables / ``.env``.
 
-Nothing here deploys or manages model-serving infrastructure — ``reasoning_*``
-and ``vision_*`` settings simply point at already-running OpenAI-compatible
-endpoints (e.g. the user's own Prometheus serving project, or anything else
-speaking the same protocol).
+Nothing here deploys or manages model-serving infrastructure: models are
+reached only through axonium's SDK to prometheus, with Veritium's client
+credentials, and which model serves each role comes from that client's
+grants (llm/port.py) — no model endpoint or id is configured here.
 """
 
 from __future__ import annotations
@@ -52,16 +52,14 @@ class Settings(BaseSettings):
     storage_region: str = "us-east-1"
 
     # --- Inference (VRT-29): synaptum → axonium → prometheus's gateway ---
-    # Model ids are prometheus registry ids, and the client_credentials pair
-    # is Veritium's prometheus client (scopes model:<id>). axonium knows the
+    # The only way to a model. The client_credentials pair is Veritium's
+    # prometheus client; its model:<id> grants decide which model serves each
+    # role (llm/port.py: one text model, one vision model). axonium knows the
     # gateway's URL.
-    reasoning_model: str = "gpt-oss-20b-mxfp4"
-    vision_model: str = "qwen3vl-30b-a3b"
     axonium_client_id: str | None = None
     axonium_client_secret: SecretStr | None = None
 
-    # Per-request timeout for calls to the externally-served LLM/VLM
-    # endpoints. Without an explicit bound, a stalled connection blocks a
+    # Per-request timeout for axonium's calls to prometheus. Without an explicit bound, a stalled connection blocks a
     # document's processing indefinitely — confirmed in practice.
     llm_request_timeout_seconds: float = 180.0
     # Ceiling on what one model call may generate. Without it a runaway

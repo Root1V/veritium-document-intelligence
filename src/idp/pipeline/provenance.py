@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from idp.config import Settings
+from idp.llm.port import resolved_models
 from idp.llm.prompts import versions as prompt_versions
 from idp.persistence.models import ProcessProfileVersion
 from idp.validation.base import ValidationRule
@@ -64,8 +65,8 @@ def build_provenance(
         "profile": profile,
         # Filled in once resolution actually loads it (see orchestrator).
         "semantic_catalog_version": None,
-        # Prometheus registry ids: the gateway serves exactly these (VRT-29).
-        "models": {"reasoning": settings.reasoning_model, "vision": settings.vision_model},
+        # The prometheus model ids that served each role, as discovered from this client's grants.
+        "models": resolved_models(),
         "prompts": prompt_versions(),
         "semantic_grounding": settings.extraction_semantic_grounding,
         "inference": {"route": "synaptum → axonium → prometheus", "synaptum": _package_version("synaptum"), "axonium": _package_version("axonium")},

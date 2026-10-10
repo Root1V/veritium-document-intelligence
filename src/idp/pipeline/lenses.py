@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from idp.config import Settings
 from idp.domain.lenses import LensDefinition, LensDocument, LensSummaryAnswer, PlaybookAnswer, build_output, render_context, render_facts
-from idp.llm.port import structured
+from idp.llm.port import model_for, resolved_models, structured
 from idp.llm.prompts import prompt
 from idp.observability.otel import traced_llm_call
 from idp.parsing.normalize import ParsedDocument
@@ -82,7 +82,7 @@ async def lens_documents(settings: Settings, session: AsyncSession, case: Case, 
 
 def _ask(settings: Settings, lens: LensDefinition, context: str) -> LensSummaryAnswer | PlaybookAnswer:
     area = "Riesgos" if lens.area == "riesgos" else "Legal"
-    with traced_llm_call(role="reasoning", model=settings.reasoning_model):
+    with traced_llm_call(role="reasoning", model=model_for("reasoning")):
         if lens.kind == "summary":
             return structured(purpose=f"lens/{lens.key}", role="reasoning", output=LensSummaryAnswer,
                               instructions=_SUMMARY.render(area=area, instructions=lens.instructions), task=context)
@@ -115,7 +115,7 @@ async def run_lens(settings: Settings, result_id: uuid.UUID) -> None:
             context, index, truncated = render_context(documents, facts, fact_index)
             answer = await asyncio.to_thread(_ask, settings, lens, context)
             result.output = build_output(lens, answer, index, truncated=truncated).model_dump(mode="json")
-            result.status, result.model = "done", settings.reasoning_model
+            result.status, result.model = "done", (resolved_models() or {}).get("reasoning")
         except Exception as exc:
             result.status, result.error = "failed", f"{type(exc).__name__}: {exc}"[:2000]
         result.finished_at = datetime.now(UTC)

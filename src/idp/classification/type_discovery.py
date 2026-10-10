@@ -22,7 +22,7 @@ from idp.config import Settings
 from idp.domain.document_type_catalog import DocumentTypeCatalog
 from idp.domain.schemas.generic import GenericSchema
 from idp.domain.type_suggestion import DocumentTypeProposal
-from idp.llm.port import structured
+from idp.llm.port import model_for, structured
 from idp.llm.prompts import prompt
 from idp.observability.otel import traced_llm_call
 
@@ -53,7 +53,7 @@ def suggest_document_type(settings: Settings, generic_result: GenericSchema, cat
     known_types = "\n".join(f"- {k}: {catalog.current(k)[1].description}" for k in catalog.keys())  # type: ignore[index]
     fields_summary = "\n".join(f"- {f.key}: {f.value.value!r}" for f in generic_result.fields)
     summary = generic_result.summary.value if generic_result.summary else ""
-    with traced_llm_call(role="reasoning", model=settings.reasoning_model):
+    with traced_llm_call(role="reasoning", model=model_for("reasoning")):
         return structured(
             purpose="suggest_document_type",
             role="reasoning",

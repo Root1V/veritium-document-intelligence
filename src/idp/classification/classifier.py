@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field, create_model
 
 from idp.config import Settings
 from idp.domain.document_type_catalog import GENERIC, DocumentTypeCatalog
-from idp.llm.port import structured
+from idp.llm.port import model_for, structured
 from idp.llm.prompts import prompt
 from idp.observability.otel import traced_llm_call
 from idp.parsing.normalize import ParsedDocument
@@ -48,7 +48,7 @@ def classify(settings: Settings, parsed: ParsedDocument, catalog: DocumentTypeCa
         [f"- {k}: {catalog.current(k)[1].description}" for k in keys] + [f"- {GENERIC}: {GENERIC_DESCRIPTION}"]  # type: ignore[index]
     )
     text_excerpt = parsed.full_text[:4000]
-    with traced_llm_call(role="reasoning", model=settings.reasoning_model):
+    with traced_llm_call(role="reasoning", model=model_for("reasoning")):
         result = structured(
             purpose="classify",
             role="reasoning",

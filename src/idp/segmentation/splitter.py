@@ -24,7 +24,7 @@ from __future__ import annotations
 from pydantic import BaseModel, Field
 
 from idp.config import Settings
-from idp.llm.port import structured
+from idp.llm.port import model_for, structured
 from idp.llm.prompts import prompt
 from idp.observability.otel import traced_llm_call
 from idp.parsing.normalize import ParsedDocument
@@ -82,7 +82,7 @@ def detect_segments(settings: Settings, parsed: ParsedDocument) -> list[Document
     if parsed.page_count <= 1:
         return [DocumentSegment(start_page=0, end_page=0, reasoning="Documento de una sola pagina.")]
 
-    with traced_llm_call(role="reasoning", model=settings.reasoning_model):
+    with traced_llm_call(role="reasoning", model=model_for("reasoning")):
         result = structured(
             purpose="segment",
             role="reasoning",

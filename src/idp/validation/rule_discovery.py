@@ -12,7 +12,7 @@ from __future__ import annotations
 from idp.config import Settings
 from idp.domain.rule_draft import RuleDraft
 from idp.domain.semantic import SemanticCatalog
-from idp.llm.port import structured
+from idp.llm.port import model_for, structured
 from idp.llm.prompts import prompt
 from idp.observability.otel import traced_llm_call
 
@@ -75,7 +75,7 @@ def draft_rule(
         else ""
     )
     user_message = f"{target}\nCategoria: {category}\nDescripcion de la regla: {description}{field_hint}{case_hint}"
-    with traced_llm_call(role="reasoning", model=settings.reasoning_model):
+    with traced_llm_call(role="reasoning", model=model_for("reasoning")):
         return structured(
             purpose="draft_rule",
             role="reasoning",

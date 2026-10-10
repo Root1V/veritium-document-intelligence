@@ -20,7 +20,7 @@ from idp.config import Settings
 from idp.domain.envelope import ToolCallRecord
 from idp.extraction.agentic.prompts import build_system_prompt
 from idp.extraction.agentic.tools import region_tools
-from idp.llm.port import inference
+from idp.llm.port import inference, model_for
 from idp.observability.otel import traced_llm_call
 from idp.parsing.normalize import ParsedDocument
 
@@ -52,7 +52,7 @@ def run_agentic_extraction(
     if correction_note:
         task += f"\n\nCorreccion requerida: {correction_note}"
     port = inference()
-    with traced_llm_call(role="reasoning", model=settings.reasoning_model):
+    with traced_llm_call(role="reasoning", model=model_for("reasoning")):
         try:
             result, steps = port.run_sync(
                 port.run_agent(
