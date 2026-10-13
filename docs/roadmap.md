@@ -307,6 +307,9 @@ Veritium pasa de "subir documentos sueltos" a ser una **capacidad de decisión d
 - Descartado con medición: razonamiento «low» (−86% de tiempo, exactitud 83% → 74%) y temperatura 1.0 en todo (sin bucles, pero 69%).
 - Medido el 2026-10-13, 3 corridas por variante sobre 4 documentos con valores verificados a mano: exactitud 65% → 84%, tiempo medio 1.073 s → 665 s (peor caso 2.079 s → 745 s), salida 62,7k → 30,1k tokens. Siguiente, fuera de este ítem: cortar el bucle apenas empieza (streaming) en vez de esperar al tope; cada bucle aún cuesta ~80 s.
 
+## VRT-70 — Lectura (OCR) más rápida en el mismo hardware
+**Why:** la lectura es la segunda etapa más cara (5–22 s por página A4 en CPU, según los píxeles, no las líneas) y prometheus mostró que estamos en el runtime más lento para Mac (`PRM-VRT-002`); ganar aquí no requiere GPU ni esperar a otro equipo. **Scope:** medir sobre las mismas páginas el runtime (PaddlePaddle frente a ONNX Runtime), el detector (`server` frente a `mobile`), la orientación de línea y la resolución de entrada; adoptar la combinación que baje el tiempo sin perder los valores que la extracción necesita. Fuera: servir el OCR desde prometheus (`VRT-PRM-006`, en espera de esta medición).
+
 ## F5 — Canales
 ## VRT-47 — Sesión de carga + verificación rápida
 **Why:** el canal en línea no puede esperar el pipeline completo: quien sube una foto mala debe saberlo mientras aún puede repetirla.
