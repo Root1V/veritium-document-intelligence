@@ -305,7 +305,7 @@ Veritium pasa de "subir documentos sueltos" a ser una **capacidad de decisión d
 **Why:** la extracción es el 70–90% del tiempo de cada documento. Medido el 2026-10-10 (4 documentos reales, tokens por turno): el costo es lo que el modelo **escribe**, no lo que se le envía (entrada ≤13k tokens con ~95% servido de caché). La mayor pérdida son turnos en que gpt-oss, a temperatura 0, entra en un bucle de razonamiento hasta el tope de 8.192 tokens (3 de 6 turnos en una solicitud de préstamo: 17 min). **Scope:**
 - Hecho: un turno cortado al tope se repite una vez con temperatura 0.6; el agente escribe solo valor, confianza, texto y región (página y caja las pone la plataforma); la lista de regiones omite las vacías y marca con «…» las recortadas; las listas se entregan completas.
 - Descartado con medición: razonamiento «low» (−86% de tiempo, exactitud 83% → 74%) y temperatura 1.0 en todo (sin bucles, pero 69%).
-- Falta: confirmar el efecto con varias corridas sobre prometheus sin otros modelos compitiendo (el 2026-10-10 la generación cayó a un tercio y un turno superó el timeout de 180 s).
+- Medido el 2026-10-13, 3 corridas por variante sobre 4 documentos con valores verificados a mano: exactitud 65% → 84%, tiempo medio 1.073 s → 665 s (peor caso 2.079 s → 745 s), salida 62,7k → 30,1k tokens. Siguiente, fuera de este ítem: cortar el bucle apenas empieza (streaming) en vez de esperar al tope; cada bucle aún cuesta ~80 s.
 
 ## F5 — Canales
 ## VRT-47 — Sesión de carga + verificación rápida
