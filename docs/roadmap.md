@@ -360,7 +360,12 @@ Método, mediciones y aprendizajes: [eficiencia-modelos-ia.md](eficiencia-modelo
 ## VRT-54 — Asistente del usuario
 **Why:** ayudar a operar, buscar y diagnosticar sin conocer la plataforma por dentro. **Scope:** agente synaptum que consume el MCP de Veritium (`MCPTools`) con el token de la persona: mismos permisos, cuota y auditoría que ella, sin un segundo camino con privilegios. Solo usa las tools de lectura; las que cambian algo (abrir expediente, pedir documentos, lentes) quedan como botones en la UI. Para servirle se sumaron al MCP la búsqueda por día, veredicto, estado y proceso, `cases_overview` y `get_review_queue`; los números los calcula Veritium (`summary`), no el modelo. La conversación vive en el cliente.
 ## VRT-55 — Permisos de tools con Cedar
-**Why:** gobernar qué agente usa qué tool donde hay frontera. **Scope:** políticas Cedar de aeon sobre las tools expuestas por Veritium y las de terceros; las tools internas del agente de extracción (en proceso, sobre un documento propio) quedan fuera. aeon entregó la fuente MCP federada (`AEON-VRT-002`): el aislamiento por tenant de lo que devuelve una tool queda de nuestro lado.
+**Why:** gobernar qué agente usa qué tool donde hay frontera. **Scope:**
+- Las tools MCP de Veritium están federadas en aeon (`deploy/aeon/tool_sources.yaml`, aeon `TOOL-010`). Cada tool está aprobada y clasificada una por una, con su descriptor fijado por huella. Las escrituras llevan clave de idempotencia. `request_documents_link` queda fuera.
+- Cedar (`deploy/aeon/policies/veritium.yaml`): lecturas abiertas al agente asistente y a los clientes MCP; escrituras sin permiso (denegadas) hasta que un agente real las necesite.
+- Verificado con `scripts/aeon_dev.sh verify-tools`: por las dos puertas de aeon, una lectura permitida llega y una escritura denegada nunca llega (el expediente no existe en Veritium); la bitácora de aeon registra ambas.
+- Límites de aeon: la puerta MCP tiene un solo principal para todo cliente, y el control por agente solo existe en `POST /execute`. Veritium es mono-tenant: antes de un aeon compartido, el MCP debe filtrar por el tenant del cliente (VRT-57).
+- Fuera: las tools internas del agente de extracción (en proceso, sobre un documento propio).
 
 ## VRT-66 — Agente investigador de discrepancias
 **Why:** un 32 % de los documentos termina con campos para revisión humana, casi todos por hallazgos de validación (maestro de empleados y consistencia entre documentos); el revisor empieza cada uno desde cero. **Scope:**

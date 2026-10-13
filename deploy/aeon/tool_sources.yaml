@@ -1,0 +1,45 @@
+# Veritium's MCP tools federated into aeon-toolgw (VRT-55, aeon TOOL-010), so Cedar
+# governs which agent calls which. Commited: credentials are NAMED, never written
+# (scripts/aeon_dev.sh setup creates aeon's system client in Veritium and passes
+# its id and secret in these variables).
+#
+# Endpoint on loopback: aeon accepts only https, or http to loopback. toolgw runs
+# in Docker and Veritium on the host, so the `veritium-bridge` container
+# (compose.override.yml) shares toolgw's network and forwards 127.0.0.1:8010 to
+# the host's Veritium.
+#
+# Each tool is approved here one by one; what Veritium offers and is not listed
+# is not served. Left out on purpose: request_documents_link (creates a link a
+# person receives; not idempotent).
+#
+# TENANTS: Veritium is single-tenant today (every case in `default`), so what
+# these tools return is not split by aeon tenant. Before a shared multi-tenant
+# aeon, Veritium's MCP server must scope by the calling client's tenant (VRT-57).
+#
+# descriptor_sha256 pins what was reviewed: if Veritium changes a tool's name,
+# description or input schema, aeon stops serving it and logs the new digest.
+kind: ToolSourceBundle
+sources:
+  - id: veritium
+    endpoint: http://127.0.0.1:8010/mcp
+    prefix: veritium.
+    refresh: 60s
+    auth:
+      token_url: http://127.0.0.1:8010/auth/token
+      client_id_env: AEON_VERITIUM_MCP_CLIENT_ID
+      client_secret_env: AEON_VERITIUM_MCP_CLIENT_SECRET
+    tools:
+      # --- reads ---
+      - {name: list_processes, side_effect: READ_ONLY, risk: low, descriptor_sha256: "4d57f80ce780e6be7ad63eadd19a0578166062fe1704b777686c6418766c954e"}
+      - {name: find_cases, side_effect: READ_ONLY, risk: low, descriptor_sha256: "e2c319ba5ba034571368406c7ab281c198298962acbd9e090c182645a9aec3f7"}
+      - {name: cases_overview, side_effect: READ_ONLY, risk: low, descriptor_sha256: "082a6bd54d64998552e7513d24668389fcae86ea79624d2904c932a68a6092a2"}
+      - {name: get_case_status, side_effect: READ_ONLY, risk: low, descriptor_sha256: "eae6fc381c0a7305af0bec5fd7cbcacc589c88a69b6bcdd2a816a03345954fb1"}
+      - {name: get_case_result, side_effect: READ_ONLY, risk: low, descriptor_sha256: "63ace42a2b2571a2b9471194e31b51411a136fafbb607af181b26b0a6ebfc031"}
+      - {name: get_field_evidence, side_effect: READ_ONLY, risk: low, descriptor_sha256: "d71de84b470f44b70f955cd8fcc5ea970aaefdca04ef7f1ca8420ff673d423a6"}
+      - {name: get_review_queue, side_effect: READ_ONLY, risk: low, descriptor_sha256: "257f2243f2ee977fc6c2f91f9fcf3716749ea365150c01f0ae5b6ef39129e897"}
+      - {name: list_lenses, side_effect: READ_ONLY, risk: low, descriptor_sha256: "d9519cc091fb073c48817ed9ede182f968b2da3f89c6e2f8bd5c50192636f704"}
+      - {name: quick_check_document, side_effect: READ_ONLY, risk: low, descriptor_sha256: "6bb79b1a2d9b4f6dcd9f6e5dc153cc1fc9964e579b20c76bb33827290df2b775"}
+      # --- writes: served, but no Cedar permit names them yet (default deny) ---
+      - {name: submit_case, side_effect: WRITE, risk: high, idempotency_key_fields: [request_id], descriptor_sha256: "61eae7a87cb786430ac64cdc4569a70d66bfc0dcab2fc346c050fe7bb190173e"}
+      - {name: add_documents, side_effect: WRITE, risk: high, idempotency_key_fields: [request_id], descriptor_sha256: "35e9d5a354ccb2dd749b3a3550e77fdc64b2480df3ca7939c10ab346c91c6d8e"}
+      - {name: read_with_lens, side_effect: WRITE, risk: low, idempotency_key_fields: [case_id, lens_key], descriptor_sha256: "a0084be7773a092b67c640bfed364120334162cfcd9711cee9226825374b43a0"}

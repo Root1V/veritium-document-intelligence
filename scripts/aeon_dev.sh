@@ -6,6 +6,7 @@
 #   scripts/aeon_dev.sh setup    # once: tokens (deploy/aeon/secrets/), callers.yaml, AEON_API_TOKEN in .env
 #   scripts/aeon_dev.sh up       # build + start temporal, toolgw, worker, runcontroller (+ deps)
 #   scripts/aeon_dev.sh status | logs [service] | down
+#   scripts/aeon_dev.sh reload-tools | verify-tools   # Veritium's tools federated in aeon, under Cedar (VRT-55)
 #
 # AEON_REPO defaults to the sibling checkout ../aeon-ai.
 set -euo pipefail
@@ -13,13 +14,14 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 DIR="$ROOT/deploy/aeon"
 AEON_REPO="${AEON_REPO:-$(cd "$ROOT/.." && pwd)/aeon-ai}"
 AGENT="veritium-case-run@1.0.0"
-SERVICES=(temporal temporal-db temporal-ui postgres searxng toolgw worker runcontroller)
+SERVICES=(temporal temporal-db temporal-ui postgres searxng toolgw veritium-bridge worker runcontroller)
+TOOLS_AGENT="veritium-assistant@1.0.0"  # the agent that reads Veritium's tools through aeon (VRT-55)
 
 sha() { printf '%s' "$1" | shasum -a 256 | cut -d' ' -f1; }
 
 setup() {
   mkdir -p "$DIR/secrets" "$DIR/artifacts"
-  for name in api_token worker_token; do
+  for name in api_token worker_token tools_token; do
     [ -s "$DIR/secrets/$name" ] || { openssl rand -hex 32 | tr -d '\n' > "$DIR/secrets/$name"; chmod 600 "$DIR/secrets/$name"; }
   done
   cat > "$DIR/callers.yaml" <<YAML
@@ -39,7 +41,39 @@ callers:
     tokenSHA256: "$(sha "$(cat "$DIR/secrets/worker_token")")"
     mayActAs: [$AGENT]
     mayApprove: false
+  - id: veritium-tools        # calls Veritium's federated tools through aeon-toolgw (VRT-55), as the agent below
+    kind: service
+    tenant: veritium
+    tokenSHA256: "$(sha "$(cat "$DIR/secrets/tools_token")")"
+    mayActAs: [$TOOLS_AGENT]
+    mayApprove: false
 YAML
+  # aeon's own system credential in Veritium (VRT-65): what aeon-toolgw uses to reach Veritium's MCP server.
+  if [ ! -s "$DIR/secrets/veritium_mcp_client_secret" ]; then
+    (cd "$ROOT" && uv run --no-sync python - "$DIR/secrets" <<'PY')
+import asyncio, secrets, sys
+from datetime import UTC, datetime
+from pathlib import Path
+from idp.auth.security import hash_client_secret, hash_password
+from idp.config import get_settings
+from idp.persistence.db import get_session_factory
+from idp.persistence.models import ApiClient
+from idp.persistence.repositories import UserRepository
+
+async def main(out: Path) -> None:
+    client_id, secret = f"vrt_{secrets.token_hex(8)}", secrets.token_urlsafe(32)
+    async with get_session_factory(get_settings())() as session:
+        user = await UserRepository(session).create(name="Sistema · aeon (tools federadas)", email=f"{client_id}@sistemas.veritium",
+                                                    password_hash=hash_password(secrets.token_urlsafe(32)), role="integracion")
+        session.add(ApiClient(name="aeon (tools federadas, VRT-55)", client_id=client_id, secret_hash=hash_client_secret(secret), user_id=user.id,
+                              rate_limit_per_minute=600, created_by="scripts/aeon_dev.sh", secret_rotated_at=datetime.now(UTC)))
+        await session.commit()
+    for name, value in (("veritium_mcp_client_id", client_id), ("veritium_mcp_client_secret", secret)):
+        (out / name).write_text(value); (out / name).chmod(0o600)
+
+asyncio.run(main(Path(sys.argv[1])))
+PY
+  fi
   if ! grep -q '^AEON_API_TOKEN=' "$ROOT/.env" 2>/dev/null; then
     printf '\n# Token de Veritium ante su despliegue de aeon (VRT-26). Generado por scripts/aeon_dev.sh setup.\nAEON_API_TOKEN=%s\n' "$(cat "$DIR/secrets/api_token")" >> "$ROOT/.env"
   fi
@@ -50,6 +84,8 @@ compose() {
   [ -f "$AEON_REPO/deploy/compose/docker-compose.yml" ] || { echo "no encuentro aeon en $AEON_REPO (definir AEON_REPO)"; exit 1; }
   [ -s "$DIR/secrets/worker_token" ] || { echo "falta setup: scripts/aeon_dev.sh setup"; exit 1; }
   VERITIUM_AEON_DIR="$DIR" AEON_CALLERS_PATH=/veritium/callers.yaml AEON_CALLER_TOKEN="$(cat "$DIR/secrets/worker_token")" \
+    AEON_VERITIUM_MCP_CLIENT_ID="$(cat "$DIR/secrets/veritium_mcp_client_id" 2>/dev/null)" \
+    AEON_VERITIUM_MCP_CLIENT_SECRET="$(cat "$DIR/secrets/veritium_mcp_client_secret" 2>/dev/null)" \
     docker compose -p veritium-aeon -f "$AEON_REPO/deploy/compose/docker-compose.yml" -f "$DIR/compose.override.yml" --profile core "$@"
 }
 
@@ -61,5 +97,8 @@ case "${1:-}" in
   down) compose down ;;
   status) compose ps ;;
   logs) shift; compose logs --tail=100 "$@" ;;
+  # Restarts the gateway after a change to tool_sources.yaml or the Cedar bundle; the bridge shares its network.
+  reload-tools) compose up -d --force-recreate toolgw veritium-bridge ;;
+  verify-tools) (cd "$ROOT" && AEON_TOOLS_TOKEN="$(cat "$DIR/secrets/tools_token")" uv run --no-sync python scripts/verify_aeon_tools.py) ;;
   *) sed -n '2,10p' "$0"; exit 1 ;;
 esac

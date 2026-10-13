@@ -11,7 +11,7 @@
 # Only what Veritium uses from the host is published, on 127.0.0.1 (the
 # convention agreed in VRT-AEON-002) and on ports of its own so it can run
 # beside aeon's own dev stack: Temporal 7243, Temporal UI 8233, runcontroller
-# 9414. Postgres, searxng and toolgw stay internal. MinIO is not started.
+# 9414, toolgw 9413. Postgres and searxng stay internal. MinIO is not started.
 services:
   temporal:
     ports: !override
@@ -24,7 +24,9 @@ services:
   searxng:
     ports: !reset []
   toolgw:
-    ports: !reset []
+    # Published for scripts/verify_aeon_tools.py and Veritium's own calls through aeon (VRT-55).
+    ports: !override
+      - "127.0.0.1:9413:9403"
     environment:
       # One Cedar bundle per tenant (aeon GOV-001d): policies/<tenant>.yaml.
       # The base file sets the single-bundle variable; both at once is refused.
@@ -33,6 +35,11 @@ services:
       # Surfaces built at startup (tool executor, MCP catalog, A2A) serve the
       # deployment tenant, and the gateway refuses to start without its bundle.
       AEON_TENANT_ID: veritium
+      # Veritium's MCP tools, federated (VRT-55): tool_sources.yaml, with aeon's
+      # system credential in Veritium passed by scripts/aeon_dev.sh.
+      AEON_TOOL_SOURCES_PATH: /veritium/tool_sources.yaml
+      AEON_VERITIUM_MCP_CLIENT_ID: ${AEON_VERITIUM_MCP_CLIENT_ID:-}
+      AEON_VERITIUM_MCP_CLIENT_SECRET: ${AEON_VERITIUM_MCP_CLIENT_SECRET:-}
     volumes:  # merged by target: /artifacts is replaced, the rest kept
       - ${VERITIUM_AEON_DIR}/artifacts:/artifacts:ro
       - ${VERITIUM_AEON_DIR}:/veritium:ro
@@ -49,3 +56,13 @@ services:
       - "127.0.0.1:9414:9404"
     volumes:
       - ${VERITIUM_AEON_DIR}:/veritium:ro
+  # aeon reaches a tool source only over https or loopback http. Sharing toolgw's
+  # network namespace, this forwards toolgw's 127.0.0.1:8010 to Veritium on the
+  # host, so tool_sources.yaml can name a loopback endpoint. Recreate it with
+  # toolgw (scripts/aeon_dev.sh reload-tools): the namespace is toolgw's.
+  veritium-bridge:
+    image: alpine/socat:1.8.0.3
+    network_mode: "service:toolgw"
+    command: ["tcp-listen:8010,fork,reuseaddr", "tcp-connect:host.docker.internal:8010"]
+    depends_on: [toolgw]
+    restart: unless-stopped
