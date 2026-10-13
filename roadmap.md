@@ -75,7 +75,7 @@ Estados: `done` · `todo` · `blocked` (espera a otro equipo) · `superseded` (a
 | VRT-45 | Lentes de Riesgos y Legal | done | Resúmenes y análisis de cláusulas contra un playbook, con evidencia citada. |
 | VRT-46 | Prompts versionados y grounding semántico | done | Prompts versionados en synaptum; medir el efecto de inyectar las definiciones semánticas. |
 | VRT-63 | Edición gobernada de prompts | done | Un rol técnico edita instrucciones al modelo: borrador, evaluación obligatoria, publicación y vuelta atrás. |
-| VRT-69 | Agente de extracción eficiente | todo | Medir tokens por turno y recortar lo que el agente reenvía; hoy es el 70–90% del tiempo de cada documento. |
+| VRT-69 | Agente de extracción eficiente | done | Medir tokens por turno y recortar lo que el agente reenvía; hoy es el 70–90% del tiempo de cada documento. |
 
 ## F5 — Canales
 
