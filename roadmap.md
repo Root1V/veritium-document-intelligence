@@ -76,7 +76,7 @@ Estados: `done` · `todo` · `blocked` (espera a otro equipo) · `superseded` (a
 | VRT-46 | Prompts versionados y grounding semántico | done | Prompts versionados en synaptum; medir el efecto de inyectar las definiciones semánticas. |
 | VRT-63 | Edición gobernada de prompts | done | Un rol técnico edita instrucciones al modelo: borrador, evaluación obligatoria, publicación y vuelta atrás. |
 | VRT-69 | Agente de extracción eficiente | done | Medir tokens por turno y recortar lo que el agente reenvía; hoy es el 70–90% del tiempo de cada documento. |
-| VRT-70 | Lectura (OCR) más rápida en el mismo hardware | todo | Runtime y tamaño de modelo del OCR medidos por tiempo y precisión; hoy 5–22 s por página. |
+| VRT-70 | Lectura (OCR) más rápida en el mismo hardware | done | Runtime y tamaño de modelo del OCR medidos por tiempo y precisión; hoy 5–22 s por página. |
 
 ## F5 — Canales
 
