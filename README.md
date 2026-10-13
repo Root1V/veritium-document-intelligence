@@ -27,6 +27,7 @@ cada item, en [`docs/roadmap.md`](docs/roadmap.md).
 cp .env.example .env   # completa AXONIUM_CLIENT_ID / AXONIUM_CLIENT_SECRET (cliente de Veritium en prometheus)
 docker compose up -d
 uv sync --extra docling --extra paddleocr
+scripts/export_ocr_onnx.sh   # una vez: convierte a ONNX los modelos del OCR (VRT-70)
 uv run alembic upgrade head
 uv run python scripts/seed_reference_data.py
 uv run uvicorn idp.api.app:app --reload

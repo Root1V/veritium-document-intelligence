@@ -83,6 +83,10 @@ from idp.validation.rules.semantic_rules import SemanticAttributeConsistency, fo
 def make_parser_backend(settings: Settings) -> ParserBackend:
     if settings.parser_backend == "docling":
         return DoclingBackend(settings)
+    if settings.parser_backend == "rapidocr":
+        from idp.parsing.rapidocr_backend import RapidOCRBackend
+
+        return RapidOCRBackend(settings)
     return PaddleOCRBackend(settings)
 
 

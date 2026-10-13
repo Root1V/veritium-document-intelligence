@@ -91,11 +91,13 @@ class Settings(BaseSettings):
     public_upload_base_url: str = "http://localhost:5180"
 
     # --- Parsing / OCR backend selection ---
-    # "docling" | "paddleocr" — overridable per document type later; Phase 0
-    # implements both behind the same ParserBackend protocol and compares
-    # them with scripts/compare_ocr_backends.py before fixing a default.
-    parser_backend: Literal["docling", "paddleocr"] = "paddleocr"
+    # "rapidocr": PaddleOCR's models on ONNX Runtime, ~12x faster on CPU
+    # with the same reading (VRT-70); "paddleocr" the same models on
+    # PaddlePaddle; "docling" the other candidate compared in Phase 0.
+    parser_backend: Literal["docling", "paddleocr", "rapidocr"] = "rapidocr"
     ocr_language: str = "es"
+    # Our ONNX conversion of the Paddle models the "rapidocr" reader runs (scripts/export_ocr_onnx.sh).
+    ocr_onnx_dir: str = "~/.veritium/ocr-onnx"
 
     # --- Classification ---
     classification_confidence_threshold: float = 0.6

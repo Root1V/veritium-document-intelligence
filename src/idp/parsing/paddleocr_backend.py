@@ -7,6 +7,7 @@ backend-agnostic ``ParsedDocument`` shape.
 from __future__ import annotations
 
 import os
+from typing import Any
 
 import numpy as np
 
@@ -49,6 +50,10 @@ class PaddleOCRBackend:
             self._layout = LayoutDetection()
         return self._layout
 
+    def _read_lines(self, image_array: np.ndarray) -> list[tuple[str, float, Any]]:
+        """Each text line on the page: its text, confidence and polygon (pixels of this image)."""
+        return [line for res in self._ocr_engine().predict(image_array) for line in zip(res.get("rec_texts", []), res.get("rec_scores", []), res.get("rec_polys", []))]
+
     def parse(self, file_bytes: bytes, filename: str) -> ParsedDocument:
         pages = load_pages(file_bytes, filename)
         blocks: list[ParsedBlock] = []
@@ -60,25 +65,21 @@ class PaddleOCRBackend:
             page_images_b64[page_index] = page_to_b64(image)
             image_array = np.array(image)
 
-            for res in self._ocr_engine().predict(image_array):
-                texts = res.get("rec_texts", [])
-                scores = res.get("rec_scores", [])
-                polys = res.get("rec_polys", [])
-                for text, score, poly in zip(texts, scores, polys):
-                    xs = [float(p[0]) for p in poly]
-                    ys = [float(p[1]) for p in poly]
-                    bbox = [min(xs) / width, min(ys) / height, max(xs) / width, max(ys) / height]
-                    blocks.append(
-                        ParsedBlock(
-                            region_id=region_id,
-                            text=text,
-                            page=page_index,
-                            bbox=bbox,
-                            confidence=float(score),
-                            block_type="text",
-                        )
+            for text, score, poly in self._read_lines(image_array):
+                xs = [float(p[0]) for p in poly]
+                ys = [float(p[1]) for p in poly]
+                bbox = [min(xs) / width, min(ys) / height, max(xs) / width, max(ys) / height]
+                blocks.append(
+                    ParsedBlock(
+                        region_id=region_id,
+                        text=text,
+                        page=page_index,
+                        bbox=bbox,
+                        confidence=float(score),
+                        block_type="text",
                     )
-                    region_id += 1
+                )
+                region_id += 1
 
             for res in self._layout_engine().predict(image_array):
                 for box in res.get("boxes", []):

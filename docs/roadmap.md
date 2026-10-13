@@ -308,7 +308,10 @@ Veritium pasa de "subir documentos sueltos" a ser una **capacidad de decisión d
 - Medido el 2026-10-13, 3 corridas por variante sobre 4 documentos con valores verificados a mano: exactitud 65% → 84%, tiempo medio 1.073 s → 665 s (peor caso 2.079 s → 745 s), salida 62,7k → 30,1k tokens. Siguiente, fuera de este ítem: cortar el bucle apenas empieza (streaming) en vez de esperar al tope; cada bucle aún cuesta ~80 s.
 
 ## VRT-70 — Lectura (OCR) más rápida en el mismo hardware
-**Why:** la lectura es la segunda etapa más cara (5–22 s por página A4 en CPU, según los píxeles, no las líneas) y prometheus mostró que estamos en el runtime más lento para Mac (`PRM-VRT-002`); ganar aquí no requiere GPU ni esperar a otro equipo. **Scope:** medir sobre las mismas páginas el runtime (PaddlePaddle frente a ONNX Runtime), el detector (`server` frente a `mobile`), la orientación de línea y la resolución de entrada; adoptar la combinación que baje el tiempo sin perder los valores que la extracción necesita. Fuera: servir el OCR desde prometheus (`VRT-PRM-006`, en espera de esta medición).
+**Why:** la lectura era la segunda etapa más cara (13,9 s por página A4 en CPU) y prometheus mostró que estábamos en el runtime más lento para Mac (`PRM-VRT-002`). **Scope:**
+- Medido el 2026-10-13 sobre 9 páginas reales: los mismos modelos de Paddle sobre ONNX Runtime leen en 1,1 s por página (≈2 s con layout), con 470 de 507 líneas idénticas y cajas a 1 px; la exactitud de la extracción se mantiene (82% frente a 84%, dentro de la variación entre corridas). Es el lector por defecto (`rapidocr`).
+- Condición medida: nuestra conversión de los modelos (`scripts/export_ocr_onnx.sh`) y los parámetros de detección de Paddle. Los archivos y valores por defecto de RapidOCR leen peor y bajaron la extracción a 69–71%.
+- Descartado: detector `mobile` (pierde valores), CoreML (más lento), cambiar hilos, lotes u orientación de línea en Paddle (sin ganancia). Fuera: el layout sigue en Paddle (0,6 s por página, ~5 GB de pico).
 
 ## F5 — Canales
 ## VRT-47 — Sesión de carga + verificación rápida
