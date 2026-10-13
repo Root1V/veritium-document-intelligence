@@ -26,6 +26,14 @@ Los modelos generativos (decenas de GB, GPU) se sirven aparte, como ya estaba. L
 - **Tokens por turno, no solo segundos:** el tiempo depende de la carga de prometheus, que es compartido. Los tokens y la exactitud no.
 - **Sin la caché de idempotencia:** el gateway devuelve la respuesta guardada si la petición es idéntica, así que repetir un documento puede medir 0 s.
 
+**Para repetirlo:** los scripts están en `scripts/`. Los datos (lista de documentos y valores verificados) viven fuera del repo, en `~/.veritium/bench/`; el formato está en la ayuda de `bench_score.py`.
+
+```bash
+uv run python scripts/bench_extraction.py antes1          # una corrida; repetir e intercalar variantes
+uv run python scripts/bench_score.py --group antes=antes* --group ahora=ahora*
+uv run python scripts/bench_ocr.py paddleocr rapidocr     # lectores de OCR: tiempo y coincidencia de líneas
+```
+
 ## VRT-69 · El agente de extracción
 
 **Lo que suponíamos:** que el costo era lo que se le envía, porque reenvía el documento en cada turno.
