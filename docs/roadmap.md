@@ -302,12 +302,14 @@ Veritium pasa de "subir documentos sueltos" a ser una **capacidad de decisión d
 - Fuera: simular con expedientes pasados un cambio de prompt que influye en el veredicto, y aprobación por una segunda persona.
 
 ## VRT-69 — Agente de extracción eficiente
+Método, mediciones y aprendizajes: [eficiencia-modelos-ia.md](eficiencia-modelos-ia.md).
 **Why:** la extracción es el 70–90% del tiempo de cada documento. Medido el 2026-10-10 (4 documentos reales, tokens por turno): el costo es lo que el modelo **escribe**, no lo que se le envía (entrada ≤13k tokens con ~95% servido de caché). La mayor pérdida son turnos en que gpt-oss, a temperatura 0, entra en un bucle de razonamiento hasta el tope de 8.192 tokens (3 de 6 turnos en una solicitud de préstamo: 17 min). **Scope:**
 - Hecho: un turno cortado al tope se repite una vez con temperatura 0.6; el agente escribe solo valor, confianza, texto y región (página y caja las pone la plataforma); la lista de regiones omite las vacías y marca con «…» las recortadas; las listas se entregan completas.
 - Descartado con medición: razonamiento «low» (−86% de tiempo, exactitud 83% → 74%) y temperatura 1.0 en todo (sin bucles, pero 69%).
 - Medido el 2026-10-13, 3 corridas por variante sobre 4 documentos con valores verificados a mano: exactitud 65% → 84%, tiempo medio 1.073 s → 665 s (peor caso 2.079 s → 745 s), salida 62,7k → 30,1k tokens. Siguiente, fuera de este ítem: cortar el bucle apenas empieza (streaming) en vez de esperar al tope; cada bucle aún cuesta ~80 s.
 
 ## VRT-70 — Lectura (OCR) más rápida en el mismo hardware
+Método, mediciones y aprendizajes: [eficiencia-modelos-ia.md](eficiencia-modelos-ia.md).
 **Why:** la lectura era la segunda etapa más cara (13,9 s por página A4 en CPU) y prometheus mostró que estábamos en el runtime más lento para Mac (`PRM-VRT-002`). **Scope:**
 - Medido el 2026-10-13 sobre 9 páginas reales: los mismos modelos de Paddle sobre ONNX Runtime leen en 1,1 s por página (≈2 s con layout), con 470 de 507 líneas idénticas y cajas a 1 px; la exactitud de la extracción se mantiene (82% frente a 84%, dentro de la variación entre corridas). Es el lector por defecto (`rapidocr`).
 - Condición medida: nuestra conversión de los modelos (`scripts/export_ocr_onnx.sh`) y los parámetros de detección de Paddle. Los archivos y valores por defecto de RapidOCR leen peor y bajaron la extracción a 69–71%.
