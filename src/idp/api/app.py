@@ -12,6 +12,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from opentelemetry import trace
+from sqlalchemy import select
 
 from idp.api.routes import api_clients, assistant, audit, auth, batches, bulk_jobs, events, investigations, tools, calibration, cases, document_types, documents, evaluation, lenses, profiles, prompts, simulations, upload_sessions, review, semantic_catalog, type_suggestions, users, validation, validation_rules, webhooks
 from idp.config import get_settings
@@ -19,7 +20,9 @@ from idp.llm.port import inference_lifespan
 from idp.llm.prompts import current as current_prompts
 from idp.llm.prompts import set_published
 from idp.observability.otel import setup_telemetry
+from idp.persistence import tenancy
 from idp.persistence.db import get_session_factory
+from idp.persistence.models import Tenant
 from idp.persistence.repositories import DocumentTypeRepository, LensRepository, ProcessProfileRepository, PromptEditRepository, PromptRepository, SemanticCatalogRepository
 from idp.storage.object_store import S3ObjectStore
 from idp.events import bus
@@ -41,7 +44,9 @@ def create_app() -> FastAPI:
         S3ObjectStore(settings).ensure_bucket()
         async with get_session_factory(settings)() as session:
             await SemanticCatalogRepository(session).ensure_seed()
-            await ProcessProfileRepository(session).ensure_seed()
+            for tenant in await session.scalars(select(Tenant.key)):
+                with tenancy.acting_for(tenant):  # each business unit has its own processes (VRT-57)
+                    await ProcessProfileRepository(session).ensure_seed()
             await DocumentTypeRepository(session).ensure_seed()
             await LensRepository(session).ensure_seed()
             # Keep the text of the prompts this code runs with (VRT-46), and

@@ -25,6 +25,7 @@ from idp.llm.port import inference_lifespan
 from idp.llm.prompts import current as current_prompts
 from idp.llm.prompts import fingerprint, set_published
 from idp.observability.otel import setup_telemetry
+from idp.persistence import tenancy
 from idp.persistence.db import get_session_factory
 from idp.persistence.repositories import (
     CaseRunRepository,
@@ -40,8 +41,9 @@ _ENDED = {"FAILED", "CANCELLED"}
 
 
 async def reconcile(settings: Settings, client: httpx.AsyncClient) -> int:
-    async with get_session_factory(settings)() as session:
-        runs = [(r.case_id, r.id, r.execution_ref) for r in await CaseRunRepository(session).list_unfinished_with_ref()]
+    with tenancy.system():  # the worker serves every business unit's runs
+        async with get_session_factory(settings)() as session:
+            runs = [(r.case_id, r.id, r.execution_ref) for r in await CaseRunRepository(session).list_unfinished_with_ref()]
     failed = 0
     for case_id, run_id, ref in runs:
         try:

@@ -6,7 +6,6 @@ endpoint is rescheduled instead of dropped."""
 from __future__ import annotations
 
 import threading
-import uuid
 from datetime import UTC, datetime
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
@@ -16,6 +15,7 @@ from cryptography.fernet import Fernet
 from pydantic import SecretStr
 from sqlalchemy import delete, select
 
+from idp.persistence import tenancy
 from idp.persistence.db import get_session_factory
 from idp.persistence.models import OutboxEvent, WebhookDelivery, WebhookEndpoint
 from idp.webhooks import dispatcher
@@ -52,12 +52,13 @@ class _Receiver:
 
 
 @pytest.mark.asyncio
-async def test_fan_out_sign_deliver_and_retry(live_settings):
+async def test_fan_out_sign_deliver_and_retry(live_settings, scratch_unit):
     settings = live_settings.model_copy(update={"secrets_encryption_key": SecretStr(Fernet.generate_key().decode())})
     good_secret, bad_secret = generate_secret(), generate_secret()
     good, failing = _Receiver(good_secret, 200), _Receiver(bad_secret, 500)
     factory = get_session_factory(settings)
-    tenant = f"test-{uuid.uuid4()}"  # isolates this test from the dev database's own endpoints and events
+    tenant = scratch_unit  # isolates this test from the dev database's own endpoints and events
+    tenancy.use(tenant)
 
     async with factory() as session:
         good_ep = WebhookEndpoint(tenant=tenant, url=good.url, event_types=[], secret_ciphertext=encrypt(settings, good_secret))
@@ -98,7 +99,7 @@ async def test_fan_out_sign_deliver_and_retry(live_settings):
 
 
 @pytest.mark.asyncio
-async def test_an_undecryptable_endpoint_does_not_block_the_others(live_settings):
+async def test_an_undecryptable_endpoint_does_not_block_the_others(live_settings, scratch_unit):
     """Regression: a delivery whose secret can't be decrypted (e.g. after a
     key rotation) used to abort the whole tick; now it fails on its own and
     the rest of the batch is delivered."""
@@ -107,7 +108,8 @@ async def test_an_undecryptable_endpoint_does_not_block_the_others(live_settings
     secret = generate_secret()
     good = _Receiver(secret, 200)
     factory = get_session_factory(settings)
-    tenant = f"test-{uuid.uuid4()}"
+    tenant = scratch_unit
+    tenancy.use(tenant)
     async with factory() as session:
         broken_ep = WebhookEndpoint(tenant=tenant, url=good.url, event_types=[], secret_ciphertext=encrypt(other_key, secret))
         good_ep = WebhookEndpoint(tenant=tenant, url=good.url, event_types=[], secret_ciphertext=encrypt(settings, secret))

@@ -42,7 +42,6 @@ from idp.storage.object_store import S3ObjectStore
 router = APIRouter(prefix="/v1/cases", tags=["cases"], dependencies=[Depends(get_current_user)])
 
 Channel = Literal["online", "backoffice", "bulk"]
-_TENANT = "default"  # multi-tenant arrives with VRT-57
 
 
 class CaseLinks(BaseModel):
@@ -175,14 +174,13 @@ async def submit_case(
 
     repo = CaseRepository(session)
     if idempotency_key is not None:
-        existing = await repo.get_by_idempotency_key(tenant=_TENANT, idempotency_key=idempotency_key)
+        existing = await repo.get_by_idempotency_key(idempotency_key=idempotency_key)
         if existing is not None:
             return _replay_or_conflict(existing, fingerprint)
 
     version = await resolve_profile_version(session, profile, profile_version)
     try:
         case = await repo.create(
-            tenant=_TENANT,
             request_input_payload=data,
             profile_version_id=version.id,
             external_ref=external_ref,
@@ -193,7 +191,7 @@ async def submit_case(
     except IntegrityError:
         # Two concurrent submissions with the same key: the other one won.
         await session.rollback()
-        existing = await repo.get_by_idempotency_key(tenant=_TENANT, idempotency_key=idempotency_key or "")
+        existing = await repo.get_by_idempotency_key(idempotency_key=idempotency_key or "")
         if existing is None:
             raise
         return _replay_or_conflict(existing, fingerprint)

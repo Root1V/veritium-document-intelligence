@@ -27,6 +27,7 @@ from datetime import UTC, datetime, timedelta
 import httpx
 
 from idp.config import Settings, get_settings
+from idp.persistence import tenancy
 from idp.persistence.db import get_session_factory
 from idp.persistence.models import WebhookDelivery
 from idp.persistence.repositories import OutboxRepository, WebhookDeliveryRepository, WebhookEndpointRepository
@@ -70,14 +71,24 @@ class TickStats:
     dead: int = 0
 
 
+def _units(tenant: str | None):
+    """The dispatcher serves every business unit (VRT-57); a test narrows it to one."""
+    return tenancy.acting_for(tenant) if tenant else tenancy.system()
+
+
 async def fan_out(settings: Settings, *, tenant: str | None = None) -> int:
+    with _units(tenant):
+        return await _fan_out(settings, tenant)
+
+
+async def _fan_out(settings: Settings, tenant: str | None) -> int:
     async with get_session_factory(settings)() as session:
         events = await OutboxRepository(session).claim_undispatched(tenant=tenant)
         endpoints, deliveries = WebhookEndpointRepository(session), WebhookDeliveryRepository(session)
         now = datetime.now(UTC)
         for event in events:
             subscribed = await endpoints.subscribed(tenant=event.tenant, event_type=event.type)
-            await deliveries.create_for(event.id, [e.id for e in subscribed])
+            await deliveries.create_for(event, [e.id for e in subscribed])
             event.dispatched_at = now
         await session.commit()
         return len(events)
@@ -107,6 +118,11 @@ async def _send(settings: Settings, client: httpx.AsyncClient, delivery: Webhook
 
 
 async def deliver_due(settings: Settings, client: httpx.AsyncClient, *, tenant: str | None = None) -> TickStats:
+    with _units(tenant):
+        return await _deliver_due(settings, client, tenant)
+
+
+async def _deliver_due(settings: Settings, client: httpx.AsyncClient, tenant: str | None) -> TickStats:
     stats = TickStats()
     factory = get_session_factory(settings)
     async with factory() as session:

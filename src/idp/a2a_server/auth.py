@@ -16,6 +16,7 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 from idp.auth.authenticate import AuthFailure, Principal, authenticate, over_quota, touch
 from idp.config import Settings
+from idp.persistence import tenancy
 from idp.persistence.db import get_session_factory
 
 PRINCIPAL = "veritium.principal"
@@ -38,7 +39,7 @@ class VeritiumUser(User):
 
     @property
     def role(self) -> str:
-        return self.principal.user.role
+        return self.principal.role
 
     @property
     def display_name(self) -> str:
@@ -80,6 +81,7 @@ class RequireAuth:
                     return
                 await touch(session, principal.client)
         scope[PRINCIPAL] = principal
+        tenancy.use(principal.tenant)  # the task and its case are the caller's unit's (VRT-57)
         await self.app(scope, receive, send)
 
 

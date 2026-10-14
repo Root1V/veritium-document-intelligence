@@ -1,6 +1,7 @@
-"""POST /auth/login — a person's login. POST /auth/token — a connected
-system's token (OAuth2 client credentials, VRT-65). The only
-unauthenticated routes besides /health.
+"""POST /auth/login — a person's login, into one of their business units;
+POST /auth/switch — into another one; GET /auth/me — who and where (VRT-57).
+POST /auth/token — a connected system's token (OAuth2 client credentials,
+VRT-65). Login and token are the only unauthenticated routes besides /health.
 No self-signup: users are created via ``scripts/create_user.py`` (internal
 tool, no evidence of needing public registration)."""
 
@@ -16,10 +17,12 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from idp.api.deps import get_app_settings, get_db_session
+from idp.api.deps import get_app_settings, get_db_session, get_principal
+from idp.auth.authenticate import Principal
 from idp.auth.security import create_access_token, create_client_token, hash_client_secret, verify_password
 from idp.config import Settings
-from idp.persistence.models import ApiClient
+from idp.persistence import tenancy
+from idp.persistence.models import ApiClient, User
 from idp.persistence.repositories import UserRepository
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -28,13 +31,39 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 class LoginRequest(BaseModel):
     email: str
     password: str
+    tenant: str | None = None  # the unit to start in; the first one otherwise
 
 
-class LoginResponse(BaseModel):
+class Unit(BaseModel):
+    key: str
+    name: str
+    role: str
+
+
+class Me(BaseModel):
+    user_name: str
+    role: str  # in ``tenant``
+    tenant: str
+    tenants: list[Unit]  # every unit the person works in
+
+
+class LoginResponse(Me):
     access_token: str
     token_type: str = "bearer"
-    user_name: str
-    role: str
+
+
+async def _units(session: AsyncSession, user: User) -> list[Unit]:
+    return [Unit(key=t.key, name=t.name, role=m.role) for m, t in await UserRepository(session).memberships(user.id)]
+
+
+async def signed_in(settings: Settings, session: AsyncSession, user: User, tenant: str | None) -> LoginResponse:
+    """A person's token for one of their units (VRT-57): ``tenant`` if they work there, else their first."""
+    units = await _units(session, user)
+    if not units:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="no tienes ninguna unidad de negocio asignada; pídela a tu administrador")
+    unit = next((u for u in units if u.key == tenant), units[0])
+    token = create_access_token(settings, user_id=user.id, tenant=unit.key)
+    return LoginResponse(access_token=token, user_name=user.name, role=unit.role, tenant=unit.key, tenants=units)
 
 
 @router.post("/login", response_model=LoginResponse)
@@ -44,10 +73,31 @@ async def login(
     settings: Settings = Depends(get_app_settings),
 ) -> LoginResponse:
     user = await UserRepository(session).get_by_email(body.email)
-    if user is None or not verify_password(body.password, user.password_hash):
+    if user is None or user.password_hash is None or not verify_password(body.password, user.password_hash):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid email or password")
-    token = create_access_token(settings, user_id=user.id)
-    return LoginResponse(access_token=token, user_name=user.name, role=user.role)
+    return await signed_in(settings, session, user, body.tenant)
+
+
+@router.get("/me", response_model=Me)
+async def me(principal: Principal = Depends(get_principal), session: AsyncSession = Depends(get_db_session)) -> Me:
+    return Me(user_name=principal.user.name, role=principal.role, tenant=principal.tenant, tenants=await _units(session, principal.user))
+
+
+class SwitchRequest(BaseModel):
+    tenant: str
+
+
+@router.post("/switch", response_model=LoginResponse)
+async def switch(
+    body: SwitchRequest,
+    principal: Principal = Depends(get_principal),
+    session: AsyncSession = Depends(get_db_session),
+    settings: Settings = Depends(get_app_settings),
+) -> LoginResponse:
+    """Work in another of the person's units: a new token for it."""
+    if principal.client is not None or body.tenant not in {u.key for u in await _units(session, principal.user)}:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="no trabajas en esa unidad")
+    return await signed_in(settings, session, principal.user, body.tenant)
 
 
 class TokenResponse(BaseModel):
@@ -79,7 +129,8 @@ async def token(
             client_id, _, client_secret = base64.b64decode(authorization[6:]).decode().partition(":")
         except ValueError:
             return _oauth_error("invalid_client", status.HTTP_401_UNAUTHORIZED, "cabecera Basic inválida")
-    client = await session.scalar(select(ApiClient).where(ApiClient.client_id == (client_id or "")))
+    with tenancy.system():  # the client id names the unit; there is none before it
+        client = await session.scalar(select(ApiClient).where(ApiClient.client_id == (client_id or "")))
     if client is None or client.revoked_at is not None or not hmac.compare_digest(client.secret_hash, hash_client_secret(client_secret or "")):
         return _oauth_error("invalid_client", status.HTTP_401_UNAUTHORIZED, "credenciales de sistema inválidas o revocadas")
     return TokenResponse(access_token=create_client_token(settings, user_id=client.user_id, client_id=client.client_id), expires_in=settings.api_client_token_minutes * 60)

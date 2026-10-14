@@ -29,9 +29,10 @@ def verify_password(password: str, password_hash: str) -> bool:
     return _pwd_context.verify(password, password_hash)
 
 
-def create_access_token(settings: Settings, *, user_id: uuid.UUID) -> str:
+def create_access_token(settings: Settings, *, user_id: uuid.UUID, tenant: str) -> str:
+    """A person's token, for one business unit (VRT-57): switching units is a new token."""
     expires_at = datetime.now(UTC) + timedelta(minutes=settings.jwt_expiration_minutes)
-    payload = {"sub": str(user_id), "exp": expires_at}
+    payload = {"sub": str(user_id), "ten": tenant, "exp": expires_at}
     return jwt.encode(payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
 
 

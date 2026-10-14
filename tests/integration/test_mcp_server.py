@@ -26,7 +26,7 @@ from idp.auth.security import hash_password
 from idp.config import get_settings
 from idp.execution import handover
 from idp.persistence.db import get_session_factory
-from idp.persistence.models import Case, CaseRun, OutboxEvent
+from idp.persistence.models import Case, CaseRun, OutboxEvent, User
 from idp.persistence.repositories import UserRepository
 from idp.pipeline import orchestrator
 from idp.storage.object_store import S3ObjectStore
@@ -85,14 +85,16 @@ def _result(response: httpx.Response) -> dict:
 
 
 @pytest.mark.asyncio
-async def test_an_agent_uses_veritium_through_mcp(live_settings, server):
+async def test_an_agent_uses_veritium_through_mcp(live_settings, server, other_unit):
     port, prefix = server
     factory = get_session_factory(live_settings)
+    outsider = f"test-mcp-{other_unit}@example.com"  # works in another business unit (VRT-57)
     async with factory() as session:
         users = UserRepository(session)
         for role, (email, password) in _USERS.items():
             if await users.get_by_email(email) is None:
                 await users.create(name=f"MCP {role}", email=email, password_hash=hash_password(password), role=role)
+        await users.create(name="MCP otra unidad", email=outsider, password_hash=hash_password("test-password-mcp"), role="visor", tenant=other_unit)
         await session.commit()
     S3ObjectStore(live_settings).put(f"{prefix}boleta.pdf", b"%PDF-1.4 boleta", content_type="application/pdf")
     document = {"url": f"s3://{live_settings.storage_bucket}/{prefix}boleta.pdf"}
@@ -191,10 +193,17 @@ async def test_an_agent_uses_veritium_through_mcp(live_settings, server):
             uri = outcome["result_uri"]
             read = _result(await _rpc(client, reader, "resources/read", {"uri": uri}, name=uri))
             assert json.loads(read["contents"][0]["text"])["case"]["external_ref"] == ref
+
+            # Someone of another business unit, with the same tools, finds nothing of it (VRT-57).
+            other = (await client.post("/auth/login", json={"email": outsider, "password": "test-password-mcp"})).json()["access_token"]
+            assert _result(await _rpc(client, other, "tools/call", {"name": "find_cases", "arguments": {"external_ref": ref}}, name="find_cases"))["structuredContent"]["total"] == 0
+            assert _result(await _rpc(client, other, "tools/call", {"name": "get_case_status", "arguments": {"case_id": outcome["case_id"]}}, name="get_case_status"))["isError"]
+            assert "error" in (await _rpc(client, other, "resources/read", {"uri": uri}, name=uri)).json()
     finally:
         uv.should_exit = True
         await serving
         async with factory() as session:
+            await session.execute(delete(User).where(User.email == outsider))
             ids = list((await session.scalars(select(Case.id).where(Case.external_ref == ref))).all())
             await session.execute(delete(OutboxEvent).where(OutboxEvent.subject.in_([str(i) for i in ids])))
             await session.execute(delete(CaseRun).where(CaseRun.case_id.in_(ids)))

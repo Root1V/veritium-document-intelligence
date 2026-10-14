@@ -41,7 +41,6 @@ from idp.persistence.db import get_session_factory
 from idp.persistence.repositories import CaseRepository
 
 log = logging.getLogger(__name__)
-_TENANT = "default"  # multi-tenant arrives with VRT-57
 
 EXPECTED = (
     "Envía una parte de datos con el proceso, p. ej. {\"profile\": \"convenios\", \"external_ref\": \"EXP-1\", "
@@ -104,13 +103,13 @@ class CaseAgentExecutor(AgentExecutor):
             key = f"a2a:{user.user_name}:{context.message.message_id}"
             async with get_session_factory(self._settings)() as session:
                 cases = CaseRepository(session)
-                case = await cases.get_by_idempotency_key(tenant=_TENANT, idempotency_key=key)
+                case = await cases.get_by_idempotency_key(idempotency_key=key)
                 fresh = case is None
                 if case is None:
                     case, _ = await open_case(
                         self._settings, session, profile=str(data["profile"]), profile_version=data.get("profile_version"),
                         external_ref=data.get("external_ref"), channel=data.get("channel", "backoffice"), process_data=data.get("process_data"),
-                        uploads=uploads, idempotency_key=key, tenant=_TENANT,
+                        uploads=uploads, idempotency_key=key,
                     )
                     await session.commit()
                     case = await cases.get(case.id)

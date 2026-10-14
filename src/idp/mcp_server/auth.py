@@ -14,6 +14,7 @@ from mcp.shared.exceptions import MCPError
 
 from idp.auth.authenticate import AuthFailure, authenticate, over_quota, touch
 from idp.config import Settings
+from idp.persistence import tenancy
 from idp.persistence.db import get_session_factory
 
 # Implementation-defined JSON-RPC server error (the spec reserves -32020..-32099).
@@ -37,12 +38,13 @@ class VeritiumTokenVerifier:
             return AccessToken(
                 token=token,
                 client_id=client.client_id if client else str(user.id),
-                scopes=[user.role],
+                scopes=[principal.role],
                 subject=str(user.id),
                 resource=self._resource,
                 claims={
                     "name": user.name,
-                    "role": user.role,
+                    "role": principal.role,
+                    "tenant": principal.tenant,
                     "api_client_id": client.client_id if client else None,
                     "rate_limit_per_minute": (client.rate_limit_per_minute if client else None),
                 },
@@ -50,7 +52,7 @@ class VeritiumTokenVerifier:
 
 
 def caller() -> dict[str, Any]:
-    """The authenticated caller's claims (name, role, api_client_id)."""
+    """The authenticated caller's claims (name, role, tenant, api_client_id)."""
     token = get_access_token()
     if token is None or token.claims is None:
         raise ToolError("no autenticado")
@@ -58,11 +60,14 @@ def caller() -> dict[str, Any]:
 
 
 def quota(settings: Settings):
-    """Middleware: a connected system's calls count against its quota, as in the REST API."""
+    """Middleware: the call acts for the caller's business unit (VRT-57), and a
+    connected system's calls count against its quota, as in the REST API."""
 
     async def middleware(ctx: ServerRequestContext[Any, Any], call_next: CallNext) -> HandlerResult:
         token = get_access_token()
         claims = token.claims if token and token.claims else {}
+        if claims.get("tenant"):
+            tenancy.use(claims["tenant"])
         if ctx.request_id is not None and claims.get("api_client_id"):
             if (retry_after := over_quota(settings, claims["api_client_id"], claims["rate_limit_per_minute"])) is not None:
                 raise MCPError(code=RATE_LIMITED, message="se superó la cuota de llamadas por minuto", data={"retryAfterSeconds": retry_after})

@@ -29,6 +29,7 @@ from idp.api.deps import get_app_settings, get_current_user, get_db_session, get
 from idp.config import Settings
 from idp.domain.process_profile import ProcessProfileDefinition
 from idp.domain.quick_check import Check, verdict
+from idp.persistence import tenancy
 from idp.persistence.models import ProcessProfileVersion, UploadedFile, UploadSession, User
 from idp.persistence.repositories import CaseRepository, CaseRunRepository, DocumentRepository, DocumentTypeRepository
 from idp.pipeline.orchestrator import load_semantic_catalog
@@ -37,7 +38,6 @@ from idp.validation.cel import CelEvaluationError, compile_expression, evaluate
 from idp.storage.object_store import S3ObjectStore
 
 router = APIRouter(prefix="/v1/upload-sessions", tags=["upload-sessions"])
-_TENANT = "default"
 
 
 class SessionRequest(BaseModel):
@@ -113,9 +113,11 @@ async def _load(session: AsyncSession, session_id: uuid.UUID) -> UploadSession |
 async def _by_token(
     session_id: uuid.UUID, token: Annotated[str, Header(alias="X-Upload-Token")], session: AsyncSession = Depends(get_db_session)
 ) -> UploadSession:
-    upload = await _load(session, session_id)
+    with tenancy.system():  # the link is the credential: once its token checks out, it names the unit
+        upload = await _load(session, session_id)
     if upload is None or not secrets.compare_digest(upload.token_hash, _hash(token)):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="el enlace no es válido")
+    tenancy.use(upload.tenant)
     if upload.status == "open" and upload.expires_at < datetime.now(UTC):
         upload.status = "expired"
         await session.commit()
@@ -238,7 +240,7 @@ async def upload_file(
 
     file_id = uuid.uuid4()
     filename = file.filename or "documento"
-    key = f"{_TENANT}/upload-sessions/{upload.id}/{file_id}/{filename}"
+    key = f"{upload.tenant}/upload-sessions/{upload.id}/{file_id}/{filename}"
     await asyncio.to_thread(object_store.put, key, data, file.content_type or "application/octet-stream")
     row = UploadedFile(
         id=file_id, session_id=upload.id, filename=filename, content_type=file.content_type or "application/octet-stream", size=len(data),
@@ -296,7 +298,7 @@ async def submit(
         trigger = "documents_added"
     else:
         case = await repo.create(
-            tenant=_TENANT, request_input_payload=upload.request_input_payload, profile_version_id=upload.profile_version_id,
+            request_input_payload=upload.request_input_payload, profile_version_id=upload.profile_version_id,
             external_ref=upload.external_ref, channel=upload.channel,
         )
         trigger = "submit"

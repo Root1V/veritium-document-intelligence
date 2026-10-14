@@ -162,7 +162,6 @@ async def open_case(
     process_data: dict | None,
     uploads: list[Upload],
     idempotency_key: str,
-    tenant: str = "default",
 ) -> tuple[Case, CaseRun]:
     """Open a case with its documents and its first run (not yet handed to
     the executor) — for the channels that are not ``POST /v1/cases``: the
@@ -174,7 +173,6 @@ async def open_case(
     if not uploads:
         raise CaseRefused("el expediente debe traer al menos un documento")
     case = await CaseRepository(session).create(
-        tenant=tenant,
         request_input_payload=process_data,
         profile_version_id=version.id,
         external_ref=external_ref,

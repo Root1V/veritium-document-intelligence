@@ -192,6 +192,9 @@ class Settings(BaseSettings):
     event_bus_out_topic: str = "veritium.case-events.v1"
     event_bus_in_topic: str = "veritium.case-requests.v1"
     event_bus_group: str = "veritium"
+    # The business unit the bus belongs to (VRT-57), set by whoever operates it:
+    # a command never names its unit, and another unit's events never go out on it.
+    event_bus_tenant: str = "default"
     event_bus_publish_interval_seconds: float = 1.0
     # Claim-check: a command names its documents by reference, never inline.
     # Only these prefixes are fetched (s3://bucket/prefix/ or https://host/path/).

@@ -2,9 +2,10 @@
 ``persistence/repositories.py`` — no other layer builds queries directly
 (repository pattern).
 
-``tenant`` columns/keys are placeholders from day one (always "default" in
-Phase 0) so Fase 1+ multi-tenancy (roadmap item 5) is an additive migration,
-not a schema rewrite.
+A ``TenantScoped`` model belongs to one business unit and is only ever seen
+from inside it (persistence/tenancy.py, VRT-57). The rest is corporate,
+shared by every unit: the catalogs (document types, semantic catalog, rule
+library, lenses, prompts) and the people.
 """
 
 from __future__ import annotations
@@ -17,6 +18,8 @@ from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, Integer, Str
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
+from idp.persistence.tenancy import TenantScoped
+
 
 class Base(DeclarativeBase):
     pass
@@ -26,26 +29,62 @@ def _uuid_pk() -> Mapped[uuid.UUID]:
     return mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
 
 
+class Tenant(Base):
+    """A business unit (VRT-57): its cases, processes, connected systems and
+    reviews are its own. Registered by the operator (scripts/create_tenant.py);
+    an identity-provider group naming an unregistered unit grants nothing."""
+
+    __tablename__ = "tenants"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    name: Mapped[str] = mapped_column(String(256), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class User(Base):
-    """A reviewer's login identity. ``role`` is one of "admin" (also manages
-    users), "operador" (can execute actions: upload, correct, accept/reject
-    type suggestions) or "visor" (read-only) — see ``api/deps.require_role``
-    for enforcement. Replaces the static ``x-api-key`` this platform used
-    before the frontend module: ``reviewer_identity`` on review/type-suggestion
-    actions is derived server-side from the authenticated user instead of
-    trusted from the request body."""
+    """A person, or a connected system's identity (VRT-65). What they may do
+    is per business unit, in their ``memberships``. A person who signs in
+    through the corporate identity provider has its ``subject`` and no
+    password; ``reviewer_identity`` on review actions is derived server-side
+    from the authenticated user, never trusted from the request body."""
 
     __tablename__ = "users"
 
     id: Mapped[uuid.UUID] = _uuid_pk()
     name: Mapped[str] = mapped_column(String(256), nullable=False)
     email: Mapped[str] = mapped_column(String(256), unique=True, nullable=False)
-    password_hash: Mapped[str] = mapped_column(String(256), nullable=False)
-    role: Mapped[str] = mapped_column(String(16), default="operador", server_default="operador", nullable=False)
+    # Null for a person who only signs in through the identity provider.
+    password_hash: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    # "<issuer> <sub>" of the identity provider (VRT-57), once they signed in through it.
+    subject: Mapped[str | None] = mapped_column(String(512), unique=True, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
+    memberships: Mapped[list["Membership"]] = relationship(back_populates="user", cascade="all, delete-orphan", order_by="Membership.tenant")
 
-class Case(Base):
+
+class Membership(Base):
+    """A person's role in one business unit (VRT-57): "admin" (also manages
+    the unit's people, processes and systems), "operador" (uploads, corrects),
+    "visor" (reads), "especialista_ia" (prompts and evaluation) or
+    "integracion" (a connected system). Re-read on every request, so a
+    change applies on the next call. ``source`` says who manages it: "idp"
+    rows are replaced from the identity provider's groups at each sign-in;
+    "local" ones are managed in Veritium."""
+
+    __tablename__ = "memberships"
+    __table_args__ = (UniqueConstraint("user_id", "tenant"),)
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    tenant: Mapped[str] = mapped_column(ForeignKey("tenants.key"), nullable=False)
+    role: Mapped[str] = mapped_column(String(16), nullable=False)
+    source: Mapped[str] = mapped_column(String(8), default="local", server_default="local", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    user: Mapped["User"] = relationship(back_populates="memberships")
+
+
+class Case(TenantScoped, Base):
     """Aggregate root (VRT-25, ADR-0002): a client's case file ("expediente")
     — the unit of work a business process hands to Veritium. It accumulates
     documents over time (each addition triggers a new ``CaseRun``), pins the
@@ -60,7 +99,6 @@ class Case(Base):
     __table_args__ = (UniqueConstraint("tenant", "idempotency_key", name="uq_cases_tenant_idempotency_key"),)
 
     id: Mapped[uuid.UUID] = _uuid_pk()
-    tenant: Mapped[str] = mapped_column(String(64), default="default", nullable=False)
     status: Mapped[str] = mapped_column(String(32), default="uploaded", nullable=False)
     request_input_payload: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     # Null only for cases created before VRT-25.
@@ -83,7 +121,7 @@ class Case(Base):
     profile_version: Mapped["ProcessProfileVersion | None"] = relationship()
 
 
-class CaseRun(Base):
+class CaseRun(TenantScoped, Base):
     """One evaluation of a case: the initial submission, or each later
     addition of documents. ``provenance`` records everything that produced
     the result (code version, profile and catalog versions, models, OCR
@@ -117,7 +155,7 @@ class CaseRun(Base):
     case: Mapped["Case"] = relationship(back_populates="runs")
 
 
-class Document(Base):
+class Document(TenantScoped, Base):
     """Entity with its own status lifecycle: uploaded -> parsing -> classifying
     -> extracting -> validating -> (needs_review | completed) | failed."""
 
@@ -157,7 +195,7 @@ class Document(Base):
     review_items: Mapped[list["ReviewItem"]] = relationship(back_populates="document", cascade="all, delete-orphan")
 
 
-class Extraction(Base):
+class Extraction(TenantScoped, Base):
     """1:1 with Document. ``payload`` is the JSON-serialized document-type
     schema, composed of ``Extracted[T]`` value objects (includes
     ``reasoning_trace`` when the bounded agentic loop was used)."""
@@ -175,7 +213,7 @@ class Extraction(Base):
     document: Mapped["Document"] = relationship(back_populates="extraction")
 
 
-class ValidationIssue(Base):
+class ValidationIssue(TenantScoped, Base):
     """Value object produced by the ValidationEngine — never mutated after
     creation. Covers all 5 validation categories (see validation/base.py)."""
 
@@ -202,7 +240,7 @@ class ValidationIssue(Base):
     document: Mapped["Document | None"] = relationship(back_populates="validation_issues")
 
 
-class ReviewItem(Base):
+class ReviewItem(TenantScoped, Base):
     """Entity with its own lifecycle: pending -> resolved."""
 
     __tablename__ = "review_items"
@@ -220,7 +258,7 @@ class ReviewItem(Base):
     audit_entries: Mapped[list["AuditLogEntry"]] = relationship(back_populates="review_item", cascade="all, delete-orphan")
 
 
-class AuditLogEntry(Base):
+class AuditLogEntry(TenantScoped, Base):
     """Full correction audit trail — a first-class Phase 0 deliverable,
     deliberately not left to the calling application to bolt on later."""
 
@@ -243,7 +281,7 @@ class AuditLogEntry(Base):
     review_item: Mapped["ReviewItem"] = relationship(back_populates="audit_entries")
 
 
-class DocumentTypeSuggestion(Base):
+class DocumentTypeSuggestion(TenantScoped, Base):
     """A drafted proposal for a new ``DocumentType``, produced when a
     document falls into 'generic' and its content looks like a stable,
     recurring business shape (see ``classification/type_discovery.py``).
@@ -269,14 +307,15 @@ class DocumentTypeSuggestion(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
-class ReferenceEmployee(Base):
+class ReferenceEmployee(TenantScoped, Base):
     """Minimal internal reference table backing category (d) validation
     (existence-in-database checks) via ``ReferenceDataPort``."""
 
     __tablename__ = "reference_employees"
+    __table_args__ = (UniqueConstraint("tenant", "employee_code"),)
 
     id: Mapped[uuid.UUID] = _uuid_pk()
-    employee_code: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    employee_code: Mapped[str] = mapped_column(String(64), nullable=False)
     full_name: Mapped[str] = mapped_column(String(256), nullable=False)
     active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
@@ -395,15 +434,16 @@ class DocumentTypeVersion(Base):
     document_type: Mapped["DocumentTypeRecord"] = relationship(back_populates="versions")
 
 
-class ProcessProfile(Base):
+class ProcessProfile(TenantScoped, Base):
     """A business process that uses Veritium (VRT-24) — e.g. 'convenios'.
     Its behaviour lives in its versions; the key is the stable handle
     callers pass when creating a case."""
 
     __tablename__ = "process_profiles"
+    __table_args__ = (UniqueConstraint("tenant", "key"),)
 
     id: Mapped[uuid.UUID] = _uuid_pk()
-    key: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    key: Mapped[str] = mapped_column(String(64), nullable=False)
     name: Mapped[str] = mapped_column(String(256), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -413,7 +453,7 @@ class ProcessProfile(Base):
     )
 
 
-class ProcessProfileVersion(Base):
+class ProcessProfileVersion(TenantScoped, Base):
     """One version of a process profile: the JSON of
     ``domain.process_profile.ProcessProfileDefinition``. Lifecycle:
     draft -> published -> retired. Immutable once published — a change is a
@@ -438,7 +478,7 @@ class ProcessProfileVersion(Base):
     profile: Mapped["ProcessProfile"] = relationship(back_populates="versions")
 
 
-class CaseCondition(Base):
+class CaseCondition(TenantScoped, Base):
     """A required document or evidence the case is missing (VRT-27). Opened
     by a run when a profile requirement applies and is not satisfied;
     closes itself when a later run finds it satisfied (or no longer
@@ -466,7 +506,7 @@ class CaseCondition(Base):
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
-class OutboxEvent(Base):
+class OutboxEvent(TenantScoped, Base):
     """A domain event (VRT-28, ADR-0005), written in the same transaction as
     the change it announces — so an event is never lost nor emitted for a
     change that rolled back. ``id`` is the CloudEvents id and the
@@ -480,7 +520,6 @@ class OutboxEvent(Base):
     )
 
     id: Mapped[uuid.UUID] = _uuid_pk()
-    tenant: Mapped[str] = mapped_column(String(64), default="default", nullable=False)
     type: Mapped[str] = mapped_column(String(128), nullable=False)  # e.g. pe.veritium.case.verdict.changed
     subject: Mapped[str | None] = mapped_column(String(256), nullable=True)  # the case id
     data: Mapped[dict] = mapped_column(JSONB, nullable=False)
@@ -490,7 +529,7 @@ class OutboxEvent(Base):
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
-class WebhookEndpoint(Base):
+class WebhookEndpoint(TenantScoped, Base):
     """Where a consumer wants events delivered. The signing secret is stored
     encrypted (Fernet) and shown to the consumer only once, at creation.
     Disabling keeps the row (and its delivery history)."""
@@ -498,7 +537,6 @@ class WebhookEndpoint(Base):
     __tablename__ = "webhook_endpoints"
 
     id: Mapped[uuid.UUID] = _uuid_pk()
-    tenant: Mapped[str] = mapped_column(String(64), default="default", nullable=False)
     url: Mapped[str] = mapped_column(String(2048), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     event_types: Mapped[list] = mapped_column(JSONB, nullable=False)  # [] = all
@@ -509,7 +547,7 @@ class WebhookEndpoint(Base):
     disabled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
-class WebhookDelivery(Base):
+class WebhookDelivery(TenantScoped, Base):
     """One event to one endpoint, with its retry state. Lifecycle:
     pending -> delivered, or pending -> dead after the retry schedule is
     exhausted (~3 days). At-least-once: a consumer deduplicates by
@@ -537,7 +575,7 @@ class WebhookDelivery(Base):
     endpoint: Mapped["WebhookEndpoint"] = relationship()
 
 
-class EvalSuite(Base):
+class EvalSuite(TenantScoped, Base):
     """A set of documents with the classification and field values they
     should produce (VRT-42), from a CSV/Excel table or from the human
     corrections (a golden set). Running it measures the current models,
@@ -556,7 +594,7 @@ class EvalSuite(Base):
     runs: Mapped[list["EvalRun"]] = relationship(back_populates="suite", cascade="all, delete-orphan", order_by="EvalRun.created_at.desc()")
 
 
-class EvalCase(Base):
+class EvalCase(TenantScoped, Base):
     """One document of a suite and what it should produce. Pages are
     0-based and inclusive, for a logical document inside a larger file."""
 
@@ -577,7 +615,7 @@ class EvalCase(Base):
     suite: Mapped["EvalSuite"] = relationship(back_populates="cases")
 
 
-class EvalRun(Base):
+class EvalRun(TenantScoped, Base):
     """One measurement of a suite with the configuration of the moment,
     recorded in ``provenance`` (models, code, document type versions).
     Lifecycle: pending -> running -> completed | failed."""
@@ -602,7 +640,7 @@ class EvalRun(Base):
     results: Mapped[list["EvalResult"]] = relationship(back_populates="run", cascade="all, delete-orphan")
 
 
-class EvalResult(Base):
+class EvalResult(TenantScoped, Base):
     """What one case produced in one run, field by field. Written once per
     case, so a run interrupted mid-way resumes with the cases left."""
 
@@ -624,17 +662,20 @@ class EvalResult(Base):
     run: Mapped["EvalRun"] = relationship(back_populates="results")
 
 
-class CalibrationVersion(Base):
+class CalibrationVersion(TenantScoped, Base):
     """A confidence calibration computed from labelled observations
     (VRT-43). Only an admin activates one, and at most one is active: from
     then on, review routing compares the calibrated confidence with the
     threshold. Immutable once computed; a new computation is a new version."""
 
     __tablename__ = "calibration_versions"
-    __table_args__ = (Index("ix_calibration_one_active", "status", unique=True, postgresql_where=text("status = 'active'")),)
+    __table_args__ = (
+        UniqueConstraint("tenant", "version"),
+        Index("ix_calibration_one_active", "tenant", unique=True, postgresql_where=text("status = 'active'")),
+    )
 
     id: Mapped[uuid.UUID] = _uuid_pk()
-    version: Mapped[int] = mapped_column(Integer, unique=True, nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
     status: Mapped[str] = mapped_column(String(16), default="draft", server_default="draft", nullable=False)  # draft | active | retired
     # domain/calibration.py::Calibration
     model: Mapped[dict] = mapped_column(JSONB, nullable=False)
@@ -647,7 +688,7 @@ class CalibrationVersion(Base):
     activated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
-class Simulation(Base):
+class Simulation(TenantScoped, Base):
     """What would change if a profile version were the one in use (VRT-44).
     ``what_if`` re-decides past cases of the profile with the candidate
     version, from what was already extracted; ``shadow`` decides every new
@@ -672,7 +713,7 @@ class Simulation(Base):
     results: Mapped[list["SimulationResult"]] = relationship(back_populates="simulation", cascade="all, delete-orphan")
 
 
-class SimulationResult(Base):
+class SimulationResult(TenantScoped, Base):
     """One case decided with the candidate version, next to its real
     decision. In shadow mode a later run of the same case replaces it."""
 
@@ -709,7 +750,7 @@ class LensRecord(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
-class LensResult(Base):
+class LensResult(TenantScoped, Base):
     """One reading of a case through a lens. Lifecycle: running -> done | failed."""
 
     __tablename__ = "lens_results"
@@ -772,7 +813,7 @@ class PromptEdit(Base):
     retired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
-class ApiClient(Base):
+class ApiClient(TenantScoped, Base):
     """A system that calls Veritium from its own back end (VRT-65): it gets
     tokens with OAuth2 client credentials instead of logging in as a person.
     It acts through its own ``User`` (role ``integracion``, no usable
@@ -799,7 +840,7 @@ class ApiClient(Base):
     user: Mapped["User"] = relationship()
 
 
-class Investigation(Base):
+class Investigation(TenantScoped, Base):
     """An investigation of one validation finding (VRT-66): an agent looks
     into it with tools and leaves the reviewer a diagnosis, a suggested
     action and the evidence. It never decides nor corrects; ``outcome``
@@ -834,7 +875,7 @@ class Investigation(Base):
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
-class A2ATask(Base):
+class A2ATask(TenantScoped, Base):
     """An A2A task (VRT-52): the protocol's snapshot of it, whose it is, and
     the case it works on. Its progress and outcome are the case's runs;
     reading a task that a restart left "working" reconciles it with the run."""
@@ -851,7 +892,7 @@ class A2ATask(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
-class BulkJob(Base):
+class BulkJob(TenantScoped, Base):
     """Many cases handed over at once (VRT-48): an archive with one folder
     per case. Its cases run in the ``bulk`` lane and are released a few at a
     time, so a large job never crowds out online work. Done when none of its
@@ -861,7 +902,6 @@ class BulkJob(Base):
     __table_args__ = (UniqueConstraint("tenant", "idempotency_key", name="uq_bulk_jobs_tenant_idempotency_key"),)
 
     id: Mapped[uuid.UUID] = _uuid_pk()
-    tenant: Mapped[str] = mapped_column(String(64), default="default", nullable=False)
     name: Mapped[str] = mapped_column(String(256), nullable=False)
     idempotency_key: Mapped[str | None] = mapped_column(String(256), nullable=True)
     archive_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
@@ -874,7 +914,7 @@ class BulkJob(Base):
     cases: Mapped[list["Case"]] = relationship(order_by="Case.external_ref")
 
 
-class UploadSession(Base):
+class UploadSession(TenantScoped, Base):
     """A short-lived window for a person to upload a case's documents from a
     front-end (VRT-47): the calling system opens it and hands over a link;
     whoever has the link uploads and gets each file checked in seconds; on
@@ -902,7 +942,7 @@ class UploadSession(Base):
     files: Mapped[list["UploadedFile"]] = relationship(back_populates="session", cascade="all, delete-orphan", order_by="UploadedFile.created_at")
 
 
-class UploadedFile(Base):
+class UploadedFile(TenantScoped, Base):
     """One file of an upload session and its quick check."""
 
     __tablename__ = "uploaded_files"

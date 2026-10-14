@@ -43,7 +43,6 @@ from idp.storage.object_store import S3ObjectStore
 
 router = APIRouter(prefix="/v1/bulk-jobs", tags=["bulk-jobs"], dependencies=[Depends(get_current_user)])
 
-_TENANT = "default"  # multi-tenant arrives with VRT-57
 _unprocessable = status.HTTP_422_UNPROCESSABLE_ENTITY
 OUTCOME_LABEL = {"continue": "Continuar", "human_review": "Revisión humana", "return_to_client": "Devolver al cliente", "failed": "Con error", "pending": "En curso"}
 
@@ -139,7 +138,7 @@ async def submit_bulk_job(
         raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail=f"el archivo pesa más de {settings.bulk_max_archive_mb} MB")
     digest = _sha256(archive.file)
     if idempotency_key is not None:
-        existing = (await session.scalars(select(BulkJob).where(BulkJob.tenant == _TENANT, BulkJob.idempotency_key == idempotency_key).options(*_with_cases()))).one_or_none()
+        existing = (await session.scalars(select(BulkJob).where(BulkJob.idempotency_key == idempotency_key).options(*_with_cases()))).one_or_none()
         if existing is not None:
             if existing.archive_sha256 != digest:
                 raise HTTPException(status_code=_unprocessable, detail="Idempotency-Key ya usada con otro archivo")
@@ -173,7 +172,7 @@ async def submit_bulk_job(
             raise HTTPException(status_code=_unprocessable, detail=f"el archivo no trae ningún expediente que se pueda procesar. {reasons}".strip())
 
         job = BulkJob(
-            tenant=_TENANT, name=name or archive.filename or "carga masiva", idempotency_key=idempotency_key, archive_sha256=digest,
+            name=name or archive.filename or "carga masiva", idempotency_key=idempotency_key, archive_sha256=digest,
             skipped=[s.model_dump() for s in skipped], created_by=user.name,
         )
         session.add(job)
@@ -183,7 +182,7 @@ async def submit_bulk_job(
             version = versions[c.profile]
             assert not isinstance(version, str)
             case = await cases.create(
-                tenant=_TENANT, request_input_payload=c.process_data or None, profile_version_id=version.id, external_ref=c.reference, channel="bulk", bulk_job_id=job.id,
+                request_input_payload=c.process_data or None, profile_version_id=version.id, external_ref=c.reference, channel="bulk", bulk_job_id=job.id,
             )
             uploads = [
                 Upload(filename=path.rsplit("/", 1)[-1], content_type=mimetypes.guess_type(path)[0] or "application/octet-stream", content=zf.read(path))

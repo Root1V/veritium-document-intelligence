@@ -26,6 +26,7 @@ from idp.api.case_service import CaseRefused, Upload, add_to_case, open_case
 from idp.config import Settings
 from idp.events.claim_check import ClaimCheckError, fetch
 from idp.execution.handover import hand_over
+from idp.persistence import tenancy
 from idp.persistence.db import get_session_factory
 from idp.persistence.models import Case, CaseRun, OutboxEvent
 from idp.webhooks.events import COMMAND_ACCEPTED, COMMAND_REJECTED, emit_command_answer
@@ -33,7 +34,6 @@ from idp.webhooks.events import COMMAND_ACCEPTED, COMMAND_REJECTED, emit_command
 SUBMIT = "pe.veritium.case.submit"
 ADD_DOCUMENTS = "pe.veritium.case.documents.add"
 COMMAND_TYPES = (SUBMIT, ADD_DOCUMENTS)
-_TENANT = "default"  # multi-tenant arrives with VRT-57
 
 
 class DocumentRef(BaseModel):
@@ -143,7 +143,7 @@ async def _uploads(settings: Settings, documents: list[DocumentRef]) -> list[Upl
 async def _submit(settings: Settings, session: AsyncSession, event: dict[str, Any], data: SubmitData) -> tuple[Case, CaseRun]:
     return await open_case(
         settings, session, profile=data.profile, profile_version=data.profile_version, external_ref=data.external_ref, channel=data.channel,
-        process_data=data.process_data, uploads=await _uploads(settings, data.documents), idempotency_key=f"ce:{event['source']}:{event['id']}", tenant=_TENANT,
+        process_data=data.process_data, uploads=await _uploads(settings, data.documents), idempotency_key=f"ce:{event['source']}:{event['id']}",
     )
 
 
@@ -170,10 +170,10 @@ async def handle(settings: Settings, event: dict[str, Any]) -> Answer:
             case, run = await (_submit(settings, session, event, payload) if isinstance(payload, SubmitData) else _add_documents(settings, session, payload))
         except Rejected as rejected:
             await session.rollback()
-            emit_command_answer(session, tenant=_TENANT, command=event, reason=rejected.reason)
+            emit_command_answer(session, tenant=tenancy.current(), command=event, reason=rejected.reason)
             await session.commit()
             return Answer(accepted=False, reason=rejected.reason)
-        emit_command_answer(session, tenant=_TENANT, command=event, case=case, run_number=run.run_number)
+        emit_command_answer(session, tenant=tenancy.current(), command=event, case=case, run_number=run.run_number)
         await session.commit()
         answer = Answer(accepted=True, case_id=case.id, run_number=run.run_number)
         pending, channel = [(case.id, run.id)], case.channel

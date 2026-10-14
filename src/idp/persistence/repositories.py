@@ -22,6 +22,7 @@ from idp.domain.process_profile import ProcessProfileDefinition
 from idp.domain.process_profile_seed import SEED_PROFILES
 from idp.domain.semantic import SemanticCatalog
 from idp.domain.semantic_seed import seed_catalog
+from idp.persistence import tenancy
 from idp.persistence.models import (
     ApiClient,
     AuditLogEntry,
@@ -40,6 +41,7 @@ from idp.persistence.models import (
     Extraction,
     LensRecord,
     LensResult,
+    Membership,
     OutboxEvent,
     ProcessProfile,
     ProcessProfileVersion,
@@ -48,6 +50,7 @@ from idp.persistence.models import (
     ReferenceEmployee,
     ReviewItem,
     SemanticCatalogVersion,
+    Tenant,
     User,
     ValidationIssue,
     ValidationRuleDefinition,
@@ -68,16 +71,41 @@ class UserRepository:
         result = await self._session.execute(stmt)
         return result.scalar_one_or_none()
 
-    async def create(self, *, name: str, email: str, password_hash: str, role: str = "operador") -> User:
-        user = User(name=name, email=email, password_hash=password_hash, role=role)
+    async def create(self, *, name: str, email: str, password_hash: str | None, role: str | None = None, tenant: str | None = None) -> User:
+        """With ``role``, also a local membership in ``tenant`` (the active unit if not given)."""
+        user = User(name=name, email=email, password_hash=password_hash)
         self._session.add(user)
         await self._session.flush()
+        if role is not None:
+            await self.set_membership(user.id, tenant or tenancy.current(), role)
         return user
 
-    async def list(self) -> list[User]:
-        """People only: a connected system's user is managed with its client (VRT-65)."""
-        result = await self._session.execute(select(User).where(User.id.not_in(select(ApiClient.user_id))).order_by(User.created_at))
-        return list(result.scalars().all())
+    async def role_in(self, user_id: uuid.UUID, tenant: str) -> str | None:
+        return await self._session.scalar(select(Membership.role).where(Membership.user_id == user_id, Membership.tenant == tenant))
+
+    async def memberships(self, user_id: uuid.UUID) -> list[tuple[Membership, Tenant]]:
+        stmt = select(Membership, Tenant).join(Tenant, Tenant.key == Membership.tenant).where(Membership.user_id == user_id).order_by(Tenant.name)
+        return [(m, t) for m, t in (await self._session.execute(stmt)).all()]
+
+    async def set_membership(self, user_id: uuid.UUID, tenant: str, role: str, *, source: str = "local") -> Membership:
+        membership = await self._session.scalar(select(Membership).where(Membership.user_id == user_id, Membership.tenant == tenant))
+        if membership is None:
+            membership = Membership(user_id=user_id, tenant=tenant, role=role, source=source)
+            self._session.add(membership)
+        else:
+            membership.role, membership.source = role, source
+        await self._session.flush()
+        return membership
+
+    async def members(self, tenant: str) -> list[tuple[User, Membership]]:
+        """People of a unit: a connected system's user is managed with its client (VRT-65)."""
+        stmt = (
+            select(User, Membership)
+            .join(Membership, Membership.user_id == User.id)
+            .where(Membership.tenant == tenant, User.id.not_in(select(ApiClient.user_id)))
+            .order_by(User.created_at)
+        )
+        return [(u, m) for u, m in (await self._session.execute(stmt)).all()]
 
 
 class CaseRepository:
@@ -87,7 +115,6 @@ class CaseRepository:
     async def create(
         self,
         *,
-        tenant: str = "default",
         request_input_payload: dict | None = None,
         profile_version_id: uuid.UUID | None = None,
         external_ref: str | None = None,
@@ -98,7 +125,6 @@ class CaseRepository:
     ) -> Case:
         case = Case(
             bulk_job_id=bulk_job_id,
-            tenant=tenant,
             request_input_payload=request_input_payload,
             profile_version_id=profile_version_id,
             external_ref=external_ref,
@@ -129,8 +155,9 @@ class CaseRepository:
         result = await self._session.execute(stmt)
         return result.scalar_one_or_none()
 
-    async def get_by_idempotency_key(self, *, tenant: str, idempotency_key: str) -> Case | None:
-        stmt = select(Case.id).where(Case.tenant == tenant, Case.idempotency_key == idempotency_key)
+    async def get_by_idempotency_key(self, *, idempotency_key: str) -> Case | None:
+        """Unique per unit; the unit is the active one (persistence/tenancy.py)."""
+        stmt = select(Case.id).where(Case.idempotency_key == idempotency_key)
         case_id = await self._session.scalar(stmt)
         return await self.get(case_id) if case_id is not None else None
 
@@ -1013,7 +1040,7 @@ class ProcessProfileRepository:
         self._session = session
 
     async def ensure_seed(self) -> None:
-        """Publish the seed profiles as version 1 if there are none —
+        """Publish the seed profiles as version 1 if the active unit has none —
         idempotent, called at API startup after the semantic catalog seed."""
         if await self._session.scalar(select(func.count()).select_from(ProcessProfile)):
             return
@@ -1172,12 +1199,13 @@ class WebhookDeliveryRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    async def create_for(self, event_id: uuid.UUID, endpoint_ids: list[uuid.UUID]) -> None:
-        """One delivery per endpoint; idempotent (a re-run of the fan-out
-        never duplicates)."""
+    async def create_for(self, event: OutboxEvent, endpoint_ids: list[uuid.UUID]) -> None:
+        """One delivery per endpoint, in the event's unit; idempotent (a
+        re-run of the fan-out never duplicates)."""
         if not endpoint_ids:
             return
-        stmt = pg_insert(WebhookDelivery).values([{"id": uuid.uuid4(), "event_id": event_id, "endpoint_id": e} for e in endpoint_ids])
+        rows = [{"id": uuid.uuid4(), "tenant": event.tenant, "event_id": event.id, "endpoint_id": e} for e in endpoint_ids]
+        stmt = pg_insert(WebhookDelivery).values(rows)
         await self._session.execute(stmt.on_conflict_do_nothing(index_elements=["event_id", "endpoint_id"]))
 
     async def claim_due(self, *, now: datetime, lease_until: datetime, limit: int = 50, tenant: str | None = None) -> list[WebhookDelivery]:
@@ -1252,8 +1280,8 @@ class EvaluationRepository:
 
     async def save_result(self, result: EvalResult) -> None:
         # One result per case and run: a resumed run never writes a case twice.
-        values = {c.name: getattr(result, c.name) for c in EvalResult.__table__.columns if c.name not in ("id", "created_at")}
-        await self._session.execute(pg_insert(EvalResult).values(id=uuid.uuid4(), **values).on_conflict_do_nothing(index_elements=["run_id", "case_id"]))
+        values = {c.name: getattr(result, c.name) for c in EvalResult.__table__.columns if c.name not in ("id", "created_at", "tenant")}
+        await self._session.execute(pg_insert(EvalResult).values(id=uuid.uuid4(), tenant=tenancy.current(), **values).on_conflict_do_nothing(index_elements=["run_id", "case_id"]))
 
     async def corrected_documents(self) -> list[tuple[Document, dict[str, Any]]]:
         """Documents with human corrections and, per top-level field, the

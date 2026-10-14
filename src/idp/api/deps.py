@@ -10,7 +10,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from idp.auth.authenticate import AuthFailure, authenticate, over_quota, touch
+from idp.auth.authenticate import AuthFailure, Principal, authenticate, over_quota, touch
 from idp.config import Settings, get_settings
 from idp.persistence.db import get_session_factory
 from idp.persistence.models import User
@@ -43,11 +43,13 @@ def get_external_system_port(settings: Annotated[Settings, Depends(get_app_setti
     return StubExternalSystemPort()
 
 
-async def get_current_user(
+async def get_principal(
     settings: Annotated[Settings, Depends(get_app_settings)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer_scheme)] = None,
-) -> User:
+) -> Principal:
+    """Who calls, in which business unit and with which role there — and,
+    from here on, the request acts for that unit (VRT-57)."""
     if credentials is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid or missing credentials")
     try:
@@ -60,17 +62,21 @@ async def get_current_user(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="se superó la cuota de llamadas por minuto", headers={"Retry-After": str(retry_after)}
             )
         await touch(session, principal.client)
+    return principal
+
+
+async def get_current_user(principal: Annotated[Principal, Depends(get_principal)]) -> User:
     return principal.user
 
 
 def require_role(*allowed_roles: str):
-    """Route-level dependency, additive to ``get_current_user`` — the role
-    is re-read from the DB on every request (not cached in the JWT), so a
-    role change takes effect on a user's next call, not their next login."""
+    """Route-level dependency, additive to ``get_current_user`` — the role in
+    the caller's unit is re-read from the DB on every request (not cached in
+    the JWT), so a role change takes effect on the next call, not the next login."""
 
-    async def checker(current_user: Annotated[User, Depends(get_current_user)]) -> User:
-        if current_user.role not in allowed_roles:
+    async def checker(principal: Annotated[Principal, Depends(get_principal)]) -> User:
+        if principal.role not in allowed_roles:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="insufficient permissions")
-        return current_user
+        return principal.user
 
     return checker

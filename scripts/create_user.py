@@ -20,7 +20,7 @@ from idp.persistence.repositories import UserRepository
 ROLES = {"admin", "operador", "visor", "integracion", "especialista_ia"}
 
 
-async def run(name: str, email: str, password: str, role: str) -> None:
+async def run(name: str, email: str, password: str, role: str, tenant: str) -> None:
     settings = get_settings()
     factory = get_session_factory(settings)
     async with factory() as session:
@@ -29,9 +29,9 @@ async def run(name: str, email: str, password: str, role: str) -> None:
         if existing is not None:
             print(f"User already exists: {email}")
             return
-        await repo.create(name=name, email=email, password_hash=hash_password(password), role=role)
+        await repo.create(name=name, email=email, password_hash=hash_password(password), role=role, tenant=tenant)
         await session.commit()
-    print(f"Created user: {name} <{email}> ({role})")
+    print(f"Created user: {name} <{email}> ({role} en {tenant})")
 
 
 if __name__ == "__main__":
@@ -40,5 +40,6 @@ if __name__ == "__main__":
     parser.add_argument("--email", required=True)
     parser.add_argument("--password", required=True)
     parser.add_argument("--role", default="operador", choices=sorted(ROLES))
+    parser.add_argument("--tenant", default="default", help="unidad de negocio (scripts/create_tenant.py)")
     args = parser.parse_args()
-    asyncio.run(run(args.name, args.email, args.password, args.role))
+    asyncio.run(run(args.name, args.email, args.password, args.role, args.tenant))

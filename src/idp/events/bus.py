@@ -27,6 +27,7 @@ from sqlalchemy import select
 
 from idp.config import Settings
 from idp.events import inbound
+from idp.persistence import tenancy
 from idp.persistence.db import get_session_factory
 from idp.persistence.models import OutboxEvent
 from idp.webhooks.events import body_bytes
@@ -140,4 +141,6 @@ async def _consume(settings: Settings, record: ConsumerRecord) -> None:
 
 async def run(settings: Settings, stop: asyncio.Event) -> None:
     await ensure_topics(settings)
+    # The bus is one business unit's (VRT-57): its commands come in under it, and only its events go out.
+    tenancy.use(settings.event_bus_tenant)
     await asyncio.gather(run_relay(settings, stop), run_consumer(settings, stop))

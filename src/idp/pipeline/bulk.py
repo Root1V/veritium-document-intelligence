@@ -17,6 +17,7 @@ from sqlalchemy import exists, func, select
 
 from idp.config import Settings
 from idp.execution.handover import hand_over
+from idp.persistence import tenancy
 from idp.persistence.db import get_session_factory
 from idp.persistence.models import BulkJob, Case, CaseRun
 from idp.webhooks.events import emit_bulk_job_completed
@@ -34,7 +35,13 @@ def outcome(case: Case) -> str:
 
 
 async def release(settings: Settings) -> int:
-    """Hand queued runs to the executor while there is room. Returns how many."""
+    """Hand queued runs to the executor while there is room. Returns how many.
+    The bulk lane is shared by every business unit, so its room is too."""
+    with tenancy.system():
+        return await _release(settings)
+
+
+async def _release(settings: Settings) -> int:
     async with get_session_factory(settings)() as session:
         bulk = select(Case.id).where(Case.bulk_job_id.is_not(None))
         in_flight = await session.scalar(select(func.count()).select_from(CaseRun).where(CaseRun.status.in_(("pending", "running")), CaseRun.case_id.in_(bulk)))
@@ -59,7 +66,12 @@ async def release(settings: Settings) -> int:
 
 
 async def finish(settings: Settings) -> int:
-    """Close the jobs with nothing left to do. Returns how many."""
+    """Close the jobs with nothing left to do, of every unit. Returns how many."""
+    with tenancy.system():
+        return await _finish(settings)
+
+
+async def _finish(settings: Settings) -> int:
     async with get_session_factory(settings)() as session:
         active = select(CaseRun.id).join(Case, Case.id == CaseRun.case_id).where(Case.bulk_job_id == BulkJob.id, CaseRun.status.in_(_ACTIVE))
         jobs = list((await session.scalars(select(BulkJob).where(BulkJob.finished_at.is_(None), ~exists(active)).with_for_update(skip_locked=True))).all())

@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from idp.api.deps import get_app_settings, get_db_session, require_role
 from idp.config import Settings
+from idp.persistence import tenancy
 from idp.persistence.models import OutboxEvent, User, WebhookDelivery, WebhookEndpoint
 from idp.persistence.repositories import WebhookDeliveryRepository, WebhookEndpointRepository
 from idp.webhooks.cipher import MissingEncryptionKey, encrypt
@@ -30,7 +31,6 @@ from idp.webhooks.signing import generate_secret
 
 router = APIRouter(prefix="/v1/webhook-endpoints", tags=["webhooks"], dependencies=[Depends(require_role("admin"))])
 
-_TENANT = "default"  # multi-tenant arrives with VRT-57
 
 
 class CreateEndpointRequest(BaseModel):
@@ -85,7 +85,7 @@ def _endpoint(e: WebhookEndpoint) -> EndpointResponse:
 
 async def _endpoint_or_404(session: AsyncSession, endpoint_id: uuid.UUID) -> WebhookEndpoint:
     endpoint = await WebhookEndpointRepository(session).get(endpoint_id)
-    if endpoint is None or endpoint.tenant != _TENANT:
+    if endpoint is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="webhook endpoint not found")
     return endpoint
 
@@ -103,7 +103,7 @@ async def create_endpoint(
     except MissingEncryptionKey as exc:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
     endpoint = await WebhookEndpointRepository(session).create(
-        WebhookEndpoint(tenant=_TENANT, url=str(body.url), description=body.description, event_types=body.event_types, secret_ciphertext=ciphertext, created_by=user.email)
+        WebhookEndpoint(url=str(body.url), description=body.description, event_types=body.event_types, secret_ciphertext=ciphertext, created_by=user.email)
     )
     await session.commit()
     await session.refresh(endpoint)
@@ -112,7 +112,7 @@ async def create_endpoint(
 
 @router.get("", response_model=list[EndpointResponse])
 async def list_endpoints(session: AsyncSession = Depends(get_db_session)) -> list[EndpointResponse]:
-    return [_endpoint(e) for e in await WebhookEndpointRepository(session).list(tenant=_TENANT)]
+    return [_endpoint(e) for e in await WebhookEndpointRepository(session).list(tenant=tenancy.current())]
 
 
 @router.delete("/{endpoint_id}", response_model=EndpointResponse)
@@ -145,7 +145,7 @@ async def send_test_event(endpoint_id: uuid.UUID, session: AsyncSession = Depend
     endpoint = await _endpoint_or_404(session, endpoint_id)
     if not endpoint.active:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="endpoint desactivado")
-    event = OutboxEvent(tenant=_TENANT, type=WEBHOOK_TEST, subject=str(endpoint.id), data={"message": "Evento de prueba de Veritium"}, dispatched_at=datetime.now(UTC))
+    event = OutboxEvent(type=WEBHOOK_TEST, subject=str(endpoint.id), data={"message": "Evento de prueba de Veritium"}, dispatched_at=datetime.now(UTC))
     session.add(event)
     await session.flush()
     session.add(WebhookDelivery(event_id=event.id, endpoint_id=endpoint.id))

@@ -18,9 +18,11 @@ import functools
 import logging
 import threading
 import uuid
-from typing import Any
+from collections.abc import Awaitable, Callable
+from typing import Any, ParamSpec, TypeVar
 
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from idp.classification.classifier import needs_review as classification_needs_review
@@ -40,6 +42,7 @@ from idp.observability.otel import case_step, traced_stage
 from idp.parsing.base import ParserBackend
 from idp.parsing.docling_backend import DoclingBackend
 from idp.parsing.paddleocr_backend import PaddleOCRBackend
+from idp.persistence import tenancy
 from idp.persistence.db import get_session_factory
 from idp.persistence.models import Case, Document
 from idp.persistence.models import ValidationIssue as ValidationIssueModel
@@ -78,6 +81,32 @@ from idp.validation.rules.reference_data_rules import EmployeeCodeExistsInRefere
 from idp.validation.rules.request_input_rules import ExpectedEmployeeCodeMatches
 from idp.validation.rules.self_rules import PayslipArithmeticConsistency
 from idp.validation.rules.semantic_rules import SemanticAttributeConsistency, format_rules
+
+
+P = ParamSpec("P")
+R = TypeVar("R")
+
+
+def for_case_unit(fn: Callable[P, Awaitable[R]]) -> Callable[P, Awaitable[R]]:
+    """A step on a case acts for the case's business unit (VRT-57). Inside a
+    request it already does — the case was found there; from aeon's worker,
+    the bulk feeder or the event bus, the unit is the case's own."""
+
+    @functools.wraps(fn)
+    async def run(*args: P.args, **kwargs: P.kwargs) -> R:
+        if tenancy.active() is not None:
+            return await fn(*args, **kwargs)
+        settings = kwargs.get("settings") or args[0]
+        case_id = kwargs.get("case_id") or next(a for a in args if isinstance(a, uuid.UUID))
+        with tenancy.system():  # which unit the case is in: the args carry ids, never a unit
+            async with get_session_factory(settings)() as session:
+                tenant = await session.scalar(select(Case.tenant).where(Case.id == case_id))
+        if tenant is None:
+            raise ValueError(f"case {case_id} not found")
+        with tenancy.acting_for(tenant):
+            return await fn(*args, **kwargs)
+
+    return run
 
 
 def make_parser_backend(settings: Settings) -> ParserBackend:
@@ -460,6 +489,7 @@ _EXTRACTION_STEPS = {"parsing", "classifying", "extracting"}
 
 
 @case_step("veritium.case.start_run")
+@for_case_unit
 async def start_run(settings: Settings, case_id: uuid.UUID, run_id: uuid.UUID) -> list[uuid.UUID]:
     """Step 1 of a case run (VRT-26): mark the run running, record its
     provenance, and return the top-level documents still to extract.
@@ -494,6 +524,7 @@ def _pending(case: Case) -> list[uuid.UUID]:
     ]
 
 
+@for_case_unit
 async def pending_documents(settings: Settings, case_id: uuid.UUID) -> list[uuid.UUID]:
     """The top-level documents a new run of this case has to extract —
     what the aeon graph fans out over (VRT-26)."""
@@ -505,6 +536,7 @@ async def pending_documents(settings: Settings, case_id: uuid.UUID) -> list[uuid
 
 
 @case_step("veritium.case.process_document")
+@for_case_unit
 async def process_document(settings: Settings, case_id: uuid.UUID, run_id: uuid.UUID, document_id: uuid.UUID) -> None:
     """Step 2, once per document and in parallel: parse, segment, classify
     and extract one uploaded document. Idempotent — an already extracted
@@ -593,6 +625,7 @@ async def case_rules(settings: Settings, session: AsyncSession, case: Case) -> t
 
 
 @case_step("veritium.case.evaluate")
+@for_case_unit
 async def evaluate_case(settings: Settings, case_id: uuid.UUID, run_id: uuid.UUID) -> str | None:
     """Step 3, after every document: re-validate the whole case, refresh
     its conditions and verdict, close the run and emit its events.
@@ -675,6 +708,7 @@ async def evaluate_case(settings: Settings, case_id: uuid.UUID, run_id: uuid.UUI
     return verdict
 
 
+@for_case_unit
 async def fail_run(settings: Settings, case_id: uuid.UUID, run_id: uuid.UUID, error: str) -> None:
     """When a run cannot finish: mark it and the case failed and emit
     ``run.failed``. No-op on a run that already finished."""
@@ -691,6 +725,7 @@ async def fail_run(settings: Settings, case_id: uuid.UUID, run_id: uuid.UUID, er
         await session.commit()
 
 
+@for_case_unit
 async def process_case_run(*, settings: Settings, case_id: uuid.UUID, run_id: uuid.UUID) -> None:
     """The whole run in-process (the interim executor, VRT-26): the same
     steps the aeon graph runs, with documents in parallel up to

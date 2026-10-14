@@ -147,6 +147,7 @@ async def _record(session: AsyncSession, simulation: Simulation, case: Case, run
     diff = difference(case.verdict_reasons, simulated)
     values = {
         "id": uuid.uuid4(),
+        "tenant": simulation.tenant,
         "simulation_id": simulation.id,
         "case_id": case.id,
         "case_run_id": run_id,
