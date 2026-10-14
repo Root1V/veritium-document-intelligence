@@ -12,6 +12,8 @@ const UNIT_KEY = 'idp_unit'
 const UNITS_KEY = 'idp_units'
 // The last unit worked in survives signing out: the next sign-in starts there.
 const LAST_UNIT_KEY = 'idp_last_unit'
+// The identity provider's id_token, to end its session too on signing out (VRT-57).
+const ID_TOKEN_KEY = 'idp_id_token'
 
 export function getToken(): string | null {
   return localStorage.getItem(TOKEN_KEY)
@@ -55,10 +57,22 @@ export function setSession(token: string, me: Me): void {
   localStorage.setItem(LAST_UNIT_KEY, me.tenant)
 }
 
+export function setIdToken(idToken: string): void {
+  localStorage.setItem(ID_TOKEN_KEY, idToken)
+}
+
 export function clearSession(): void {
-  for (const key of [TOKEN_KEY, USER_NAME_KEY, USER_ROLE_KEY, UNIT_KEY, UNITS_KEY]) {
+  for (const key of [TOKEN_KEY, USER_NAME_KEY, USER_ROLE_KEY, UNIT_KEY, UNITS_KEY, ID_TOKEN_KEY]) {
     localStorage.removeItem(key)
   }
+}
+
+/** Out of Veritium and, if the person came through the corporate sign-in, out
+ * of the identity provider too — or the next sign-in would resume them. */
+export function signOut(): void {
+  const idToken = localStorage.getItem(ID_TOKEN_KEY)
+  clearSession()
+  window.location.assign(idToken ? `/api/auth/oidc/logout?id_token_hint=${encodeURIComponent(idToken)}` : '/login')
 }
 
 export function isAuthenticated(): boolean {

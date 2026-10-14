@@ -17,6 +17,7 @@ from __future__ import annotations
 import base64
 import hmac
 import logging
+from urllib.parse import urlencode
 from typing import Annotated
 
 import httpx
@@ -148,8 +149,9 @@ async def oidc_callback(
     session: AsyncSession = Depends(get_db_session),
     settings: Settings = Depends(get_app_settings),
 ) -> RedirectResponse:
-    """Back from the provider: to the login page with a token in the fragment
-    (never sent to a server nor in a Referer), or with why not."""
+    """Back from the provider: to the login page with the token (and the
+    provider's id_token, to sign out later) in the fragment — never sent to a
+    server nor in a Referer — or with why not."""
     back = f"{settings.frontend_base_url.rstrip('/')}/login"
 
     def to(target: str) -> RedirectResponse:
@@ -162,7 +164,8 @@ async def oidc_callback(
         return to(f"{back}?sso=cancelado")
     try:
         attempt = oidc.unseal(settings, sealed)
-        user = await oidc.sign_in(settings, session, await oidc.identity(settings, attempt, code=code, state=state))
+        claims, id_token = await oidc.identity(settings, attempt, code=code, state=state)
+        user = await oidc.sign_in(settings, session, claims)
         await session.commit()
         signed = await signed_in(settings, session, user, attempt.tenant)
     except oidc.SignInFailed as exc:
@@ -173,7 +176,21 @@ async def oidc_callback(
         return to(f"{back}?sso=proveedor")
     except HTTPException:  # signed in, but in no unit
         return to(f"{back}?sso=sin_unidades")
-    return to(f"{back}#token={signed.access_token}")
+    return to(f"{back}#{urlencode({'token': signed.access_token, 'id_token': id_token})}")
+
+
+@router.get("/oidc/logout", include_in_schema=False)
+async def oidc_logout(id_token_hint: str | None = None, settings: Settings = Depends(get_app_settings)) -> RedirectResponse:
+    """Out of the identity provider too, then back to the login page — so the
+    next sign-in asks who it is instead of resuming the last person."""
+    back = f"{settings.frontend_base_url.rstrip('/')}/login"
+    if settings.oidc_issuer is None:
+        return RedirectResponse(back, status_code=status.HTTP_302_FOUND)
+    try:
+        target = await oidc.logout_url(settings, id_token_hint)
+    except httpx.HTTPError:
+        target = back
+    return RedirectResponse(target, status_code=status.HTTP_302_FOUND)
 
 
 class TokenResponse(BaseModel):

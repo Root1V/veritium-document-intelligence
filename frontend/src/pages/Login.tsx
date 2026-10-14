@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { fetchMe, useLogin, useSignInProviders } from '@/lib/queries'
-import { clearSession, getLastUnit, isAuthenticated, setSession, setToken } from '@/lib/auth'
+import { clearSession, getLastUnit, isAuthenticated, setIdToken, setSession, setToken } from '@/lib/auth'
 
 // Why the corporate sign-in did not go through (?sso=… from /auth/oidc/callback).
 const SSO_ERROR: Record<string, string> = {
@@ -31,8 +31,11 @@ export function LoginPage() {
     const hash = window.location.hash
     if (!hash.startsWith('#token=')) return
     window.history.replaceState(null, '', window.location.pathname)
-    const token = decodeURIComponent(hash.slice('#token='.length))
+    const fragment = new URLSearchParams(hash.slice(1))
+    const token = fragment.get('token') ?? ''
     setToken(token)
+    const idToken = fragment.get('id_token')
+    if (idToken) setIdToken(idToken)
     fetchMe()
       .then((me) => {
         setSession(token, me)

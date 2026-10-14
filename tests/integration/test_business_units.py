@@ -183,7 +183,7 @@ def test_no_route_answers_without_knowing_the_unit():
     """Every route needs a credential, which names the unit — except the few
     that are the way in, and the upload link, which is its own credential."""
     public = {
-        "POST /auth/login", "POST /auth/token", "GET /auth/providers", "GET /auth/oidc/login", "GET /auth/oidc/callback",
+        "POST /auth/login", "POST /auth/token", "GET /auth/providers", "GET /auth/oidc/login", "GET /auth/oidc/callback", "GET /auth/oidc/logout",
         "GET /.well-known/oauth-authorization-server",
     }
     by_link = "/v1/upload-sessions/{session_id}"

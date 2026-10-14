@@ -83,8 +83,9 @@ async def authorization_url(settings: Settings, attempt: Attempt) -> str:
     return f"{endpoint}?{urlencode(query)}"
 
 
-async def identity(settings: Settings, attempt: Attempt, *, code: str, state: str) -> dict[str, Any]:
-    """The verified claims of the person the provider sent back."""
+async def identity(settings: Settings, attempt: Attempt, *, code: str, state: str) -> tuple[dict[str, Any], str]:
+    """The verified claims of the person the provider sent back, and the
+    id_token itself: signing out of the provider names the session with it."""
     if not secrets.compare_digest(state, attempt.state):
         raise SignInFailed("el estado no coincide")
     secret = settings.oidc_client_secret.get_secret_value() if settings.oidc_client_secret else ""
@@ -108,7 +109,19 @@ async def identity(settings: Settings, attempt: Attempt, *, code: str, state: st
         raise SignInFailed(f"id_token inválido: {exc}") from exc
     if not secrets.compare_digest(str(claims.get("nonce", "")), attempt.nonce):
         raise SignInFailed("el nonce no coincide")
-    return claims
+    return claims, body["id_token"]
+
+
+async def logout_url(settings: Settings, id_token: str | None) -> str:
+    """Signing out of the provider too (RP-initiated logout): otherwise its
+    session lives on and the next sign-in is the same person, without asking."""
+    back = f"{settings.frontend_base_url.rstrip('/')}/login"
+    async with httpx.AsyncClient(timeout=10) as client:
+        endpoint = (await _discover(settings, client)).get("end_session_endpoint")
+    if endpoint is None:
+        return back
+    query = {"client_id": settings.oidc_client_id, "post_logout_redirect_uri": back, **({"id_token_hint": id_token} if id_token else {})}
+    return f"{endpoint}?{urlencode(query)}"
 
 
 def units_from(settings: Settings, claims: dict[str, Any]) -> dict[str, str]:

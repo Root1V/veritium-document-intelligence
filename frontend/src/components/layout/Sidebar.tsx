@@ -2,7 +2,7 @@ import { NavLink } from 'react-router-dom'
 import { toast } from 'sonner'
 import { LayoutDashboard, Upload, Files, ClipboardCheck, Sparkles, BookOpen, History, LogOut, FileStack, Users, ShieldCheck, ListChecks, Network, Workflow, FolderOpen, FolderArchive, FlaskConical, Gauge, SplitSquareHorizontal, Scale, MessageSquareText, KeyRound, Wrench, Bot, Building2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { canExecute, clearSession, getUnit, getUnits, getUserName, getUserRole, isAdmin, setSession } from '@/lib/auth'
+import { canExecute, getUnit, getUnits, getUserName, getUserRole, isAdmin, setSession, signOut } from '@/lib/auth'
 import { useSwitchUnit } from '@/lib/queries'
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -167,10 +167,7 @@ export function Sidebar() {
         </div>
         <button
           type="button"
-          onClick={() => {
-            clearSession()
-            window.location.assign('/login')
-          }}
+          onClick={signOut}
           className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-sidebar-foreground/80 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
         >
           <LogOut className="size-4" />
