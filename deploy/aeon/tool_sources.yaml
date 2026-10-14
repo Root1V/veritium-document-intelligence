@@ -6,7 +6,9 @@
 # Endpoint on loopback: aeon accepts only https, or http to loopback. toolgw runs
 # in Docker and Veritium on the host, so the `veritium-bridge` container
 # (compose.override.yml) shares toolgw's network and forwards 127.0.0.1:8010 to
-# the host's Veritium.
+# the host's Veritium. aeon's `allow_plain_http` (TOOL-010b) would let the
+# endpoint be http://host.docker.internal, but not `auth.token_url`, which still
+# must be https or loopback — so the bridge stays while the source uses OAuth.
 #
 # Each tool is approved here one by one; what Veritium offers and is not listed
 # is not served. Left out on purpose: request_documents_link (creates a link a

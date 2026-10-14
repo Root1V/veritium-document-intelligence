@@ -74,10 +74,9 @@ async def main(token: str) -> None:
 
         print("2. Puerta MCP (un solo principal para todo cliente MCP)")
         read = await mcp.call_tool("veritium.find_cases", {"limit": 1})
-        # aeon wraps a federated tool's result as {"source": ..., "text": <the tool's own text>}.
-        wrapped = json.loads(" ".join(getattr(p, "text", "") for p in read.content) or "{}")
-        answer = json.loads(wrapped.get("text") or "{}")
-        check(not read.is_error and wrapped.get("source") == "veritium" and "total" in answer, f"lectura permitida: find_cases llega a Veritium y responde ({answer.get('total')} expedientes)")
+        # aeon forwards the source's result as it is (TOOL-010b): Veritium's own structured content.
+        answer = read.structured_content or {}
+        check(not read.is_error and "total" in answer, f"lectura permitida: find_cases llega a Veritium y responde ({answer.get('total')} expedientes)")
         ref = f"VRT55-MCP-{uuid.uuid4().hex[:6]}"
         write = await mcp.call_tool("veritium.submit_case", submit_args(ref))
         check(write.is_error and "denied" in " ".join(getattr(p, "text", "") for p in write.content), "escritura denegada por Cedar: submit_case")
