@@ -56,18 +56,21 @@ from datetime import UTC, datetime
 from pathlib import Path
 from idp.auth.security import hash_client_secret, hash_password
 from idp.config import get_settings
+from idp.persistence import tenancy
 from idp.persistence.db import get_session_factory
 from idp.persistence.models import ApiClient
 from idp.persistence.repositories import UserRepository
 
 async def main(out: Path) -> None:
     client_id, secret = f"vrt_{secrets.token_hex(8)}", secrets.token_urlsafe(32)
-    async with get_session_factory(get_settings())() as session:
-        user = await UserRepository(session).create(name="Sistema · aeon (tools federadas)", email=f"{client_id}@sistemas.veritium",
-                                                    password_hash=hash_password(secrets.token_urlsafe(32)), role="integracion")
-        session.add(ApiClient(name="aeon (tools federadas, VRT-55)", client_id=client_id, secret_hash=hash_client_secret(secret), user_id=user.id,
-                              rate_limit_per_minute=600, created_by="scripts/aeon_dev.sh", secret_rotated_at=datetime.now(UTC)))
-        await session.commit()
+    # A connected system belongs to one business unit (VRT-57): through aeon, agents see the main one's cases.
+    with tenancy.acting_for("default"):
+        async with get_session_factory(get_settings())() as session:
+            user = await UserRepository(session).create(name="Sistema · aeon (tools federadas)", email=f"{client_id}@sistemas.veritium",
+                                                        password_hash=hash_password(secrets.token_urlsafe(32)), role="integracion")
+            session.add(ApiClient(name="aeon (tools federadas, VRT-55)", client_id=client_id, secret_hash=hash_client_secret(secret), user_id=user.id,
+                                  rate_limit_per_minute=600, created_by="scripts/aeon_dev.sh", secret_rotated_at=datetime.now(UTC)))
+            await session.commit()
     for name, value in (("veritium_mcp_client_id", client_id), ("veritium_mcp_client_secret", secret)):
         (out / name).write_text(value); (out / name).chmod(0o600)
 

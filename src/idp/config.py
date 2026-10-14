@@ -38,6 +38,20 @@ class Settings(BaseSettings):
     api_client_token_minutes: int = 15
     api_client_rate_limit_per_minute: int = 120
 
+    # --- Corporate sign-in (VRT-57) ---
+    # OpenID Connect: any provider (Entra ID, Okta, Keycloak). Unset issuer =
+    # no SSO. A person's units and roles come from the groups in
+    # ``oidc_groups_claim``, named "<oidc_group_prefix>:<unit>:<role>".
+    oidc_issuer: str | None = None
+    oidc_client_id: str = "veritium"
+    oidc_client_secret: SecretStr | None = None
+    oidc_groups_claim: str = "groups"
+    oidc_group_prefix: str = "veritium"
+    # Sign-in with a password kept in Veritium (development, a break-glass admin).
+    local_login_enabled: bool = True
+    # Where people use Veritium; the sign-in returns there.
+    frontend_base_url: str = "http://localhost:5180"
+
     # --- CORS (frontend dev server origin) ---
     cors_allowed_origins: list[str] = ["http://localhost:5180"]
 

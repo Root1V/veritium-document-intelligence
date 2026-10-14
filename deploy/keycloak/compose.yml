@@ -1,0 +1,28 @@
+# Corporate sign-in for development (VRT-57): an OIDC provider with the realm
+# in veritium-realm.json — groups "veritium:<unit>:<role>" and test people.
+# Secrets come from the repo's .env (OIDC_CLIENT_SECRET, KC_DEV_PASSWORD,
+# KEYCLOAK_ADMIN_PASSWORD):
+#
+#   docker compose --env-file .env -f deploy/keycloak/compose.yml up -d
+#
+# Console: http://localhost:8180/admin (user admin). Docker Desktop makes
+# local requests look remote, so the first time the console needs:
+#
+#   docker exec veritium-sso-keycloak-1 sh -c '/opt/keycloak/bin/kcadm.sh config credentials --server http://localhost:8180 --realm master --user admin --password "$KC_BOOTSTRAP_ADMIN_PASSWORD" && /opt/keycloak/bin/kcadm.sh update realms/master -s sslRequired=NONE'
+#
+# The realm is imported when it does not exist yet; to reload it, recreate the container.
+name: veritium-sso
+
+services:
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0.7
+    command: start-dev --import-realm --http-port=8180
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?falta en .env}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:?falta en .env}
+      KC_DEV_PASSWORD: ${KC_DEV_PASSWORD:?falta en .env}
+    ports:
+      - "8180:8180"  # 8080 is already taken locally (aeon, argus)
+    volumes:
+      - ./veritium-realm.json:/opt/keycloak/data/import/veritium-realm.json:ro

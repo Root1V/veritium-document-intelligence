@@ -33,6 +33,13 @@ uv run python scripts/seed_reference_data.py
 uv run uvicorn idp.api.app:app --reload
 ```
 
+Ingreso corporativo y unidades de negocio (VRT-57), opcional:
+
+```bash
+uv run python scripts/create_tenant.py pymes "Banca Pymes"                  # cada unidad, una vez
+docker compose --env-file .env -f deploy/keycloak/compose.yml up -d         # Keycloak de desarrollo (OIDC_* en .env)
+```
+
 ## Verificacion
 
 ```bash

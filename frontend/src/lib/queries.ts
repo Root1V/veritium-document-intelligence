@@ -40,6 +40,8 @@ import type {
   RuleTestResult,
   LoginRequest,
   LoginResponse,
+  Me,
+  SignInProviders,
   ManualRuleRequest,
   ReviewCorrectionRequest,
   ReviewCorrectionResponse,
@@ -75,6 +77,31 @@ export function useLogin() {
       return data
     },
   })
+}
+
+export function useSignInProviders() {
+  return useQuery({
+    queryKey: ['auth', 'providers'],
+    queryFn: async () => {
+      const { data } = await apiClient.get<SignInProviders>('/auth/providers')
+      return data
+    },
+  })
+}
+
+/** Work in another of the person's business units: a new token for it (VRT-57). */
+export function useSwitchUnit() {
+  return useMutation({
+    mutationFn: async (tenant: string) => {
+      const { data } = await apiClient.post<LoginResponse>('/auth/switch', { tenant })
+      return data
+    },
+  })
+}
+
+export async function fetchMe(): Promise<Me> {
+  const { data } = await apiClient.get<Me>('/auth/me')
+  return data
 }
 
 export interface DocumentListFilters {

@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+import { getUnit, getUnits } from '@/lib/auth'
 import type { UserRole } from '@/types/api'
 
 const ROLE_LABEL: Record<UserRole, string> = {
@@ -30,7 +31,7 @@ function CreateUserDialog() {
   function handleSubmit(event: FormEvent) {
     event.preventDefault()
     createUser.mutate(
-      { name, email, password, role },
+      { name, email, password: password || undefined, role },
       {
         onSuccess: () => {
           toast.success('Usuario creado.')
@@ -68,7 +69,13 @@ function CreateUserDialog() {
           </div>
           <div className="flex flex-col gap-2">
             <Label htmlFor="password">Contraseña</Label>
-            <Input id="password" type="password" required value={password} onChange={(e) => setPassword(e.target.value)} />
+            <Input
+              id="password"
+              type="password"
+              placeholder="Solo si es una persona nueva"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
           </div>
           <div className="flex flex-col gap-2">
             <Label>Rol</Label>
@@ -96,13 +103,17 @@ function CreateUserDialog() {
 
 export function UsersPage() {
   const { data: users, isLoading } = useUsers()
+  const unit = getUnits().find((u) => u.key === getUnit())?.name
 
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Usuarios</h1>
-          <p className="text-muted-foreground">Gestiona quién puede acceder a la plataforma y con qué rol.</p>
+          <p className="text-muted-foreground">
+            Quiénes trabajan en {unit ?? 'esta unidad'} y con qué rol. Quienes ingresan con su cuenta corporativa reciben su unidad y su
+            rol desde el proveedor de identidad.
+          </p>
         </div>
         <CreateUserDialog />
       </div>
@@ -119,6 +130,7 @@ export function UsersPage() {
                 <TableHead>Nombre</TableHead>
                 <TableHead>Correo</TableHead>
                 <TableHead>Rol</TableHead>
+                <TableHead>Se gestiona en</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -131,6 +143,7 @@ export function UsersPage() {
                       {ROLE_LABEL[user.role]}
                     </Badge>
                   </TableCell>
+                  <TableCell className="text-muted-foreground">{user.managed_by === 'idp' ? 'Cuenta corporativa' : 'Veritium'}</TableCell>
                 </TableRow>
               ))}
             </TableBody>

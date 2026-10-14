@@ -36,7 +36,6 @@ from idp.persistence.models import (
     Extraction,
     Membership,
     OutboxEvent,
-    ProcessProfile,
     ReviewItem,
     User,
     ValidationIssue,
@@ -183,7 +182,10 @@ def _depends_on(dependant: Dependant, call) -> bool:
 def test_no_route_answers_without_knowing_the_unit():
     """Every route needs a credential, which names the unit — except the few
     that are the way in, and the upload link, which is its own credential."""
-    public = {"POST /auth/login", "POST /auth/token", "GET /.well-known/oauth-authorization-server"}
+    public = {
+        "POST /auth/login", "POST /auth/token", "GET /auth/providers", "GET /auth/oidc/login", "GET /auth/oidc/callback",
+        "GET /.well-known/oauth-authorization-server",
+    }
     by_link = "/v1/upload-sessions/{session_id}"
     unguarded = []
     for module in pkgutil.iter_modules(routes.__path__):

@@ -28,6 +28,7 @@ from mcp.shared._httpx_utils import create_mcp_http_client
 from sqlalchemy import select
 
 from idp.config import get_settings
+from idp.persistence import tenancy
 from idp.persistence.db import get_session_factory
 from idp.persistence.models import Case
 
@@ -45,8 +46,9 @@ def check(ok: bool, what: str) -> None:
 
 
 async def case_exists(external_ref: str) -> bool:
-    async with get_session_factory(get_settings())() as session:
-        return await session.scalar(select(Case.id).where(Case.external_ref == external_ref)) is not None
+    with tenancy.system():  # "never arrived" means in no business unit at all
+        async with get_session_factory(get_settings())() as session:
+            return await session.scalar(select(Case.id).where(Case.external_ref == external_ref)) is not None
 
 
 def submit_args(ref: str) -> dict:

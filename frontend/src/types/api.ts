@@ -311,15 +311,33 @@ export interface ToggleRule {
 export interface LoginRequest {
   email: string
   password: string
+  tenant?: string
 }
 
 export type UserRole = 'admin' | 'operador' | 'visor' | 'integracion' | 'especialista_ia'
 
-export interface LoginResponse {
-  access_token: string
-  token_type: string
+/** A business unit the person works in, and their role there (VRT-57). */
+export interface BusinessUnit {
+  key: string
+  name: string
+  role: UserRole
+}
+
+export interface Me {
   user_name: string
   role: UserRole
+  tenant: string
+  tenants: BusinessUnit[]
+}
+
+export interface LoginResponse extends Me {
+  access_token: string
+  token_type: string
+}
+
+export interface SignInProviders {
+  sso: boolean
+  local: boolean
 }
 
 export interface AppUser {
@@ -327,12 +345,13 @@ export interface AppUser {
   name: string
   email: string
   role: UserRole
+  managed_by: 'idp' | 'local'
 }
 
 export interface CreateUserRequest {
   name: string
   email: string
-  password: string
+  password?: string
   role: UserRole
 }
 

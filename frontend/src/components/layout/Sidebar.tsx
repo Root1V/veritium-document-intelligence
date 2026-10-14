@@ -1,8 +1,11 @@
 import { NavLink } from 'react-router-dom'
-import { LayoutDashboard, Upload, Files, ClipboardCheck, Sparkles, BookOpen, History, LogOut, FileStack, Users, ShieldCheck, ListChecks, Network, Workflow, FolderOpen, FolderArchive, FlaskConical, Gauge, SplitSquareHorizontal, Scale, MessageSquareText, KeyRound, Wrench, Bot } from 'lucide-react'
+import { toast } from 'sonner'
+import { LayoutDashboard, Upload, Files, ClipboardCheck, Sparkles, BookOpen, History, LogOut, FileStack, Users, ShieldCheck, ListChecks, Network, Workflow, FolderOpen, FolderArchive, FlaskConical, Gauge, SplitSquareHorizontal, Scale, MessageSquareText, KeyRound, Wrench, Bot, Building2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { canExecute, clearSession, getUserName, getUserRole, isAdmin } from '@/lib/auth'
+import { canExecute, clearSession, getUnit, getUnits, getUserName, getUserRole, isAdmin, setSession } from '@/lib/auth'
+import { useSwitchUnit } from '@/lib/queries'
 import { Badge } from '@/components/ui/badge'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
 const ROLE_LABEL: Record<string, string> = {
   admin: 'Admin',
@@ -35,6 +38,51 @@ const NAV_ITEMS = [
   { to: '/tools', label: 'Catálogo de tools', icon: Wrench, requiresExecute: false },
 ]
 
+/** The business unit everything on screen belongs to; someone in several picks one (VRT-57). */
+function UnitPicker() {
+  const units = getUnits()
+  const current = getUnit()
+  const switchUnit = useSwitchUnit()
+  if (units.length === 0) return null
+  if (units.length === 1) {
+    return (
+      <div className="mx-3 mb-3 flex items-center gap-2 rounded-lg border px-3 py-2 text-sm">
+        <Building2 className="size-4 text-muted-foreground" />
+        <span className="truncate">{units[0].name}</span>
+      </div>
+    )
+  }
+  return (
+    <div className="mx-3 mb-3">
+      <Select
+        value={current ?? undefined}
+        disabled={switchUnit.isPending}
+        onValueChange={(tenant) =>
+          switchUnit.mutate(tenant, {
+            onSuccess: (data) => {
+              setSession(data.access_token, data)
+              window.location.assign('/') // nothing of the previous unit stays on screen
+            },
+            onError: () => toast.error('No se pudo cambiar de unidad.'),
+          })
+        }
+      >
+        <SelectTrigger className="w-full" aria-label="Unidad de negocio">
+          <Building2 className="size-4 text-muted-foreground" />
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {units.map((u) => (
+            <SelectItem key={u.key} value={u.key}>
+              {u.name}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  )
+}
+
 export function Sidebar() {
   const userName = getUserName()
   const role = getUserRole()
@@ -52,6 +100,8 @@ export function Sidebar() {
           <div className="text-xs text-muted-foreground leading-tight">Plataforma Documental</div>
         </div>
       </div>
+
+      <UnitPicker />
 
       <nav className="flex flex-1 flex-col gap-1 px-3">
         {navItems.map(({ to, label, icon: Icon, end }) => (

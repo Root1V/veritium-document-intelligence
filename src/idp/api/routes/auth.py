@@ -1,23 +1,33 @@
-"""POST /auth/login — a person's login, into one of their business units;
-POST /auth/switch — into another one; GET /auth/me — who and where (VRT-57).
-POST /auth/token — a connected system's token (OAuth2 client credentials,
-VRT-65). Login and token are the only unauthenticated routes besides /health.
-No self-signup: users are created via ``scripts/create_user.py`` (internal
-tool, no evidence of needing public registration)."""
+"""How people and systems get in.
+
+- GET /auth/oidc/login → /auth/oidc/callback: a person, through the
+  corporate identity provider (VRT-57).
+- POST /auth/login: a person, with a password kept here (development, a
+  break-glass admin).
+- Either lands in one of the person's business units; POST /auth/switch
+  moves to another one; GET /auth/me says who and where.
+- POST /auth/token: a connected system (OAuth2 client credentials, VRT-65).
+
+Signing in, the token and /auth/providers are the only unauthenticated
+routes besides /health. No self-signup: people come from the identity
+provider, or ``scripts/create_user.py`` and the Usuarios page."""
 
 from __future__ import annotations
 
 import base64
 import hmac
+import logging
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Form, Header, HTTPException, status
-from fastapi.responses import JSONResponse
+import httpx
+from fastapi import APIRouter, Depends, Form, Header, HTTPException, Request, status
+from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from idp.api.deps import get_app_settings, get_db_session, get_principal
+from idp.auth import oidc
 from idp.auth.authenticate import Principal
 from idp.auth.security import create_access_token, create_client_token, hash_client_secret, verify_password
 from idp.config import Settings
@@ -26,6 +36,7 @@ from idp.persistence.models import ApiClient, User
 from idp.persistence.repositories import UserRepository
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+log = logging.getLogger(__name__)
 
 
 class LoginRequest(BaseModel):
@@ -72,6 +83,8 @@ async def login(
     session: AsyncSession = Depends(get_db_session),
     settings: Settings = Depends(get_app_settings),
 ) -> LoginResponse:
+    if not settings.local_login_enabled:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="ingresa con tu cuenta corporativa")
     user = await UserRepository(session).get_by_email(body.email)
     if user is None or user.password_hash is None or not verify_password(body.password, user.password_hash):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid email or password")
@@ -98,6 +111,69 @@ async def switch(
     if principal.client is not None or body.tenant not in {u.key for u in await _units(session, principal.user)}:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="no trabajas en esa unidad")
     return await signed_in(settings, session, principal.user, body.tenant)
+
+
+class Providers(BaseModel):
+    sso: bool  # corporate sign-in (GET /auth/oidc/login)
+    local: bool  # e-mail and password (POST /auth/login)
+
+
+@router.get("/providers", response_model=Providers)
+async def providers(settings: Settings = Depends(get_app_settings)) -> Providers:
+    """How people can sign in here, for the login page."""
+    return Providers(sso=settings.oidc_issuer is not None, local=settings.local_login_enabled)
+
+
+_ATTEMPT = "veritium_oidc"  # cookie: the sign-in in progress, signed, for 10 minutes
+
+
+@router.get("/oidc/login", include_in_schema=False)
+async def oidc_login(tenant: str | None = None, settings: Settings = Depends(get_app_settings)) -> RedirectResponse:
+    """Off to the corporate identity provider; it comes back to /auth/oidc/callback."""
+    if settings.oidc_issuer is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="no hay ingreso corporativo configurado")
+    attempt = oidc.start(tenant)
+    response = RedirectResponse(await oidc.authorization_url(settings, attempt), status_code=status.HTTP_302_FOUND)
+    secure = settings.environment == "prod"
+    response.set_cookie(_ATTEMPT, oidc.seal(settings, attempt), max_age=600, httponly=True, samesite="lax", secure=secure, path="/auth/oidc")
+    return response
+
+
+@router.get("/oidc/callback", include_in_schema=False)
+async def oidc_callback(
+    request: Request,
+    code: str | None = None,
+    state: str | None = None,
+    error: str | None = None,
+    session: AsyncSession = Depends(get_db_session),
+    settings: Settings = Depends(get_app_settings),
+) -> RedirectResponse:
+    """Back from the provider: to the login page with a token in the fragment
+    (never sent to a server nor in a Referer), or with why not."""
+    back = f"{settings.frontend_base_url.rstrip('/')}/login"
+
+    def to(target: str) -> RedirectResponse:
+        response = RedirectResponse(target, status_code=status.HTTP_302_FOUND)
+        response.delete_cookie(_ATTEMPT, path="/auth/oidc")
+        return response
+
+    sealed = request.cookies.get(_ATTEMPT)
+    if error or not code or not state or not sealed:
+        return to(f"{back}?sso=cancelado")
+    try:
+        attempt = oidc.unseal(settings, sealed)
+        user = await oidc.sign_in(settings, session, await oidc.identity(settings, attempt, code=code, state=state))
+        await session.commit()
+        signed = await signed_in(settings, session, user, attempt.tenant)
+    except oidc.SignInFailed as exc:
+        log.warning("ingreso corporativo rechazado: %s", exc)
+        return to(f"{back}?sso=rechazado")
+    except httpx.HTTPError as exc:
+        log.warning("ingreso corporativo: el proveedor no respondió: %s", exc)
+        return to(f"{back}?sso=proveedor")
+    except HTTPException:  # signed in, but in no unit
+        return to(f"{back}?sso=sin_unidades")
+    return to(f"{back}#token={signed.access_token}")
 
 
 class TokenResponse(BaseModel):

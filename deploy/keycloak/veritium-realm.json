@@ -1,0 +1,163 @@
+{
+  "realm": "veritium",
+  "displayName": "Veritium (desarrollo)",
+  "enabled": true,
+  "sslRequired": "none",
+  "loginWithEmailAllowed": true,
+  "internationalizationEnabled": true,
+  "supportedLocales": [
+    "es"
+  ],
+  "defaultLocale": "es",
+  "groups": [
+    {
+      "name": "veritium:default:admin"
+    },
+    {
+      "name": "veritium:default:operador"
+    },
+    {
+      "name": "veritium:default:visor"
+    },
+    {
+      "name": "veritium:pymes:admin"
+    },
+    {
+      "name": "veritium:pymes:operador"
+    },
+    {
+      "name": "veritium:no-registrada:admin"
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "veritium",
+      "name": "Veritium",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "${OIDC_CLIENT_SECRET}",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "redirectUris": [
+        "http://localhost:8010/auth/oidc/callback"
+      ],
+      "webOrigins": [
+        "http://localhost:5180"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://localhost:5180/*"
+      },
+      "protocolMappers": [
+        {
+          "name": "grupos",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-group-membership-mapper",
+          "config": {
+            "claim.name": "groups",
+            "full.path": "false",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "victor",
+      "enabled": true,
+      "email": "victor@example.com",
+      "emailVerified": true,
+      "firstName": "Victor",
+      "lastName": "Espiritu",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${KC_DEV_PASSWORD}",
+          "temporary": false
+        }
+      ],
+      "groups": [
+        "veritium:default:admin",
+        "veritium:pymes:admin"
+      ]
+    },
+    {
+      "username": "ana",
+      "enabled": true,
+      "email": "ana.torres@example.com",
+      "emailVerified": true,
+      "firstName": "Ana",
+      "lastName": "Torres",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${KC_DEV_PASSWORD}",
+          "temporary": false
+        }
+      ],
+      "groups": [
+        "veritium:default:operador",
+        "veritium:pymes:operador"
+      ]
+    },
+    {
+      "username": "luis",
+      "enabled": true,
+      "email": "luis.quispe@example.com",
+      "emailVerified": true,
+      "firstName": "Luis",
+      "lastName": "Quispe",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${KC_DEV_PASSWORD}",
+          "temporary": false
+        }
+      ],
+      "groups": [
+        "veritium:pymes:operador"
+      ]
+    },
+    {
+      "username": "carla",
+      "enabled": true,
+      "email": "carla.rojas@example.com",
+      "emailVerified": true,
+      "firstName": "Carla",
+      "lastName": "Rojas",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${KC_DEV_PASSWORD}",
+          "temporary": false
+        }
+      ],
+      "groups": [
+        "veritium:default:visor"
+      ]
+    },
+    {
+      "username": "sin.unidad",
+      "enabled": true,
+      "email": "pedro.salas@example.com",
+      "emailVerified": true,
+      "firstName": "Pedro",
+      "lastName": "Salas",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${KC_DEV_PASSWORD}",
+          "temporary": false
+        }
+      ],
+      "groups": [
+        "veritium:no-registrada:admin"
+      ]
+    }
+  ]
+}

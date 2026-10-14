@@ -365,7 +365,7 @@ Método, mediciones y aprendizajes: [eficiencia-modelos-ia.md](eficiencia-modelo
 - Las tools MCP de Veritium están federadas en aeon (`deploy/aeon/tool_sources.yaml`, aeon `TOOL-010`). Cada tool está aprobada y clasificada una por una, con su descriptor fijado por huella. Las escrituras llevan clave de idempotencia. `request_documents_link` queda fuera.
 - Cedar (`deploy/aeon/policies/veritium.yaml`): lecturas abiertas al agente asistente y a los clientes MCP; escrituras sin permiso (denegadas) hasta que un agente real las necesite.
 - Verificado con `scripts/aeon_dev.sh verify-tools`: por las dos puertas de aeon, una lectura permitida llega y una escritura denegada nunca llega (el expediente no existe en Veritium); la bitácora de aeon registra ambas.
-- Límites de aeon: la puerta MCP tiene un solo principal para todo cliente, y el control por agente solo existe en `POST /execute`. Veritium es mono-tenant: antes de un aeon compartido, el MCP debe filtrar por el tenant del cliente (VRT-57).
+- Límites de aeon: la puerta MCP tiene un solo principal para todo cliente, y el control por agente solo existe en `POST /execute`. Lo que cada cliente ve lo acota Veritium: su token es de una unidad de negocio (VRT-57).
 - Fuera: las tools internas del agente de extracción (en proceso, sobre un documento propio).
 
 ## VRT-66 — Agente investigador de discrepancias
@@ -385,7 +385,11 @@ Método, mediciones y aprendizajes: [eficiencia-modelos-ia.md](eficiencia-modelo
 ## VRT-56 — Ruta de inferencia gobernada
 **Why:** en producción todo el tráfico de modelo debe tener presupuestos, atribución y gobierno ([ADR-0006](adr/0006-inferencia-gobernada-por-fases.md)). **Scope:** adaptador gobernado del `InferencePort` y del `AgentRuntime`. `VRT-AEON-003` (A-2/A-3) entregada el 2026-10-08; falta S-4/S-5 (`VRT-SYN-003`) y, para un despliegue compartido, el tenant del run en la política y el techo (`VRT-AEON-005`).
 ## VRT-57 — SSO OIDC y multi-tenant
-**Why:** identidad corporativa y varias unidades de negocio. **Scope:** OIDC y aislamiento de datos y configuración por tenant.
+**Why:** identidad corporativa y varias unidades de negocio que no deben ver lo de las otras. **Scope:**
+- Tenant = unidad de negocio de una misma empresa. Son de cada unidad: expedientes y todo lo que cuelga de ellos, procesos, sistemas conectados, webhooks, maestros, evaluación, calibración, simulaciones y cargas. Son corporativos: catálogos de tipos y semántico, biblioteca de reglas, lentes, instrucciones al modelo y las personas.
+- Aislamiento en una sola costura (`persistence/tenancy.py`): toda consulta filtrada, toda fila sellada, fallo cerrado sin unidad; otra unidad responde 404, nunca 403. La unidad viene de la credencial, nunca de la petición; el worker, la carga masiva, los webhooks y el bus declaran la suya.
+- Una persona trabaja en varias unidades con un rol en cada una; un token por unidad (`/auth/switch`). SSO OpenID Connect (código + PKCE) con cualquier proveedor; unidad y rol desde los grupos `veritium:<unidad>:<rol>`; las unidades las registra el operador. Keycloak para desarrollo.
+- Fuera: RLS en Postgres (el comportamiento está fijado por pruebas negativas por tabla), un proveedor de identidad por unidad, y quién edita el catálogo corporativo (hoy los admin y especialistas de cualquier unidad).
 ## VRT-58 — PII y retención
 **Why:** Ley 29733 y datos sensibles hacia el LLM. **Scope:** enmascaramiento derivado de la clase PII semántica; retención y borrado.
 ## VRT-59 — Búsqueda híbrida
