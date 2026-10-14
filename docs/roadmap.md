@@ -171,9 +171,10 @@ Veritium pasa de "subir documentos sueltos" a ser una **capacidad de decisión d
 ## VRT-31 — Observabilidad con argus
 **Why:** con varios procesos, workers y la ruta aeon de por medio, sin una traza de punta a punta no se puede diagnosticar ni atribuir el costo por expediente.
 **Scope:**
-- OTLP/HTTP al collector de argus con sus atributos de recurso, más el interceptor OTel de `temporalio`.
-- Convenciones `gen_ai.provider.name` / `gen_ai.operation.name` y `case_id` en los spans.
-- Incorporación vía `VRT-ARG-001`.
+- `argus.init()` como `veritium-api` y `veritium-worker` (namespace `veritium`), con el middleware ASGI, el interceptor OTel de Temporal y las auto-instrumentaciones (FastAPI, httpx, SQLAlchemy). Apagado con `ARGUS_DISABLED=1`, que la suite fija sola.
+- Un span por paso del expediente con `idp.case_id`, `idp.run_id` e `idp.document_id`; un span GenAI por llamada al modelo con `gen_ai.provider.name` y `gen_ai.operation.name`, modelo y tokens. El contexto cruza al loop del puerto de inferencia.
+- Verificado el 2026-10-13: un reproceso es una sola traza, de la API a aeon, Temporal y el worker, con el costo por expediente consultable (la consulta, en `observability/otel.py`).
+- Fuera: pasos propios de nivel 2 más allá de los del expediente, y el paso a `activo`, que hace argus al verificar.
 
 ## F2 — Diseñador y catálogo
 ## VRT-32 — Catálogo de tipos documentales en BD

@@ -36,7 +36,7 @@ from idp.domain.semantic import SemanticCatalog, field_meanings
 from idp.domain.semantic_resolution import ConsolidatedView, DocumentExtraction, resolve_case
 from idp.extraction.agentic.loop import ExtractionIncomplete
 from idp.extraction.self_check import DraftChecker
-from idp.observability.otel import traced_stage
+from idp.observability.otel import case_step, traced_stage
 from idp.parsing.base import ParserBackend
 from idp.parsing.docling_backend import DoclingBackend
 from idp.parsing.paddleocr_backend import PaddleOCRBackend
@@ -459,6 +459,7 @@ _TERMINAL_DOCUMENT_STATUSES = {"extracted", "needs_review", "completed", "failed
 _EXTRACTION_STEPS = {"parsing", "classifying", "extracting"}
 
 
+@case_step("veritium.case.start_run")
 async def start_run(settings: Settings, case_id: uuid.UUID, run_id: uuid.UUID) -> list[uuid.UUID]:
     """Step 1 of a case run (VRT-26): mark the run running, record its
     provenance, and return the top-level documents still to extract.
@@ -503,6 +504,7 @@ async def pending_documents(settings: Settings, case_id: uuid.UUID) -> list[uuid
         return _pending(case)
 
 
+@case_step("veritium.case.process_document")
 async def process_document(settings: Settings, case_id: uuid.UUID, run_id: uuid.UUID, document_id: uuid.UUID) -> None:
     """Step 2, once per document and in parallel: parse, segment, classify
     and extract one uploaded document. Idempotent — an already extracted
@@ -590,6 +592,7 @@ async def case_rules(settings: Settings, session: AsyncSession, case: Case) -> t
     return rules, loaded[0] if loaded is not None else None
 
 
+@case_step("veritium.case.evaluate")
 async def evaluate_case(settings: Settings, case_id: uuid.UUID, run_id: uuid.UUID) -> str | None:
     """Step 3, after every document: re-validate the whole case, refresh
     its conditions and verdict, close the run and emit its events.

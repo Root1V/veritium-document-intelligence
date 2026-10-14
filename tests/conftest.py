@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 import json
+import os
 import uuid
 from pathlib import Path
 
 import pytest
+
+# The suite never exports telemetry: once the app calls argus.init(), it exports for real, endpoint or not (VRT-31).
+os.environ["ARGUS_DISABLED"] = "1"
 
 from idp.config import Settings
 from idp.domain.request_payload import RequestInputPayload

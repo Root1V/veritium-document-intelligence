@@ -120,9 +120,6 @@ class Settings(BaseSettings):
     entity_match_high_threshold: float = 0.90
     entity_match_low_threshold: float = 0.60
 
-    # --- Observability ---
-    otel_service_name: str = "idp"
-    otel_console_export: bool = True
 
     # --- Case execution (VRT-26) ---
     # "in_process": the API runs the case itself (no durability; for

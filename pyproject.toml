@@ -11,6 +11,7 @@ dependencies = [
     "a2a-sdk[http-server]==1.2.0",
     "aiokafka[lz4,snappy,zstd]>=0.14.0",
     "alembic>=1.19.1",
+    "argus-obs-sdk[asgi,client,sql]==1.0.0a21",
     "asyncpg>=0.31.0",
     "axonium==1.0.0rc9",
     "bcrypt<4.1",
@@ -35,7 +36,7 @@ dependencies = [
     "rapidfuzz>=3.14.5",
     "sqlalchemy[asyncio]>=2.0.52",
     "synaptum==1.0.0rc5",
-    "temporalio>=1.8.0",
+    "temporalio[opentelemetry]>=1.8.0",
     "uvicorn[standard]>=0.52.4",
 ]
 

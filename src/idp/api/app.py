@@ -7,6 +7,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from a2a.server.routes import add_a2a_routes_to_fastapi
+import argus
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -17,7 +18,7 @@ from idp.config import get_settings
 from idp.llm.port import inference_lifespan
 from idp.llm.prompts import current as current_prompts
 from idp.llm.prompts import set_published
-from idp.observability.otel import setup_tracing
+from idp.observability.otel import setup_telemetry
 from idp.persistence.db import get_session_factory
 from idp.persistence.repositories import DocumentTypeRepository, LensRepository, ProcessProfileRepository, PromptEditRepository, PromptRepository, SemanticCatalogRepository
 from idp.storage.object_store import S3ObjectStore
@@ -29,13 +30,14 @@ from idp.webhooks import dispatcher
 
 def create_app() -> FastAPI:
     settings = get_settings()
-    setup_tracing(settings)
     mcp = mcp_server.build(settings)
     a2a = a2a_server.build(settings)
     mcp_app = mcp_server.app(mcp, settings)  # before the lifespan: it creates the session manager the lifespan runs
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+        # Here and not at import: uvicorn configures its logging after importing the app (argus's trap 5).
+        setup_telemetry(settings, component="api")
         S3ObjectStore(settings).ensure_bucket()
         async with get_session_factory(settings)() as session:
             await SemanticCatalogRepository(session).ensure_seed()
@@ -61,12 +63,12 @@ def create_app() -> FastAPI:
             await events
         if task is not None:
             await task
-        # BatchSpanProcessor buffers spans and exports on a timer — without
-        # this, spans from requests near process shutdown can be silently
-        # dropped instead of reaching the exporter.
-        trace.get_tracer_provider().shutdown()  # type: ignore[union-attr]
+        # Spans are batched and exported on a timer: flush, or the last requests' spans are lost.
+        trace.get_tracer_provider().force_flush()  # type: ignore[union-attr]
 
     app = FastAPI(title="Veritium", version="0.3.0", lifespan=lifespan)
+    # The trace of each request, joined to the caller's when it comes from a trusted network.
+    app.add_middleware(argus.ASGIMiddleware, propagate_mode="trusted")
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_allowed_origins,

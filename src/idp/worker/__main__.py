@@ -16,6 +16,7 @@ import signal
 
 import httpx
 from temporalio.client import Client
+from temporalio.contrib.opentelemetry import TracingInterceptor
 from temporalio.worker import Worker
 
 from idp.config import Settings, get_settings
@@ -23,8 +24,13 @@ from idp.execution.aeon import LANE_QUEUES, run_status
 from idp.llm.port import inference_lifespan
 from idp.llm.prompts import current as current_prompts
 from idp.llm.prompts import fingerprint, set_published
+from idp.observability.otel import setup_telemetry
 from idp.persistence.db import get_session_factory
-from idp.persistence.repositories import CaseRunRepository, PromptEditRepository, PromptRepository
+from idp.persistence.repositories import (
+    CaseRunRepository,
+    PromptEditRepository,
+    PromptRepository,
+)
 from idp.pipeline.orchestrator import fail_run
 from idp.worker.activities import CaseActivities
 
@@ -80,7 +86,8 @@ async def _reconcile_loop(settings: Settings, stop: asyncio.Event) -> None:
 
 async def main() -> None:
     settings = get_settings()
-    client = await Client.connect(settings.temporal_address, namespace=settings.temporal_namespace)
+    # The activities' spans join the workflow's trace when the run carries one (VRT-31).
+    client = await Client.connect(settings.temporal_address, namespace=settings.temporal_namespace, interceptors=[TracingInterceptor()])
     activities = CaseActivities(settings).all()
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()
@@ -103,5 +110,6 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
+    setup_telemetry(get_settings(), component="worker")  # before logging is configured (argus's trap 4)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     asyncio.run(main())

@@ -1,48 +1,93 @@
-"""OpenTelemetry instrumentation layer. This is Phase 0's instrumentation
-mechanism from day one, not a Phase 1+ addition — only the exporter (console
-locally, an OTEL Collector -> Langfuse/whatever backend later) changes
-between phases; call sites using ``traced_*`` never change.
+"""Telemetry through argus (VRT-31): traces, metrics and logs over OTLP to
+argus's collector, with its two-level identity — namespace ``veritium``, one
+service per deployable process (``veritium-api``, ``veritium-worker``).
 
-Instruments: pipeline stages, LLM/VLM calls (GenAI semantic conventions),
-tool calls inside the bounded agentic extraction loop, and validation rule
-evaluations.
+``setup_telemetry`` is the one place that configures it; everything else uses
+the global tracer, so spans made here and by the auto-instrumentations
+(FastAPI, httpx, SQLAlchemy, asyncpg) and Temporal's interceptor join up.
+Disabled with ``ARGUS_DISABLED=1`` (the test suite sets it: an ``init`` call
+exports for real, endpoint or not).
+
+What Veritium adds on top:
+- a span per case step (start, document, evaluation) with the case, run and
+  document ids — what a case's cost and failures are grouped by;
+- a GenAI span per model call (llm/port.py), with provider, operation, model
+  and tokens; the ``traced_*`` helpers below name what a call was for.
+
+A case run is one trace, API → aeon → Temporal → worker. Its cost, in
+argus's store (``make query`` in the argus repo):
+
+    WITH casos AS (SELECT DISTINCT TraceId, SpanAttributes['idp.case_id'] case_id
+                   FROM otel.otel_traces WHERE SpanAttributes['idp.case_id'] != '')
+    SELECT c.case_id, count() llamadas,
+           sum(toUInt64OrZero(t.SpanAttributes['gen_ai.usage.input_tokens'])) entrada,
+           sum(toUInt64OrZero(t.SpanAttributes['gen_ai.usage.output_tokens'])) salida
+    FROM otel.otel_traces t INNER JOIN casos c ON c.TraceId = t.TraceId
+    WHERE t.SpanAttributes['gen_ai.provider.name'] != '' GROUP BY c.case_id
 """
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+import functools
+import uuid
+from collections.abc import Awaitable, Callable, Iterator
 from contextlib import contextmanager
-from typing import Any
+from importlib.metadata import version
+from typing import Any, Literal, ParamSpec, TypeVar
 
+import argus
 from opentelemetry import trace
-from opentelemetry.sdk.resources import SERVICE_NAME, Resource
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import (
-    BatchSpanProcessor,
-    ConsoleSpanExporter,
-)
 from opentelemetry.trace import Span, Status, StatusCode
 
 from idp.config import Settings
 
-_configured = False
+P = ParamSpec("P")
+R = TypeVar("R")
+
+NAMESPACE = "veritium"
+# The model calls go to prometheus's gateway: the provider is the system answering, not the engine behind it.
+PROVIDER = "prometheus-gateway"
 
 
-def setup_tracing(settings: Settings) -> None:
-    """Idempotent: safe to call multiple times (e.g. once per test)."""
-    global _configured
-    if _configured:
-        return
-    resource = Resource.create({SERVICE_NAME: settings.otel_service_name})
-    provider = TracerProvider(resource=resource)
-    if settings.otel_console_export:
-        provider.add_span_processor(BatchSpanProcessor(ConsoleSpanExporter()))
-    trace.set_tracer_provider(provider)
-    _configured = True
+# deployment.environment.name is a closed set in OpenTelemetry, and argus enforces it.
+_ENVIRONMENT = {"dev": "development", "test": "test", "prod": "production"}
+
+
+def setup_telemetry(settings: Settings, *, component: Literal["api", "worker"]) -> None:
+    """Idempotent. The API calls it in its lifespan (after uvicorn configured logging); the worker before its own."""
+    argus.init(
+        f"{NAMESPACE}-{component}", namespace=NAMESPACE, role=component, version=version("idp"),
+        environment=_ENVIRONMENT[settings.environment], json_logs=False,
+    )
 
 
 def get_tracer(name: str = "idp") -> trace.Tracer:
     return trace.get_tracer(name)
+
+
+def case_step(name: str) -> Callable[[Callable[P, Awaitable[R]]], Callable[P, Awaitable[R]]]:
+    """A span around one step of a case run — ``(settings, case_id, run_id[, document_id])`` —
+    the same whether aeon's worker or the in-process executor runs it."""
+
+    def wrap(fn: Callable[P, Awaitable[R]]) -> Callable[P, Awaitable[R]]:
+        @functools.wraps(fn)
+        async def run(*args: P.args, **kwargs: P.kwargs) -> R:
+            ids = [a for a in args if isinstance(a, uuid.UUID)]
+            fields = dict(zip(("idp.case_id", "idp.run_id", "idp.document_id"), map(str, ids)))
+            with argus.step(name, **fields):
+                return await fn(*args, **kwargs)
+
+        return run
+
+    return wrap
+
+
+@contextmanager
+def model_call(request: Any) -> Iterator[argus.GenAISpan]:
+    """The GenAI span of one model call (llm/port.py); the caller records the response on it."""
+    with argus.genai("chat", provider=PROVIDER, request_model=request.model) as span:
+        span.request_params(temperature=request.temperature, max_tokens=request.max_output_tokens, top_p=request.top_p)
+        yield span
 
 
 @contextmanager
@@ -65,26 +110,19 @@ def traced_stage(stage_name: str, *, document_id: str | None = None, case_id: st
 
 
 @contextmanager
-def traced_llm_call(*, role: str, model: str, system: str = "openai-compatible") -> Iterator[Span]:
-    """One span per LLM/VLM call, following OTEL GenAI semantic conventions."""
+def traced_llm_call(*, role: str, model: str) -> Iterator[Span]:
+    """What a group of model calls is for (classify, extract, a lens...). The calls
+    themselves are the GenAI spans inside it (``model_call``): one fact, one span."""
     tracer = get_tracer()
-    with tracer.start_as_current_span("gen_ai.chat") as span:
-        span.set_attribute("gen_ai.system", system)
-        span.set_attribute("gen_ai.request.model", model)
+    with tracer.start_as_current_span("idp.llm") as span:
         span.set_attribute("idp.llm_role", role)
+        span.set_attribute("idp.llm_model", model)
         try:
             yield span
         except Exception as exc:
             span.set_status(Status(StatusCode.ERROR, str(exc)))
             span.record_exception(exc)
             raise
-
-
-def record_llm_usage(span: Span, *, input_tokens: int | None, output_tokens: int | None) -> None:
-    if input_tokens is not None:
-        span.set_attribute("gen_ai.usage.input_tokens", input_tokens)
-    if output_tokens is not None:
-        span.set_attribute("gen_ai.usage.output_tokens", output_tokens)
 
 
 @contextmanager
@@ -94,6 +132,7 @@ def traced_tool_call(*, tool_name: str, turn: int | None = None, arguments: dict
     the autonomous route, these functions."""
     tracer = get_tracer()
     with tracer.start_as_current_span("gen_ai.tool") as span:
+        span.set_attribute("gen_ai.operation.name", "execute_tool")
         span.set_attribute("gen_ai.tool.name", tool_name)
         if turn is not None:
             span.set_attribute("idp.agent.turn", turn)

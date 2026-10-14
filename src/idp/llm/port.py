@@ -36,11 +36,13 @@ from typing import Any, Literal, TypeVar
 
 from axonium import AsyncAxonium
 from axonium.config import Timeouts
+from opentelemetry import context as otel_context
 from pydantic import BaseModel
 from synaptum import Agent, FinalStep, FinishReason, Image, Limits, LocalGateway, MemoryCheckpointer, Phase, PromptTemplate, Request, Response, Sampling, Session, Text, ToolStep, generate
 from synaptum.providers.axonium import AxoniumModel
 
 from idp.config import Settings
+from idp.observability.otel import model_call
 
 log = logging.getLogger(__name__)
 
@@ -98,7 +100,7 @@ class Inference:
                 timeouts=Timeouts(read=timeout, write=timeout),
             )
             model = AxoniumModel(client=self._client).complete
-        model = _breaking_loops(model)
+        model = _breaking_loops(_observed(model))
         self._model_call = model
         self._gateway = LocalGateway(model=model, warn=False)
 
@@ -184,7 +186,7 @@ class Inference:
         if running is self._loop:
             call.close()
             raise RuntimeError("llamada síncrona al InferencePort desde su propio loop: usa await")
-        return asyncio.run_coroutine_threadsafe(call, self._loop).result()
+        return asyncio.run_coroutine_threadsafe(_in_context(call, otel_context.get_current()), self._loop).result()
 
 
 # A turn that ran to the output cap is, measured on gpt-oss at temperature 0, a
@@ -192,6 +194,21 @@ class Inference:
 # not unfinished work; and at temperature 0 the same request loops the same way.
 # It is asked once more, sampling differently.
 _LOOP_BREAK_TEMPERATURE = 0.6
+
+
+def _observed(model: Any) -> Any:
+    """A GenAI span per model call — each attempt, a retry included — with what was asked and what it cost (VRT-31)."""
+    wants_ctx = len(inspect.signature(model).parameters) > 1
+
+    async def complete(request: Request, ctx: Any = None) -> Response:
+        with model_call(request) as span:
+            response = await (model(request, ctx) if wants_ctx else model(request))
+            usage = response.usage
+            span.usage(input_tokens=usage.input, output_tokens=usage.output, cached_input_tokens=usage.cache_read)
+            span.response(model=response.model or None, finish_reasons=[str(response.finish_reason.value)])
+        return response
+
+    return complete
 
 
 def _breaking_loops(model: Any) -> Any:
@@ -206,6 +223,15 @@ def _breaking_loops(model: Any) -> Any:
         return response
 
     return complete
+
+
+async def _in_context(call: Coroutine[Any, Any, Any], context: otel_context.Context) -> Any:
+    """Runs on the port's loop inside the caller's trace: a thread does not carry it across (VRT-31)."""
+    token = otel_context.attach(context)
+    try:
+        return await call
+    finally:
+        otel_context.detach(token)
 
 
 _current: Inference | None = None
