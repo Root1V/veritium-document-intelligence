@@ -67,12 +67,15 @@ export function clearSession(): void {
   }
 }
 
-/** Out of Veritium and, if the person came through the corporate sign-in, out
- * of the identity provider too — or the next sign-in would resume them. */
+/** Out of Veritium and out of the identity provider too — or the next
+ * sign-in would resume the same person. Always through the provider, even
+ * after a password sign-in: its session may still be open from an earlier
+ * one. With the id_token it ends at once; without it, the provider asks
+ * once; with no session there, it comes straight back to the login page. */
 export function signOut(): void {
   const idToken = localStorage.getItem(ID_TOKEN_KEY)
   clearSession()
-  window.location.assign(idToken ? `/api/auth/oidc/logout?id_token_hint=${encodeURIComponent(idToken)}` : '/login')
+  window.location.assign(`/api/auth/oidc/logout${idToken ? `?id_token_hint=${encodeURIComponent(idToken)}` : ''}`)
 }
 
 export function isAuthenticated(): boolean {
