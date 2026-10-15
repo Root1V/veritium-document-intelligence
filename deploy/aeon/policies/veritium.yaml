@@ -21,8 +21,8 @@ policies:
         ["veritium-online", "veritium-backoffice", "veritium-bulk"].contains(resource.task_queue)
       };
   # VRT-55: Veritium's tools federated through aeon-toolgw (tool_sources.yaml).
-  # Reads are open to the assistant agent (POST /execute, per agent) and to MCP
-  # clients (aeon's /mcp door has one principal for every MCP client). Writes
+  # Reads are open to the assistant agent (POST /execute, per agent) and to our
+  # MCP caller (aeon's /mcp door judges the authenticated caller, INT-003c). Writes
   # (submit_case, add_documents, read_with_lens) have no permit: default deny,
   # until a real agent needs one and gets its own permit.
   - id: allow-veritium-tool-reads-assistant
@@ -42,7 +42,7 @@ policies:
     effect: permit
     cedarSource: |
       permit(
-        principal == McpClient::"external-mcp-client",
+        principal == McpClient::"veritium-tools",
         action,
         resource
       ) when {

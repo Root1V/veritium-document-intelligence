@@ -74,7 +74,7 @@ async def main(token: str) -> None:
         check(served == READS | WRITES, f"sirve las {len(READS | WRITES)} aprobadas (sirve: {sorted(served)})")
         check("veritium.request_documents_link" not in names, "no sirve request_documents_link, que no se aprobó")
 
-        print("2. Puerta MCP (un solo principal para todo cliente MCP)")
+        print("2. Puerta MCP (Cedar juzga al llamador autenticado, aeon INT-003c)")
         read = await mcp.call_tool("veritium.find_cases", {"limit": 1})
         # aeon forwards the source's result as it is (TOOL-010b): Veritium's own structured content.
         answer = read.structured_content or {}
