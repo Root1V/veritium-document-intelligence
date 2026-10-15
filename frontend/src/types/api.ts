@@ -335,6 +335,15 @@ export interface LoginResponse extends Me {
   token_type: string
 }
 
+/** A business unit, as admins manage it (VRT-57). */
+export interface BusinessUnitView {
+  key: string
+  name: string
+  people: number
+  groups: string[] // to create in the identity provider, one per role
+  created_at: string
+}
+
 export interface SignInProviders {
   sso: boolean
   local: boolean

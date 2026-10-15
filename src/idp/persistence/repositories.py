@@ -59,6 +59,17 @@ from idp.persistence.models import (
 )
 
 
+async def register_tenant(session: AsyncSession, key: str, name: str) -> Tenant:
+    """A new business unit (VRT-57), with the seed processes to start from."""
+    unit = Tenant(key=key, name=name)
+    session.add(unit)
+    await session.commit()
+    await session.refresh(unit)
+    with tenancy.acting_for(key):
+        await ProcessProfileRepository(session).ensure_seed()
+    return unit
+
+
 class UserRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session

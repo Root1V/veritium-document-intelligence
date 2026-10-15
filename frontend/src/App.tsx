@@ -15,6 +15,7 @@ import { ProfilesPage } from '@/pages/Profiles'
 import { ToolCatalogPage } from '@/pages/ToolCatalog'
 import { AssistantPage } from '@/pages/Assistant'
 import { ApiClientsPage } from '@/pages/ApiClients'
+import { BusinessUnitsPage } from '@/pages/BusinessUnits'
 import { BulkJobDetailPage, BulkJobsPage } from '@/pages/BulkJobs'
 import { CasesPage } from '@/pages/Cases'
 import { CaseDetailPage } from '@/pages/CaseDetail'
@@ -127,6 +128,16 @@ export default function App() {
         element={
           <ProtectedRoute>
             <CaseDetailPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/unidades"
+        element={
+          <ProtectedRoute>
+            <RequireRole roles={['admin']}>
+              <BusinessUnitsPage />
+            </RequireRole>
           </ProtectedRoute>
         }
       />

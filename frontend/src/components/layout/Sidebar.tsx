@@ -140,6 +140,22 @@ export function Sidebar() {
         )}
         {isAdmin() && (
           <NavLink
+            to="/unidades"
+            className={({ isActive }) =>
+              cn(
+                'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+                isActive
+                  ? 'bg-sidebar-primary text-sidebar-primary-foreground'
+                  : 'text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
+              )
+            }
+          >
+            <Building2 className="size-4" />
+            Unidades de negocio
+          </NavLink>
+        )}
+        {isAdmin() && (
+          <NavLink
             to="/sistemas"
             className={({ isActive }) =>
               cn(

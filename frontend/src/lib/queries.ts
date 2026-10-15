@@ -42,6 +42,7 @@ import type {
   LoginResponse,
   Me,
   SignInProviders,
+  BusinessUnitView,
   ManualRuleRequest,
   ReviewCorrectionRequest,
   ReviewCorrectionResponse,
@@ -983,5 +984,20 @@ export function useAskAssistant() {
   return useMutation({
     mutationFn: async (body: { conversation: AssistantTurn[]; case_id?: string }) =>
       (await apiClient.post<AssistantReply>('/v1/assistant/messages', body)).data,
+  })
+}
+
+export function useBusinessUnits() {
+  return useQuery({ queryKey: ['tenants'], queryFn: async () => (await apiClient.get<BusinessUnitView[]>('/v1/tenants')).data })
+}
+
+export function useBusinessUnitAction() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (action: { kind: 'create'; key: string; name: string } | { kind: 'rename'; key: string; name: string }) =>
+      action.kind === 'create'
+        ? (await apiClient.post<BusinessUnitView>('/v1/tenants', { key: action.key, name: action.name })).data
+        : (await apiClient.patch<BusinessUnitView>(`/v1/tenants/${action.key}`, { name: action.name })).data,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['tenants'] }),
   })
 }

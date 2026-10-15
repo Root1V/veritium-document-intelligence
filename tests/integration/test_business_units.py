@@ -37,6 +37,7 @@ from idp.persistence.models import (
     Membership,
     OutboxEvent,
     ReviewItem,
+    Tenant,
     User,
     ValidationIssue,
     WebhookEndpoint,
@@ -173,6 +174,45 @@ async def test_a_person_works_in_several_units_one_token_each(live_settings, scr
         async with factory() as session:
             await session.execute(delete(User).where(User.email == email))
             await session.commit()
+
+
+@pytest.mark.asyncio
+async def test_an_admin_registers_and_renames_units(live_settings, scratch_unit):
+    factory = get_session_factory(live_settings)
+    admin, viewer = f"test-units-admin-{scratch_unit}@example.com", f"test-units-visor-{scratch_unit}@example.com"
+    await _person(factory, admin, {scratch_unit: "admin"})
+    await _person(factory, viewer, {scratch_unit: "visor"})
+    new = f"{scratch_unit}-nueva"
+    try:
+        async with AsyncClient(transport=ASGITransport(app=create_app()), base_url="http://test") as client:
+            async def token(email: str) -> dict[str, str]:
+                return {"Authorization": f"Bearer {(await client.post('/auth/login', json={'email': email, 'password': _PASSWORD})).json()['access_token']}"}
+
+            as_admin, as_viewer = await token(admin), await token(viewer)
+            assert (await client.post("/v1/tenants", headers=as_viewer, json={"key": new, "name": "Nueva"})).status_code == 403
+            assert (await client.post("/v1/tenants", headers=as_admin, json={"key": "Con Espacios", "name": "Nueva"})).status_code == 400
+            created = await client.post("/v1/tenants", headers=as_admin, json={"key": new, "name": "Banca Nueva"})
+            assert created.status_code == 201, created.text
+            assert f"veritium:{new}:operador" in created.json()["groups"] and created.json()["people"] == 0
+            assert (await client.post("/v1/tenants", headers=as_admin, json={"key": new, "name": "Otra"})).status_code == 409
+            renamed = await client.patch(f"/v1/tenants/{new}", headers=as_admin, json={"name": "Banca Renombrada"})
+            assert renamed.json()["name"] == "Banca Renombrada"
+            listed = {u["key"]: u for u in (await client.get("/v1/tenants", headers=as_admin)).json()}
+            assert listed[scratch_unit]["people"] == 2 and listed[new]["name"] == "Banca Renombrada"
+            # Registering opens it to no one: the admin does not work there, and it starts with the seed processes.
+            assert new not in {u["key"] for u in (await client.get("/auth/me", headers=as_admin)).json()["tenants"]}
+        with tenancy.acting_for(new):
+            async with factory() as session:
+                assert {"ad-hoc", "convenios"} <= {p.key for p in await ProcessProfileRepository(session).list_profiles()}
+    finally:
+        with tenancy.system():
+            async with factory() as session:
+                for table in reversed(Base.metadata.sorted_tables):
+                    if "tenant" in table.c and table.name != "memberships":
+                        await session.execute(table.delete().where(table.c.tenant == new))
+                await session.execute(delete(Tenant).where(Tenant.key == new))
+                await session.execute(delete(User).where(User.email.in_([admin, viewer])))
+                await session.commit()
 
 
 def _depends_on(dependant: Dependant, call) -> bool:
