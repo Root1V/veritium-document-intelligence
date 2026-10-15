@@ -281,7 +281,7 @@ export function SemanticCatalogPage() {
             columns={attributeColumns}
             editing={editing}
             onChange={(attributes) => set({ attributes })}
-            blank={(): SemanticAttribute => ({ key: '', name: '', definition: '', data_type: 'string', comparison: 'text', pii_class: 'none' })}
+            blank={(): SemanticAttribute => ({ key: '', name: '', definition: '', data_type: 'string', comparison: 'text', pii_class: 'personal' })} // private until someone says otherwise (VRT-58)
           />
         </TabsContent>
         <TabsContent value="entities">
