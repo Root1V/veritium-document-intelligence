@@ -75,7 +75,8 @@ def _totals(truth: dict, run: dict) -> tuple[float, float, int, int]:
     output = sum(t["out"] or 0 for d in run.values() for t in d["turns"])
     # cut at the cap: seen as such (no retry), or asked again by the port (llm/port.py)
     capped = sum(d.get("loop_retries", 0) + sum("LENGTH" in str(t.get("finish")) for t in d["turns"]) for d in run.values())
-    return ok / n, seconds, output, capped
+    errors = sum(len(d.get("model_errors", [])) for d in run.values())  # runs before the count existed: 0
+    return ok / n, seconds, output, capped, errors
 
 
 def main() -> None:
@@ -90,8 +91,8 @@ def main() -> None:
         for name, doc in run.items():
             ok, n, missed = score(truth, doc["type"], doc["payload"])
             print(f"  {doc['type']:22} {ok:2}/{n:2} {doc['seconds']:7.1f}s {len(doc['turns'])} turnos  ✗ {', '.join(missed)[:150]}")
-        acc, seconds, output, capped = _totals(truth, run)
-        print(f"  TOTAL {acc:.0%} · {seconds:.0f}s · {output} tok de salida · {capped} turnos al tope")
+        acc, seconds, output, capped, errors = _totals(truth, run)
+        print(f"  TOTAL {acc:.0%} · {seconds:.0f}s · {output} tok de salida · {capped} turnos al tope · {errors} errores del modelo")
     for spec in args.group:
         name, pattern = spec.split("=", 1)
         runs = [_totals(truth, json.loads(p.read_text())) for p in sorted((BENCH / "runs").glob(f"{pattern}.json"))]
@@ -103,7 +104,7 @@ def main() -> None:
             v = [r[i] * scale for r in runs]
             return f"{statistics.mean(v):.0f}{unit} ({min(v):.0f}–{max(v):.0f})"
 
-        print(f"== {name}: {len(runs)} corridas · exactitud {fmt(0, 100, '%')} · tiempo {fmt(1, unit=' s')} · salida {fmt(2, unit=' tok')} · turnos al tope {fmt(3)}")
+        print(f"== {name}: {len(runs)} corridas · exactitud {fmt(0, 100, '%')} · tiempo {fmt(1, unit=' s')} · salida {fmt(2, unit=' tok')} · turnos al tope {fmt(3)} · errores del modelo {fmt(4)}")
 
 
 if __name__ == "__main__":

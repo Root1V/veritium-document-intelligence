@@ -1,7 +1,7 @@
 """Measures the extraction agent on real documents, turn by turn (VRT-69): seconds,
 input/output/cached tokens, why each turn ended, which tool it called, how many
-turns ran to the output cap and were asked again; and what it extracted, for
-bench_score.py. Method and findings: docs/eficiencia-modelos-ia.md.
+turns ran to the output cap and were asked again, which model calls failed
+(e.g. a 500); and what it extracted, for bench_score.py. Method and findings: docs/eficiencia-modelos-ia.md.
 
     uv run python scripts/bench_extraction.py <label> [--temperature T] [--reasoning-effort low|medium|high]
 
@@ -47,6 +47,7 @@ REPO = Path(__file__).resolve().parent.parent
 BENCH = Path(os.environ.get("BENCH_DIR", "~/.veritium/bench")).expanduser()
 CAP = 7000  # output tokens from which a turn counts as having run to the cap
 TURNS: list[dict] = []
+ERRORS: list[dict] = []  # model calls that failed (they are not turns)
 
 
 class _Retries(logging.Handler):
@@ -71,7 +72,11 @@ def _keep_capped(response) -> None:
 def _measured(model):
     async def call(request, ctx=None):
         started = time.perf_counter()
-        response = await model(request)  # no ctx: no idempotency key, no replay
+        try:
+            response = await model(request)  # no ctx: no idempotency key, no replay
+        except Exception as exc:  # e.g. prometheus's 500 «peg-native format»: counted, then as it was
+            ERRORS.append({"s": round(time.perf_counter() - started, 1), "error": f"{type(exc).__name__}: {str(exc)[:160]}"})
+            raise
         usage = response.usage
         TURNS.append({
             "s": round(time.perf_counter() - started, 1), "in": usage.input, "out": usage.output, "cache": usage.cache_read,
@@ -115,6 +120,7 @@ async def main(label: str, temperature: float | None, effort: str | None) -> Non
             path = Path(raw) if Path(raw).is_absolute() else REPO / raw
             parsed = await _read(settings, path)
             TURNS.clear()
+            ERRORS.clear()
             _Retries.count = 0
             started = time.perf_counter()
             try:
@@ -124,8 +130,8 @@ async def main(label: str, temperature: float | None, effort: str | None) -> Non
                 payload, error = None, f"{type(exc).__name__}: {str(exc)[:200]}"
             seconds = round(time.perf_counter() - started, 1)
             name = path.name[:34]
-            out[name] = {"type": dtype, "seconds": seconds, "turns": list(TURNS), "loop_retries": _Retries.count, "payload": payload, "error": error}
-            print(f"{name:34} {dtype:22} {seconds:7.1f}s turnos={len(TURNS)} reintentos_por_tope={_Retries.count} {error or ''}", flush=True)
+            out[name] = {"type": dtype, "seconds": seconds, "turns": list(TURNS), "loop_retries": _Retries.count, "model_errors": list(ERRORS), "payload": payload, "error": error}
+            print(f"{name:34} {dtype:22} {seconds:7.1f}s turnos={len(TURNS)} reintentos_por_tope={_Retries.count} errores_modelo={len(ERRORS)} {error or ''}", flush=True)
             for i, t in enumerate(TURNS, 1):
                 print(f"   t{i}: {t['s']:6.1f}s in={t['in']} out={t['out']} cache={t['cache']} fin={t['finish']} {t['calls']}", flush=True)
     (BENCH / "runs").mkdir(parents=True, exist_ok=True)
