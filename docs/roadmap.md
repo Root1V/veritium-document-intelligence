@@ -391,7 +391,12 @@ Método, mediciones y aprendizajes: [eficiencia-modelos-ia.md](eficiencia-modelo
 - Una persona trabaja en varias unidades con un rol en cada una; un token por unidad (`/auth/switch`). SSO OpenID Connect (código + PKCE) con cualquier proveedor; unidad y rol desde los grupos `veritium:<unidad>:<rol>`; las unidades las registra el operador. Keycloak para desarrollo.
 - Fuera: RLS en Postgres (el comportamiento está fijado por pruebas negativas por tabla), un proveedor de identidad por unidad, y quién edita el catálogo corporativo (hoy los admin y especialistas de cualquier unidad).
 ## VRT-58 — PII y retención
-**Why:** Ley 29733 y datos sensibles hacia el LLM. **Scope:** enmascaramiento derivado de la clase PII semántica; retención y borrado.
+**Why:** Ley 29733: un dato personal se muestra solo a quien lo necesita, queda constancia de quién lo vio, y se borra cuando ya no hace falta o el titular lo pide. **Scope:**
+- Enmascarado por defecto en pantalla, API, MCP, A2A y CSV, derivado de la clase PII del catálogo semántico (sensible oculto; personal con últimos dígitos o iniciales; un campo sin mapeo cuenta como personal). El enmascarador conoce los valores del expediente y los tapa también donde se citan (hallazgos, motivos, evidencia, errores).
+- «Ver datos»: operador, admin y sistemas conectados (una ventana de 15 min por clic, o `?reveal=true` por llamada); visor y especialista IA nunca. El original y la búsqueda por un dato, igual. Todo queda en `data_access_log` (Auditoría), nunca el dato. Agentes (MCP, A2A, asistente): siempre enmascarado.
+- Conservación: días por proceso (Legal; sin plazo, se conserva) y supresión a pedido por un admin; ambas anonimizan (borran originales, OCR, lo extraído y los textos que lo citan; queda proceso, fechas y veredicto).
+- Telemetría y logs sin datos (excepciones y logs saneados antes de salir); en producción no arranca con un gateway de modelos externo ni con la captura de prompts encendida.
+- Fuera: enmascarar lo que va al modelo (es interno y necesita leer el dato), cifrado de columnas, y que el colector de argus reconozca identificadores peruanos (pedido aparte).
 ## VRT-59 — Búsqueda híbrida
 **Why:** el `ILIKE` de VRT-11 no escala. **Scope:** BM25 + vectorial en Postgres con halfvec, filtrado por tenant y proceso.
 ## VRT-60 — Conectores RENIEC / SUNAT / SBS

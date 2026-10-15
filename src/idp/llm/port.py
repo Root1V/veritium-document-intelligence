@@ -27,12 +27,15 @@ generation (``finish_reason == "length"``) never validates, so it surfaces as
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import dataclasses
 import inspect
+import ipaddress
 import logging
 from collections.abc import AsyncGenerator, Coroutine, Iterable
 from contextlib import asynccontextmanager
 from typing import Any, Literal, TypeVar
+from urllib.parse import urlparse
 
 from axonium import AsyncAxonium
 from axonium.config import Timeouts
@@ -99,6 +102,8 @@ class Inference:
                 client_secret=settings.axonium_client_secret.get_secret_value(),
                 timeouts=Timeouts(read=timeout, write=timeout),
             )
+            if settings.environment == "prod":
+                on_premises(settings, self._client.config.gateway_base_url)
             model = AxoniumModel(client=self._client).complete
         model = _breaking_loops(_observed(model))
         self._model_call = model
@@ -235,6 +240,22 @@ async def _in_context(call: Coroutine[Any, Any, Any], context: otel_context.Cont
 
 
 _current: Inference | None = None
+
+
+def on_premises(settings: Settings, gateway_url: str) -> None:
+    """The models read whole documents: in production they must be ours (VRT-58).
+    A gateway on loopback, a private address or a host the operator listed in
+    MODEL_GATEWAY_HOSTS; anything else and Veritium does not start."""
+    if settings.environment != "prod":
+        return
+    host = urlparse(gateway_url).hostname or ""
+    with contextlib.suppress(ValueError):
+        address = ipaddress.ip_address(host)
+        if address.is_loopback or address.is_private:
+            return
+    if host in settings.model_gateway_hosts:
+        return
+    raise RuntimeError(f"el gateway de modelos {host!r} no es interno: los documentos no salen de la casa (MODEL_GATEWAY_HOSTS)")
 
 
 @asynccontextmanager

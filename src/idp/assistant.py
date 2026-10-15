@@ -126,7 +126,7 @@ async def answer(settings: Settings, token: str, conversation: list[Turn], *, ca
     if result is None:
         raise ValueError("el asistente no entregó una respuesta")
     for s in steps:
-        log.info("assistant: %s(%s)", s.call.name, s.call.arguments)
+        log.info("assistant: %s(%s)", s.call.name, ", ".join(s.call.arguments or {}))  # which arguments, not their values: a DNI or a name (VRT-58)
     seen = [uuid.UUID(m) for m in dict.fromkeys(m for s in steps if s.result is not None for part in s.result.content for m in UUID.findall(getattr(part, "text", "")))]
     consulted = list(dict.fromkeys(CATALOG[s.call.name].title if s.call.name in CATALOG else s.call.name for s in steps))
     return Reply(answer=result.answer, seen=seen, consulted=consulted)

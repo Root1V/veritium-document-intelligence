@@ -55,6 +55,9 @@ class Settings(BaseSettings):
     # --- Personal data (VRT-58) ---
     # How often the API looks for cases whose process's retention term ran out.
     retention_check_minutes: float = 60.0
+    # Hosts of the model gateway accepted in production besides loopback and
+    # private addresses (e.g. prometheus.interno): the models read whole documents.
+    model_gateway_hosts: list[str] = []
 
     # --- CORS (frontend dev server origin) ---
     cors_allowed_origins: list[str] = ["http://localhost:5180"]

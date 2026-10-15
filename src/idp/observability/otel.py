@@ -40,6 +40,7 @@ from opentelemetry import trace
 from opentelemetry.trace import Span, Status, StatusCode
 
 from idp.config import Settings
+from idp.observability import scrub
 
 P = ParamSpec("P")
 R = TypeVar("R")
@@ -55,6 +56,9 @@ _ENVIRONMENT = {"dev": "development", "test": "test", "prod": "production"}
 
 def setup_telemetry(settings: Settings, *, component: Literal["api", "worker"]) -> None:
     """Idempotent. The API calls it in its lifespan (after uvicorn configured logging); the worker before its own."""
+    scrub.install()  # no personal data in what leaves the process (VRT-58)
+    if settings.environment == "prod" and argus.capture_enabled():
+        raise RuntimeError("ARGUS_CAPTURE_CONTENT exporta prompts con datos personales: no se permite en producción (VRT-58)")
     argus.init(
         f"{NAMESPACE}-{component}", namespace=NAMESPACE, role=component, version=version("idp"),
         environment=_ENVIRONMENT[settings.environment], json_logs=False,
