@@ -35,7 +35,7 @@ dependencies = [
     "pyyaml>=6.0.2",
     "rapidfuzz>=3.14.5",
     "sqlalchemy[asyncio]>=2.0.52",
-    "synaptum==1.0.0rc5",
+    "synaptum==1.0.0rc6",
     "temporalio[opentelemetry]>=1.8.0",
     "uvicorn[standard]>=0.52.4",
 ]

@@ -1610,7 +1610,7 @@ requires-dist = [
     { name = "rapidfuzz", specifier = ">=3.14.5" },
     { name = "rapidocr", marker = "extra == 'paddleocr'", specifier = ">=3.9.2" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.52" },
-    { name = "synaptum", specifier = "==1.0.0rc5" },
+    { name = "synaptum", specifier = "==1.0.0rc6" },
     { name = "temporalio", extras = ["opentelemetry"], specifier = ">=1.8.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.52.4" },
 ]
@@ -3879,11 +3879,11 @@ wheels = [
 
 [[package]]
 name = "synaptum"
-version = "1.0.0rc5"
+version = "1.0.0rc6"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/71/17/31ebf4e28ded7c1d5f291bbe4f28149b338cf89f917ff3dfdb3f5b52f604/synaptum-1.0.0rc5.tar.gz", hash = "sha256:8a356668bd57a0e0a0efa99fcc861408c8dc175d14040d3217d4957203621ff4", size = 630143, upload-time = "2026-10-10T16:25:50.598Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/e5/c0/99f7c2cc0721bfdf14eb3069c634f22a4b52c2a5cef6fea8a47b6066e37b/synaptum-1.0.0rc6.tar.gz", hash = "sha256:17a6a4c9b92fff435899a4914d3b8fc41a08c72ef04ba6622adc351523d71470", size = 635139, upload-time = "2026-10-14T11:00:22.007Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/09/69/25459df5172980e9d732b46524ace23ba70b4bddabd5e3af63acd78815c5/synaptum-1.0.0rc5-py3-none-any.whl", hash = "sha256:d1480958dba64824b66565ab8d735f794b48a00df904821e4fa936ddf4ffe6fa", size = 143839, upload-time = "2026-10-10T16:25:49.015Z" },
+    { url = "https://files.pythonhosted.org/packages/91/38/79a9d078244d2963b75487c6c2cd26b6590a8f5b10dd5a3266e48461fc3b/synaptum-1.0.0rc6-py3-none-any.whl", hash = "sha256:88f8d5b5654fe86fe6b6dd42672eee47db73d540f700e7322e4b26d4c4be5a5a", size = 144973, upload-time = "2026-10-14T11:00:20.171Z" },
 ]
 
 [[package]]

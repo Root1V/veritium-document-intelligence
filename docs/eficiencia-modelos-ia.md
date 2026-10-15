@@ -69,6 +69,23 @@ uv run python scripts/bench_ocr.py paddleocr rapidocr     # lectores de OCR: tie
 
 Las coordenadas coincidían (1 px) y una métrica gruesa («¿aparecen los valores clave en el texto?») daba 35/37. Solo la exactitud de la extracción de punta a punta mostró la caída de 14 puntos. Con nuestra conversión (`scripts/export_ocr_onnx.sh`) y los parámetros de Paddle, la lectura queda equivalente. La memoria baja de picos de 17–21 GB a ~6 GB; lo que queda es el layout, que sigue en Paddle.
 
+## synaptum rc6 · devolver el razonamiento entre turnos (`SYN-94`, `PRM-VRT-003`)
+
+Hasta rc5, synaptum no le devolvía al modelo su propio razonamiento en el turno siguiente. La hipótesis era que por eso el modelo «vuelve a empezar» el análisis y a veces entra en bucle. Medido el 14/10 con el mismo banco: 3 corridas intercaladas por versión, sin otro cambio.
+
+| | rc5 | rc6 |
+|---|---|---|
+| Tokens de salida por corrida | 27,5k y 31,4k (24,4k en una corrida incompleta) | **22,0k · 18,2k · 19,5k** |
+| Exactitud | 81% · 64% (una tercera, 29%, perdió 2 documentos por *timeouts*) | 83% · 64% · 76% |
+| Turnos al tope (bucles) | 1 en 3 corridas | 2 en 3 corridas |
+| Errores 500 del modelo | 0 | 0 |
+
+- **Lo que cambia:** el modelo escribe un ~32% menos, en las tres corridas. Recordar su análisis le ahorra rehacerlo.
+- **Lo que no cambia:** la exactitud queda dentro de la variación de siempre (±15 puntos entre corridas).
+- **Los bucles no bajan** con tan pocos casos: el reintento de VRT-69 se queda.
+- **Los 500 «peg-native»** ya no aparecen en ninguna versión; prometheus los arregló de su lado.
+- **El tiempo** no se compara: hubo *timeouts* de prometheus en las dos versiones.
+
 ## Lo que aprendimos
 
 1. **Medir antes de optimizar, y desconfiar de la premisa.** Las dos hipótesis de partida —recortar lo que se envía al agente, y que el OCR necesitaba GPU— eran falsas.
@@ -83,6 +100,5 @@ Las coordenadas coincidían (1 px) y una métrica gruesa («¿aparecen los valor
 ## Pendiente
 
 - **Cortar el bucle apenas empieza**, con streaming, y no al llegar al tope: cada bucle aún cuesta ~80 s.
-- **Devolver el razonamiento al modelo entre turnos** (`PRM-VRT-003`): synaptum lo omite hoy. Upstream mide 7/120 turnos fallidos sin él y 0/120 con él; puede explicar también los bucles. Lo mediremos con el mismo banco cuando SYN lo publique.
 - **El layout sigue en Paddle** (0,6 s por página, la mayor parte de la memoria). Servir el OCR desde prometheus (`VRT-PRM-006`) queda en espera: ya no hay latencia que ganar, solo la copia por proceso.
 - **Errores que ninguna variante resuelve:** montos manuscritos («132 500») y el carnet que mezcla los datos de dos personas.
