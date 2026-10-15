@@ -11,7 +11,7 @@ dependencies = [
     "a2a-sdk[http-server]==1.2.0",
     "aiokafka[lz4,snappy,zstd]>=0.14.0",
     "alembic>=1.19.1",
-    "argus-obs-sdk[asgi,client,sql]==1.0.0a21",
+    "argus-obs-sdk[asgi,client,sql]==1.0.0a22",
     "asyncpg>=0.31.0",
     "axonium==1.0.0rc9",
     "bcrypt<4.1",
