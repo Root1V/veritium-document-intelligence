@@ -106,7 +106,7 @@ Estados: `done` · `todo` · `blocked` (espera a otro equipo) · `superseded` (a
 | ID | Feature | Estado | Descripción |
 |---|---|---|---|
 | VRT-56 | Ruta de inferencia gobernada | todo | synaptum → aeon-modelgw → prometheus, con presupuestos y costo por corrida. |
-| VRT-57 | SSO OIDC y multi-tenant | todo | Identidad corporativa y aislamiento por tenant. |
+| VRT-57 | SSO OIDC y multi-tenant | done | Identidad corporativa y aislamiento por tenant. |
 | VRT-58 | PII y retención | todo | Enmascaramiento según la clase PII semántica; políticas de retención y borrado. |
 | VRT-59 | Búsqueda híbrida | todo | BM25 + vectorial en Postgres, con halfvec. |
 | VRT-60 | Conectores RENIEC / SUNAT / SBS | todo | Validación contra fuentes oficiales como tools. |
