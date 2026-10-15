@@ -266,6 +266,21 @@ export function ProfileEditorPage() {
             <input type="checkbox" checked={definition.include_all_rules} onChange={(e) => set({ include_all_rules: e.target.checked })} />
             Aplicar todas las reglas activas (no solo las vinculadas)
           </label>
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="retention">Conservación de datos personales (días)</Label>
+            <Input
+              id="retention"
+              type="number"
+              min={1}
+              placeholder="Sin plazo: se conservan"
+              value={definition.retention_days ?? ''}
+              onChange={(e) => set({ retention_days: e.target.value ? Number(e.target.value) : null })}
+              className="w-56"
+            />
+            <span className="text-xs text-muted-foreground">
+              Desde la decisión del expediente. Al vencer se suprimen sus datos personales y queda anonimizado. Lo define Legal según el proceso.
+            </span>
+          </div>
         </CardContent>
       </Card>
 

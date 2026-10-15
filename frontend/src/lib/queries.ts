@@ -1024,3 +1024,13 @@ export function useRevealCaseData() {
 export function useDataAccessLog() {
   return useQuery({ queryKey: ['data-access'], queryFn: async () => (await apiClient.get<DataAccessEntry[]>('/v1/data-access')).data })
 }
+
+/** Remove a case's personal data for good, on request (VRT-58). Admins only. */
+export function useSuppressCaseData() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ caseId, reason }: { caseId: string; reason: string }) =>
+      (await apiClient.post<{ removed_at: string; files_removed: number }>(`/v1/cases/${caseId}/suppress`, { reason })).data,
+    onSuccess: () => queryClient.invalidateQueries(),
+  })
+}

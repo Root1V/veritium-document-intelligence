@@ -28,7 +28,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from idp.api.case_contract import CaseResultV1, ConditionResult, ProfileRef, Verdict, build_case_result, condition_result, latest_run, profile_ref
 from idp.api.case_service import dispatch_run, open_reprocess_run, open_run, read_uploads, request_fingerprint, resolve_profile_version, store_uploads
 from idp.api.deps import get_app_settings, get_current_user, get_db_session, get_object_store, get_principal, require_role
-from idp.api.disclosure import REVEALERS, Disclosure, can_reveal, get_disclosure, open_window
+from idp.api.disclosure import REVEALERS, Disclosure, actor_of, can_reveal, get_disclosure, open_window
+from idp.domain.process_profile import ProcessProfileDefinition
+from idp.pipeline.retention import CaseBusy, anonymize_case
 from idp.auth.authenticate import Principal
 from idp.config import Settings
 from idp.domain.case_progress import Progress, progress
@@ -84,6 +86,10 @@ class PersonalData(BaseModel):
 
     visible: bool
     can_reveal: bool  # the caller's role may ask to see them (POST /v1/cases/{id}/reveal)
+    # They were removed: "suprimido" on request, "vencido" by the process's retention term.
+    removed_at: datetime | None = None
+    removed_reason: str | None = None
+    retention_days: int | None = None  # the process's term; None = kept
 
 
 class CaseSummary(BaseModel):
@@ -314,7 +320,11 @@ async def get_case(
         runs=[RunBrief(run_number=r.run_number, trigger=r.trigger, scope=r.scope, status=r.status, started_at=r.started_at, finished_at=r.finished_at) for r in case.runs],
         progress=_progress(case),
         links=_links(case.id),
-        personal_data=PersonalData(visible=not masker.active, can_reveal=can_reveal(disclosure.principal.role)),
+        personal_data=PersonalData(
+            visible=not masker.active, can_reveal=can_reveal(disclosure.principal.role) and case.anonymized_at is None,
+            removed_at=case.anonymized_at, removed_reason=case.anonymized_reason,
+            retention_days=profile_definition_retention(case),
+        ),
     )
     return CaseSummary.model_validate(masker.json(summary.model_dump(mode="json")))
 
@@ -328,6 +338,38 @@ async def reveal_personal_data(
     case = await _case_or_404(session, case_id)
     entry = await open_window(session, principal, case, body.reason if body else None)
     return RevealResponse(until=entry.until)
+
+
+def profile_definition_retention(case: Case) -> int | None:
+    return ProcessProfileDefinition.model_validate(case.profile_version.definition).retention_days if case.profile_version else None
+
+
+class SuppressRequest(BaseModel):
+    reason: str = Field(min_length=5, max_length=500, description="Por qué se suprimen, p. ej. la solicitud de cancelación del titular; queda en el registro.")
+
+
+class SuppressResponse(BaseModel):
+    removed_at: datetime
+    files_removed: int
+
+
+@router.post("/{case_id}/suppress", response_model=SuppressResponse, dependencies=[Depends(require_role("admin"))])
+async def suppress_personal_data(
+    case_id: uuid.UUID, body: SuppressRequest, session: AsyncSession = Depends(get_db_session), principal: Principal = Depends(get_principal),
+    object_store: S3ObjectStore = Depends(get_object_store),
+) -> SuppressResponse:
+    """Remove the case's personal data for good (VRT-58, Ley 29733): its files,
+    what was read and extracted from them, and the texts that quote them. The
+    case stays, anonymized — process, dates, verdict — and the removal is recorded."""
+    case = await _case_or_404(session, case_id)
+    if case.anonymized_at is not None:
+        return SuppressResponse(removed_at=case.anonymized_at, files_removed=0)
+    try:
+        removed = await anonymize_case(session, object_store, case, reason="suprimido", actor=actor_of(principal), role=principal.role,
+                                       channel="api" if principal.client else "web", note=body.reason)
+    except CaseBusy as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    return SuppressResponse(removed_at=case.anonymized_at, files_removed=removed)
 
 
 _ACCEPTED: dict[str, ExportFormat] = {

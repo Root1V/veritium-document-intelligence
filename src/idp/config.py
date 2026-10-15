@@ -52,6 +52,10 @@ class Settings(BaseSettings):
     # Where people use Veritium; the sign-in returns there.
     frontend_base_url: str = "http://localhost:5180"
 
+    # --- Personal data (VRT-58) ---
+    # How often the API looks for cases whose process's retention term ran out.
+    retention_check_minutes: float = 60.0
+
     # --- CORS (frontend dev server origin) ---
     cors_allowed_origins: list[str] = ["http://localhost:5180"]
 

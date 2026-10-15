@@ -95,6 +95,10 @@ class ProcessProfileDefinition(BaseModel):
     include_all_rules: bool = False
     rule_bindings: list[RuleBinding] = Field(default_factory=list)
     thresholds: Thresholds = Field(default_factory=Thresholds)
+    # How many days a case is kept once decided (VRT-58); after that its
+    # personal data are removed and it stays anonymized. None: kept — the
+    # term is Legal's to set per process (credit files, e.g., for years).
+    retention_days: int | None = Field(default=None, ge=1)
 
     @model_validator(mode="after")
     def _intrinsic(self) -> ProcessProfileDefinition:

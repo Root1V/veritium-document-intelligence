@@ -244,7 +244,12 @@ export function CaseDetailPage() {
         </Link>
       </div>
       {summary?.personal_data && (
-        <PersonalDataBar caseId={result.case.id} visible={summary.personal_data.visible} canReveal={summary.personal_data.can_reveal} />
+        <PersonalDataBar
+          caseId={result.case.id}
+          visible={summary.personal_data.visible}
+          canReveal={summary.personal_data.can_reveal}
+          removed={{ at: summary.personal_data.removed_at, reason: summary.personal_data.removed_reason, retentionDays: summary.personal_data.retention_days }}
+        />
       )}
 
       {summary && (

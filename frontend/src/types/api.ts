@@ -511,6 +511,7 @@ export interface ProcessProfileDefinition {
   include_all_rules: boolean
   rule_bindings: RuleBinding[]
   thresholds: { field_confidence_min?: number | null }
+  retention_days?: number | null // VRT-58: days a decided case is kept; then anonymized. Empty: kept
 }
 
 export interface ProfileVersionDetail {
@@ -1064,6 +1065,9 @@ export interface AssistantReply {
 export interface PersonalDataState {
   visible: boolean
   can_reveal: boolean
+  removed_at: string | null // "suprimido" on request, "vencido" by the retention term
+  removed_reason: 'suprimido' | 'vencido' | null
+  retention_days: number | null
 }
 
 /** One access to personal data, in the unit's log (VRT-58). */

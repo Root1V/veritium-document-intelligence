@@ -114,6 +114,9 @@ class Case(TenantScoped, Base):
     verdict_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # The bulk job it came in (VRT-48), if any.
     bulk_job_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("bulk_jobs.id", ondelete="SET NULL"), nullable=True, index=True)
+    # Its personal data were removed (VRT-58): "suprimido" on request, "vencido" by the process's retention term.
+    anonymized_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    anonymized_reason: Mapped[str | None] = mapped_column(String(16), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     documents: Mapped[list["Document"]] = relationship(back_populates="case", cascade="all, delete-orphan")

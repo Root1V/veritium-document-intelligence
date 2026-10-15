@@ -19,6 +19,8 @@ class ObjectStore(Protocol):
 
     def get(self, key: str) -> bytes: ...
 
+    def delete(self, key: str) -> None: ...
+
     def key_for(self, *, tenant: str, case_id: str, document_id: str, filename: str) -> str: ...
 
 
@@ -44,6 +46,10 @@ class S3ObjectStore:
     def put(self, key: str, data: bytes | BinaryIO, content_type: str = "application/octet-stream") -> None:
         body = data if isinstance(data, (bytes, bytearray)) else data.read()
         self._client.put_object(Bucket=self._bucket, Key=key, Body=body, ContentType=content_type)
+
+    def delete(self, key: str) -> None:
+        """Gone for good (VRT-58); a key that is not there is not an error."""
+        self._client.delete_object(Bucket=self._bucket, Key=key)
 
     def get(self, key: str) -> bytes:
         resp = self._client.get_object(Bucket=self._bucket, Key=key)

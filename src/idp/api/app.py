@@ -27,7 +27,7 @@ from idp.persistence.repositories import DocumentTypeRepository, LensRepository,
 from idp.storage.object_store import S3ObjectStore
 from idp.events import bus
 from idp import a2a_server, mcp_server
-from idp.pipeline import bulk
+from idp.pipeline import bulk, retention
 from idp.webhooks import dispatcher
 
 
@@ -56,6 +56,7 @@ def create_app() -> FastAPI:
         stop = asyncio.Event()
         task = asyncio.create_task(dispatcher.run(settings, stop)) if settings.webhook_dispatcher_enabled else None
         feeder = asyncio.create_task(bulk.run(settings, stop))  # releases bulk jobs' cases a few at a time (VRT-48)
+        keeper = asyncio.create_task(retention.run(settings, stop))  # anonymizes cases whose retention term ran out (VRT-58)
         # The event bus, when configured: outbox out, commands in (VRT-49).
         events = asyncio.create_task(bus.run(settings, stop)) if settings.event_bus_brokers else None
         # The MCP server (VRT-51) and the in-process executor / rule drafting, which call models.
@@ -64,6 +65,7 @@ def create_app() -> FastAPI:
         await a2a.handler.aclose()
         stop.set()
         await feeder
+        await keeper
         if events is not None:
             await events
         if task is not None:

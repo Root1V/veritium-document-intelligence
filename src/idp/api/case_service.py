@@ -90,7 +90,12 @@ async def store_uploads(session: AsyncSession, object_store: ObjectStore, case: 
     return documents
 
 
+SUPPRESSED = "los datos personales de este expediente fueron suprimidos; ya no se procesa"
+
+
 async def open_run(session: AsyncSession, case: Case, *, trigger: str) -> CaseRun:
+    if case.anonymized_at is not None:  # VRT-58: nothing left to process, and nothing new to collect
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=SUPPRESSED)
     return await CaseRunRepository(session).create_next(case, trigger=trigger)
 
 
@@ -100,6 +105,8 @@ async def open_reprocess_run(session: AsyncSession, settings: Settings, case: Ca
     finds it pending — and keeps its extraction until the new one replaces
     it, so a failed re-extraction loses nothing. Its pending review items
     go; its resolved corrections are re-applied after the new extraction."""
+    if case.anonymized_at is not None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=SUPPRESSED)
     _unprocessable = status.HTTP_422_UNPROCESSABLE_ENTITY
     documents = {d.id: d for d in case.documents}
     if scope.document_id is not None and scope.document_id not in documents:
@@ -188,6 +195,8 @@ async def open_case(
 
 async def add_to_case(settings: Settings, session: AsyncSession, case: Case, uploads: list[Upload]) -> CaseRun:
     """Add documents to a case and open the run that re-evaluates it."""
+    if case.anonymized_at is not None:
+        raise CaseRefused(SUPPRESSED)
     if not uploads:
         raise CaseRefused("no se recibió ningún documento")
     if await CaseRunRepository(session).has_active_run(case.id):
