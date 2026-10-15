@@ -42,9 +42,10 @@ from idp.observability.otel import case_step, traced_stage
 from idp.parsing.base import ParserBackend
 from idp.parsing.docling_backend import DoclingBackend
 from idp.parsing.paddleocr_backend import PaddleOCRBackend
+from idp.llm.port import charged_to
 from idp.persistence import tenancy
 from idp.persistence.db import get_session_factory
-from idp.persistence.models import Case, Document
+from idp.persistence.models import Case, CaseRun, Document
 from idp.persistence.models import ValidationIssue as ValidationIssueModel
 from idp.persistence.repositories import (
     CalibrationRepository,
@@ -104,6 +105,24 @@ def for_case_unit(fn: Callable[P, Awaitable[R]]) -> Callable[P, Awaitable[R]]:
         if tenant is None:
             raise ValueError(f"case {case_id} not found")
         with tenancy.acting_for(tenant):
+            return await fn(*args, **kwargs)
+
+    return run
+
+
+def charged_to_case_run(fn: Callable[P, Awaitable[R]]) -> Callable[P, Awaitable[R]]:
+    """The model calls of a case step are charged to its run (VRT-56): the aeon
+    run it executes as, or — run in process — one named after the case run,
+    always as the case-run agent and its budget."""
+
+    @functools.wraps(fn)
+    async def run(*args: P.args, **kwargs: P.kwargs) -> R:
+        settings = kwargs.get("settings") or args[0]
+        ids = [a for a in args if isinstance(a, uuid.UUID)]
+        run_id = kwargs.get("run_id") or (ids[1] if len(ids) > 1 else None)
+        async with get_session_factory(settings)() as session:
+            ref = await session.scalar(select(CaseRun.execution_ref).where(CaseRun.id == run_id)) if run_id else None
+        with charged_to(ref or f"veritium-case-run-{run_id}", settings.aeon_agent_ref):
             return await fn(*args, **kwargs)
 
     return run
@@ -537,6 +556,7 @@ async def pending_documents(settings: Settings, case_id: uuid.UUID) -> list[uuid
 
 @case_step("veritium.case.process_document")
 @for_case_unit
+@charged_to_case_run
 async def process_document(settings: Settings, case_id: uuid.UUID, run_id: uuid.UUID, document_id: uuid.UUID) -> None:
     """Step 2, once per document and in parallel: parse, segment, classify
     and extract one uploaded document. Idempotent — an already extracted
@@ -626,6 +646,7 @@ async def case_rules(settings: Settings, session: AsyncSession, case: Case) -> t
 
 @case_step("veritium.case.evaluate")
 @for_case_unit
+@charged_to_case_run
 async def evaluate_case(settings: Settings, case_id: uuid.UUID, run_id: uuid.UUID) -> str | None:
     """Step 3, after every document: re-validate the whole case, refresh
     its conditions and verdict, close the run and emit its events.
@@ -726,6 +747,7 @@ async def fail_run(settings: Settings, case_id: uuid.UUID, run_id: uuid.UUID, er
 
 
 @for_case_unit
+@charged_to_case_run
 async def process_case_run(*, settings: Settings, case_id: uuid.UUID, run_id: uuid.UUID) -> None:
     """The whole run in-process (the interim executor, VRT-26): the same
     steps the aeon graph runs, with documents in parallel up to

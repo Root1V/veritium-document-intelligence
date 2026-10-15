@@ -4,7 +4,8 @@
 # deploy/aeon/compose.override.yml — same aeon code, configuration only.
 #
 #   scripts/aeon_dev.sh setup    # once: tokens (deploy/aeon/secrets/), callers.yaml, AEON_API_TOKEN in .env
-#   scripts/aeon_dev.sh up       # build + start temporal, toolgw, worker, runcontroller (+ deps)
+#   scripts/aeon_dev.sh up       # build + start temporal, controlplane, modelgw, toolgw, worker, runcontroller (+ deps)
+#   scripts/aeon_dev.sh register-agents   # the manifests with their model budgets (VRT-56); `up` does it
 #   scripts/aeon_dev.sh status | logs [service] | down
 #   scripts/aeon_dev.sh reload-tools | verify-tools   # Veritium's tools federated in aeon, under Cedar (VRT-55)
 #
@@ -14,7 +15,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 DIR="$ROOT/deploy/aeon"
 AEON_REPO="${AEON_REPO:-$(cd "$ROOT/.." && pwd)/aeon-ai}"
 AGENT="veritium-case-run@1.0.0"
-SERVICES=(temporal temporal-db temporal-ui postgres searxng toolgw veritium-bridge worker runcontroller)
+SERVICES=(temporal temporal-db temporal-ui postgres searxng controlplane modelgw toolgw veritium-bridge worker runcontroller)
 TOOLS_AGENT="veritium-assistant@1.0.0"  # the agent that reads Veritium's tools through aeon (VRT-55)
 
 sha() { printf '%s' "$1" | shasum -a 256 | cut -d' ' -f1; }
@@ -83,12 +84,38 @@ PY
   echo "listo: callers.yaml generado, tokens en $DIR/secrets/, AEON_API_TOKEN en .env"
 }
 
+# One value of Veritium's .env, without sourcing the whole file.
+env_value() { grep -E "^$1=" "$ROOT/.env" 2>/dev/null | tail -1 | cut -d= -f2-; }
+
+# The case-run and service manifests, with their model budgets, in aeon's
+# registry (VRT-56). Idempotent: one already there is left as it is.
+register_agents() {
+  (cd "$ROOT" && uv run --no-sync python - "$DIR" <<'PY')
+import json, sys, time
+from pathlib import Path
+import httpx, yaml
+d = Path(sys.argv[1])
+token = (d / "secrets" / "api_token").read_text().strip()
+for _ in range(30):
+    try:
+        httpx.get("http://127.0.0.1:9411/healthz", timeout=2).raise_for_status(); break
+    except httpx.HTTPError:
+        time.sleep(2)
+for f in sorted((d / "agents").glob("*.yaml")):
+    manifest = yaml.safe_load(f.read_text())
+    r = httpx.post("http://127.0.0.1:9411/agents", headers={"Authorization": f"Bearer {token}"}, json={"manifest": manifest, "owner": "veritium"})
+    ref = f"{manifest['metadata']['name']}@{manifest['metadata']['version']}"
+    print(f"  agente {ref}: {'registrado' if r.status_code == 201 else 'ya estaba' if r.status_code == 409 else f'{r.status_code} {r.text[:200]}'}")
+PY
+}
+
 compose() {
   [ -f "$AEON_REPO/deploy/compose/docker-compose.yml" ] || { echo "no encuentro aeon en $AEON_REPO (definir AEON_REPO)"; exit 1; }
   [ -s "$DIR/secrets/worker_token" ] || { echo "falta setup: scripts/aeon_dev.sh setup"; exit 1; }
   VERITIUM_AEON_DIR="$DIR" AEON_CALLERS_PATH=/veritium/callers.yaml AEON_CALLER_TOKEN="$(cat "$DIR/secrets/worker_token")" \
     AEON_VERITIUM_MCP_CLIENT_ID="$(cat "$DIR/secrets/veritium_mcp_client_id" 2>/dev/null)" \
     AEON_VERITIUM_MCP_CLIENT_SECRET="$(cat "$DIR/secrets/veritium_mcp_client_secret" 2>/dev/null)" \
+    AEON_PROMETHEUS_CLIENT_ID="$(env_value AXONIUM_CLIENT_ID)" AEON_PROMETHEUS_CLIENT_SECRET="$(env_value AXONIUM_CLIENT_SECRET)" \
     docker compose -p veritium-aeon -f "$AEON_REPO/deploy/compose/docker-compose.yml" -f "$DIR/compose.override.yml" --profile core "$@"
 }
 
@@ -96,7 +123,8 @@ case "${1:-}" in
   setup) setup ;;
   # One image at a time: Docker Desktop's BuildKit refuses parallel builds
   # ("only one connection allowed").
-  up) for s in toolgw worker runcontroller; do compose build "$s"; done; compose up -d "${SERVICES[@]}" ;;
+  up) for s in controlplane modelgw toolgw worker runcontroller; do compose build "$s"; done; compose up -d "${SERVICES[@]}" && register_agents ;;
+  register-agents) register_agents ;;
   down) compose down ;;
   status) compose ps ;;
   logs) shift; compose logs --tail=100 "$@" ;;

@@ -1,0 +1,18 @@
+# Model work that is not a case run (VRT-56): the assistant, a lens reading,
+# an investigation, drafting a rule or a document type, a quick check. Each
+# operation is its own run, so this is a ceiling per operation.
+apiVersion: harness.ai/v1
+kind: Agent
+metadata:
+  name: veritium-service
+  version: 1.0.0
+  owner: veritium
+  lifecycle: Active
+spec:
+  modelPolicy:
+    profile: veritium-reasoning
+  runtime:
+    budgets:
+      modelCalls: 60
+      tokens: 600000
+      costUsd: 1.0

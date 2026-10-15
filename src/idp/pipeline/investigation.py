@@ -32,7 +32,7 @@ from synaptum.core.errors import ProviderError, SynaptumError
 from idp.api.case_outcome import field_evidence
 from idp.config import Settings
 from idp.domain.lenses import LensDocument
-from idp.llm.port import inference, model_for
+from idp.llm.port import charged_to, inference, model_for
 from idp.llm.prompts import prompt
 from idp.persistence.db import get_session_factory
 from idp.persistence.models import Case, Investigation, ReviewItem, ValidationIssue
@@ -276,6 +276,12 @@ def finalize(answer: InvestigationAnswer, documents: list[LensDocument], fields_
 
 
 async def investigate(settings: Settings, investigation_id: uuid.UUID) -> None:
+    """Its model calls are its own run in aeon, under the service agent's budget (VRT-56)."""
+    with charged_to(f"veritium-investigation-{investigation_id}", settings.aeon_service_agent_ref):
+        await _investigate(settings, investigation_id)
+
+
+async def _investigate(settings: Settings, investigation_id: uuid.UUID) -> None:
     factory = get_session_factory(settings)
     async with factory() as session:
         row = await session.get(Investigation, investigation_id)

@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from idp.config import Settings
 from idp.domain.lenses import LensDefinition, LensDocument, LensSummaryAnswer, PlaybookAnswer, build_output, render_context, render_facts
-from idp.llm.port import model_for, resolved_models, structured
+from idp.llm.port import charged_to, model_for, resolved_models, structured
 from idp.llm.prompts import prompt
 from idp.observability.otel import traced_llm_call
 from idp.parsing.normalize import ParsedDocument
@@ -97,6 +97,12 @@ def _ask(settings: Settings, lens: LensDefinition, context: str) -> LensSummaryA
 
 
 async def run_lens(settings: Settings, result_id: uuid.UUID) -> None:
+    """Its model calls are its own run in aeon, under the service agent's budget (VRT-56)."""
+    with charged_to(f"veritium-lens-{result_id}", settings.aeon_service_agent_ref):
+        await _run_lens(settings, result_id)
+
+
+async def _run_lens(settings: Settings, result_id: uuid.UUID) -> None:
     async with get_session_factory(settings)() as session:
         repo = LensRepository(session)
         result = await repo.get_result(result_id)

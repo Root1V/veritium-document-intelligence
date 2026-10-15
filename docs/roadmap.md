@@ -383,7 +383,10 @@ Método, mediciones y aprendizajes: [eficiencia-modelos-ia.md](eficiencia-modelo
 
 ## F7 — Hardening y producción
 ## VRT-56 — Ruta de inferencia gobernada
-**Why:** en producción todo el tráfico de modelo debe tener presupuestos, atribución y gobierno ([ADR-0006](adr/0006-inferencia-gobernada-por-fases.md)). **Scope:** adaptador gobernado del `InferencePort` y del `AgentRuntime`. `VRT-AEON-003` (A-2/A-3) entregada el 2026-10-08; falta S-4/S-5 (`VRT-SYN-003`) y, para un despliegue compartido, el tenant del run en la política y el techo (`VRT-AEON-005`).
+**Why:** en producción todo el tráfico de modelo debe tener presupuestos, atribución y gobierno ([ADR-0006](adr/0006-inferencia-gobernada-por-fases.md)). **Scope:**
+- `INFERENCE_ROUTE=governed`: el `InferencePort` usa el `HttpModel` de synaptum contra aeon-modelgw con el token de Veritium. Pide **perfiles** (`deploy/aeon/model_policy.yaml`: razonamiento y visión, locales y `restricted`) y aeon resuelve el modelo con su credencial de prometheus. Obligatoria en producción.
+- Cada llamada va atribuida: la de un paso de expediente, a su run de aeon y al agente `veritium-case-run`; la demás (asistente, lentes, investigaciones, borradores), a un run propio y al agente `veritium-service`. Los presupuestos (llamadas, tokens, USD) están en los manifiestos (`deploy/aeon/agents/`); al agotarse, aeon responde 402 y Veritium lo dice así. El costo queda por run en el ledger de aeon.
+- Fuera: el diario compartido de synaptum (S-5), porque aeon ignora `sub_run_id` al leerlo (reportado); la durabilidad la siguen dando la actividad y la idempotencia de prometheus. Y el resto de S-4 (`/decide`, `/execute`).
 ## VRT-57 — SSO OIDC y multi-tenant
 **Why:** identidad corporativa y varias unidades de negocio que no deben ver lo de las otras. **Scope:**
 - Tenant = unidad de negocio de una misma empresa. Son de cada unidad: expedientes y todo lo que cuelga de ellos, procesos, sistemas conectados, webhooks, maestros, evaluación, calibración, simulaciones y cargas. Son corporativos: catálogos de tipos y semántico, biblioteca de reglas, lentes, instrucciones al modelo y las personas.

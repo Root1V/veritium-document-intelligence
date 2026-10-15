@@ -43,7 +43,7 @@ def test_every_span_and_log_record_is_scrubbed():
 
 
 def test_in_production_the_models_must_be_ours():
-    prod = Settings(_env_file=None, environment="prod", jwt_secret_key="x" * 32, a2a_signing_key="k", model_gateway_hosts=["prometheus.interno"])
+    prod = Settings(_env_file=None, environment="prod", jwt_secret_key="x" * 32, a2a_signing_key="k", inference_route="governed", model_gateway_hosts=["prometheus.interno"])
     for url in ("http://127.0.0.1:8020", "http://10.0.3.7:8020", "https://prometheus.interno"):
         on_premises(prod, url)
     with pytest.raises(RuntimeError, match="no es interno"):

@@ -10,8 +10,9 @@
 #
 # Only what Veritium uses from the host is published, on 127.0.0.1 (the
 # convention agreed in VRT-AEON-002) and on ports of its own so it can run
-# beside aeon's own dev stack: Temporal 7243, Temporal UI 8233, runcontroller
-# 9414, toolgw 9413. Postgres and searxng stay internal. MinIO is not started.
+# beside aeon's own dev stack: Temporal 7243, Temporal UI 8233, controlplane
+# 9411, modelgw 9412, toolgw 9413, runcontroller 9414. Postgres and searxng
+# stay internal. MinIO is not started.
 services:
   temporal:
     ports: !override
@@ -23,6 +24,32 @@ services:
     ports: !reset []
   searxng:
     ports: !reset []
+  # The agent registry, where the case-run and service manifests carry their
+  # model budgets (VRT-56); scripts/aeon_dev.sh registers them.
+  controlplane:
+    ports: !override
+      - "127.0.0.1:9411:9401"
+    environment:
+      AEON_TENANT_ID: veritium
+    volumes:
+      - ${VERITIUM_AEON_DIR}:/veritium:ro
+  # The governed model route (VRT-56): Veritium asks for a profile
+  # (model_policy.yaml); modelgw resolves it to prometheus with its own
+  # credential, enforces the run's budget and records its cost. Prometheus's
+  # credential lives here, not in Veritium.
+  modelgw:
+    ports: !override
+      - "127.0.0.1:9412:9402"
+    environment:
+      AEON_TENANT_ID: veritium
+      AEON_MODEL_POLICY_BUNDLE_PATH: /veritium/model_policy.yaml
+      PROMETHEUS_CLIENT_ID: ${AEON_PROMETHEUS_CLIENT_ID:-}
+      PROMETHEUS_CLIENT_SECRET: ${AEON_PROMETHEUS_CLIENT_SECRET:-}
+      # Derived, the scope asks for inference:stream too, which this client was
+      # not granted — and Veritium does not stream. Its two models, read only.
+      PROMETHEUS_SCOPE: "inference:read model:gpt-oss-20b-mxfp4 model:qwen3vl-30b-a3b"
+    volumes:
+      - ${VERITIUM_AEON_DIR}:/veritium:ro
   toolgw:
     # Published for scripts/verify_aeon_tools.py and Veritium's own calls through aeon (VRT-55).
     ports: !override

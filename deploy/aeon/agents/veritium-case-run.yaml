@@ -1,0 +1,21 @@
+# The agent a case run acts as (VRT-26), and its model budget per run (VRT-56).
+# aeon checks the budget before each model call against what the run has
+# spent; over it, the call is refused (402) and the document fails with that
+# reason. Sized from measurements (docs/eficiencia-modelos-ia.md): a 4-document
+# case writes ~20-30k tokens and reads ~10x that; this leaves room for 15
+# documents. Prometheus is priced per token, so costUsd caps too.
+apiVersion: harness.ai/v1
+kind: Agent
+metadata:
+  name: veritium-case-run
+  version: 1.0.0
+  owner: veritium
+  lifecycle: Active
+spec:
+  modelPolicy:
+    profile: veritium-reasoning
+  runtime:
+    budgets:
+      modelCalls: 400
+      tokens: 4000000
+      costUsd: 5.0

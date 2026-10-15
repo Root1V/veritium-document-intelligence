@@ -1,7 +1,12 @@
 """``InferencePort`` (VRT-29): every model call goes through synaptum
-(ADR-0006) — ``generate()``, journaled — over ``LocalGateway`` + axonium's
-``AxoniumModel`` to prometheus's gateway. Moving to the governed route
-(VRT-56) only swaps the ``Gateway``.
+(ADR-0006) — ``generate()``, journaled — over a ``LocalGateway`` whose model
+is, by route (``INFERENCE_ROUTE``):
+
+- autonomous (development): axonium's ``AxoniumModel`` straight to
+  prometheus's gateway, with Veritium's own prometheus credential;
+- governed (VRT-56, production): synaptum's ``HttpModel`` to aeon-modelgw,
+  which resolves a profile to a model, holds prometheus's credential,
+  enforces the run's model budget and records its cost per run.
 
 Three rules from the teams that own the pieces (canal VRT-AXO-001,
 VRT-SYN-003):
@@ -32,7 +37,9 @@ import dataclasses
 import inspect
 import ipaddress
 import logging
-from collections.abc import AsyncGenerator, Coroutine, Iterable
+import uuid
+from collections.abc import AsyncGenerator, Coroutine, Iterable, Iterator
+from contextvars import ContextVar
 from contextlib import asynccontextmanager
 from typing import Any, Literal, TypeVar
 from urllib.parse import urlparse
@@ -41,8 +48,9 @@ from axonium import AsyncAxonium
 from axonium.config import Timeouts
 from opentelemetry import context as otel_context
 from pydantic import BaseModel
-from synaptum import Agent, FinalStep, FinishReason, Image, Limits, LocalGateway, MemoryCheckpointer, Phase, PromptTemplate, Request, Response, Sampling, Session, Text, ToolStep, generate
+from synaptum import Agent, FinalStep, ProviderError, FinishReason, Image, Limits, LocalGateway, MemoryCheckpointer, Phase, PromptTemplate, Request, Response, Sampling, Session, Text, ToolStep, generate
 from synaptum.providers.axonium import AxoniumModel
+from synaptum.run.transport import HttpModel
 
 from idp.config import Settings
 from idp.observability.otel import model_call
@@ -93,7 +101,11 @@ class Inference:
         self._models = models
         self._loop = asyncio.get_running_loop()
         self._client = None
-        if model is None:
+        self._governed = model is None and settings.inference_route == "governed"
+        if self._governed:
+            model = _governed_model(settings)
+            self._models = self._models or {role: settings.governed_profiles[role] for role in _MODALITY}
+        elif model is None:
             if not settings.axonium_client_id or settings.axonium_client_secret is None:
                 raise RuntimeError("faltan AXONIUM_CLIENT_ID / AXONIUM_CLIENT_SECRET (credenciales de prometheus)")
             timeout = settings.llm_request_timeout_seconds
@@ -105,7 +117,7 @@ class Inference:
             if settings.environment == "prod":
                 on_premises(settings, self._client.config.gateway_base_url)
             model = AxoniumModel(client=self._client).complete
-        model = _breaking_loops(_observed(model))
+        model = _breaking_loops(_observed(_budgeted(model)))
         self._model_call = model
         self._gateway = LocalGateway(model=model, warn=False)
 
@@ -140,7 +152,7 @@ class Inference:
         result = await generate(task, model=model, session=session, sampling=self._sampling(), **kwargs)
         state = await checkpointer.load(session.run_id)
         answered = {step.response.model for step in state.events if getattr(step, "response", None) is not None}
-        if answered - {model}:
+        if answered - {model} and not self._governed:  # governed, a profile is asked for and a model answers
             log.warning("inference: se pidió %s y respondió %s (%s)", model, sorted(answered), purpose)
         return result
 
@@ -240,6 +252,62 @@ async def _in_context(call: Coroutine[Any, Any, Any], context: otel_context.Cont
 
 
 _current: Inference | None = None
+
+
+# Who pays for a model call, on the governed route (VRT-56): the aeon run it
+# belongs to and the agent manifest whose budget it draws on. A case step sets
+# it for everything it calls (threads and the port's own loop inherit it);
+# work that is no case's is its own run.
+_charge: ContextVar[tuple[str, str] | None] = ContextVar("veritium_model_charge", default=None)
+
+
+@contextlib.contextmanager
+def charged_to(run_id: str, agent_ref: str) -> Iterator[None]:
+    token = _charge.set((run_id, agent_ref))
+    try:
+        yield
+    finally:
+        _charge.reset(token)
+
+
+class BudgetExceeded(RuntimeError):
+    """aeon refused a model call: the run spent its model budget (its manifest's)."""
+
+
+def _governed_model(settings: Settings) -> HttpModel:
+    """synaptum's HTTP model against aeon-modelgw: Veritium asks for a profile
+    (deploy/aeon/model_policy.yaml); aeon picks the model, holds prometheus's
+    credential, checks the budget and records the cost. The idempotency key
+    is synaptum's own (run, step, body)."""
+    if settings.aeon_api_token is None:
+        raise RuntimeError("falta AEON_API_TOKEN: la ruta gobernada llama a aeon-modelgw con el token de Veritium")
+    if settings.environment == "prod":
+        on_premises(settings, settings.aeon_modelgw_url)
+
+    def headers(_ctx: Any) -> dict[str, str]:
+        run_id, agent = _charge.get() or (f"veritium-servicio-{uuid.uuid4().hex}", settings.aeon_service_agent_ref)
+        return {"X-Aeon-Run-Id": run_id, "X-Aeon-Agent-Manifest-Ref": agent}
+
+    return HttpModel(
+        f"{settings.aeon_modelgw_url.rstrip('/')}/v1", api_key=settings.aeon_api_token.get_secret_value(), provider="openai-compatible",
+        headers=headers, timeout=settings.llm_request_timeout_seconds,
+    )
+
+
+def _budgeted(model: Any) -> Any:
+    """A 402 from aeon says, in business words, why the work stopped."""
+    wants_ctx = len(inspect.signature(model).parameters) > 1
+
+    async def complete(request: Request, ctx: Any = None) -> Response:
+        try:
+            return await (model(request, ctx) if wants_ctx else model(request))
+        except ProviderError as exc:
+            if getattr(exc, "status", None) == 402:
+                run_id, _ = _charge.get() or ("", "")
+                raise BudgetExceeded(f"se agotó el presupuesto de modelo de la corrida {run_id} (aeon)") from exc
+            raise
+
+    return complete
 
 
 def on_premises(settings: Settings, gateway_url: str) -> None:

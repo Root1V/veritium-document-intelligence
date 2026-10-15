@@ -18,9 +18,11 @@ def test_quota_per_client_and_per_minute():
     assert limiter.check("a", 2, now=60.0) is None, "a new minute"
 
 
-def test_production_refuses_the_development_jwt_key_and_an_unsigned_agent_card():
+def test_production_refuses_the_development_jwt_key_an_unsigned_agent_card_and_ungoverned_models():
     with pytest.raises(ValidationError, match="JWT_SECRET_KEY"):
         Settings(environment="prod", jwt_secret_key="dev-insecure-change-me")
+    with pytest.raises(ValidationError, match="INFERENCE_ROUTE"):  # VRT-56
+        Settings(environment="prod", jwt_secret_key="una-clave-propia", a2a_signing_key="pem", inference_route="autonomous")
     with pytest.raises(ValidationError, match="A2A_SIGNING_KEY"):
-        Settings(environment="prod", jwt_secret_key="una-clave-propia")
-    assert Settings(environment="prod", jwt_secret_key="una-clave-propia", a2a_signing_key="pem").environment == "prod"
+        Settings(environment="prod", jwt_secret_key="una-clave-propia", inference_route="governed")
+    assert Settings(environment="prod", jwt_secret_key="una-clave-propia", a2a_signing_key="pem", inference_route="governed").environment == "prod"

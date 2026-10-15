@@ -1,0 +1,46 @@
+# Veritium's model profiles in aeon-modelgw (VRT-56). Veritium asks for a
+# profile, never for a model: which model serves it is decided here, by the
+# deployment. Both are local and RESTRICTED — a case's documents carry
+# personal data (VRT-58), so no candidate outside the network may serve them,
+# and aeon enforces it, not a convention.
+#
+# Rates: prometheus prices per token; gpt-oss's are the platform's own (read
+# from GET /v1/usage/{request_id} by aeon, OBS-007). qwen3vl has none known
+# yet: its calls are routed and counted, with cost "unknown", never $0.
+apiVersion: harness.ai/v1
+kind: ModelPolicyBundle
+profiles:
+  - profile: veritium-reasoning
+    candidates:
+      - provider: prometheus_inference
+        model: gpt-oss-20b-mxfp4
+        modality: text
+        inference_class: local
+        priority: 0
+        tool_calling: native
+        caching_capability: none
+        cost_model: token_based
+        cost_per_million_input_tokens: 0.3067
+        cost_per_million_output_tokens: 1.052
+    routing_constraints:
+      data_sensitivity: restricted
+      in_network_providers: [prometheus_inference]
+    local_inference:
+      environment: local-dev
+      allowed_providers: [prometheus_inference]
+  - profile: veritium-vision
+    candidates:
+      - provider: prometheus_inference
+        model: qwen3vl-30b-a3b
+        modality: vision
+        inference_class: local
+        priority: 0
+        tool_calling: none
+        caching_capability: none
+        cost_model: token_based
+    routing_constraints:
+      data_sensitivity: restricted
+      in_network_providers: [prometheus_inference]
+    local_inference:
+      environment: local-dev
+      allowed_providers: [prometheus_inference]

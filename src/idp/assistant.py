@@ -27,7 +27,7 @@ from synaptum.core.types import Risk
 from synaptum.mcp import MCPTools
 
 from idp.config import Settings
-from idp.llm.port import inference
+from idp.llm.port import charged_to, inference
 from idp.llm.prompts import prompt
 from idp.pipeline.investigation import RETRY_TEMPERATURES, malformed
 from idp.tools.catalog import CATALOG
@@ -113,10 +113,11 @@ async def answer(settings: Settings, token: str, conversation: list[Turn], *, ca
         steps: list = []
         for attempt, temperature in enumerate(RETRY_TEMPERATURES):
             try:
-                result, steps = await inference().run_agent(
-                    purpose=f"assistant/{run}", instructions=_INSTRUCTIONS.render(), task=task(conversation, case_id, datetime.now(ZoneInfo(settings.business_timezone)).date()),
-                    tools=tools, output=AssistantAnswer, max_steps=settings.assistant_max_turns, temperature=temperature,
-                )
+                with charged_to(f"veritium-assistant-{run}", settings.aeon_service_agent_ref):  # one question, one run (VRT-56)
+                    result, steps = await inference().run_agent(
+                        purpose=f"assistant/{run}", instructions=_INSTRUCTIONS.render(), task=task(conversation, case_id, datetime.now(ZoneInfo(settings.business_timezone)).date()),
+                        tools=tools, output=AssistantAnswer, max_steps=settings.assistant_max_turns, temperature=temperature,
+                    )
                 break
             except ProviderError as exc:
                 # Same as the investigator: a malformed tool call is retried once, sampling differently.

@@ -154,6 +154,17 @@ class Settings(BaseSettings):
     aeon_api_token: SecretStr | None = None
     aeon_agent_ref: str = "veritium-case-run@1.0.0"
     aeon_request_timeout_seconds: float = 10.0
+
+    # --- Inference route (VRT-56, ADR-0006) ---
+    # "autonomous": axonium straight to prometheus (development). "governed":
+    # through aeon-modelgw with the aeon token above — it resolves a profile to
+    # a model, enforces each run's model budget and records its cost; required
+    # in production. A case run's calls are charged to its aeon run as
+    # ``aeon_agent_ref``; any other model work, to its own run as the service agent.
+    inference_route: Literal["autonomous", "governed"] = "autonomous"
+    aeon_modelgw_url: str = "http://127.0.0.1:9412"
+    governed_profiles: dict[str, str] = {"reasoning": "veritium-reasoning", "vision": "veritium-vision"}
+    aeon_service_agent_ref: str = "veritium-service@1.0.0"
     # The worker (python -m idp.worker): Temporal of the aeon deployment, how
     # many steps each lane's queue runs at once, and how often it checks aeon
     # for runs that failed before reaching evaluation.
@@ -227,6 +238,8 @@ class Settings(BaseSettings):
         # Anyone who knows the default could sign a token for any user or system (VRT-65).
         if self.environment == "prod" and self.jwt_secret_key == DEV_JWT_SECRET:
             raise ValueError("JWT_SECRET_KEY debe definirse en producción (no la clave de desarrollo)")
+        if self.environment == "prod" and self.inference_route != "governed":
+            raise ValueError("INFERENCE_ROUTE=governed en producción: todo el tráfico de modelo pasa por aeon, con presupuestos (VRT-56)")
         if self.environment == "prod" and self.a2a_signing_key is None:
             raise ValueError("A2A_SIGNING_KEY debe definirse en producción: la Agent Card se publica firmada")
         return self
