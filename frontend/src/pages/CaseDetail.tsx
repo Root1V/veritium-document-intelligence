@@ -31,6 +31,7 @@ import {
 } from '@/lib/queries'
 import { VERDICT_LABEL, VERDICT_VARIANT } from '@/lib/verdict'
 import type { CaseCondition, CaseResult, ReprocessScope } from '@/types/api'
+import { PersonalDataBar } from '@/components/cases/PersonalDataBar'
 
 interface Evidence {
   documentId: string
@@ -242,6 +243,9 @@ export function CaseDetailPage() {
           Volver a expedientes
         </Link>
       </div>
+      {summary?.personal_data && (
+        <PersonalDataBar caseId={result.case.id} visible={summary.personal_data.visible} canReveal={summary.personal_data.can_reveal} />
+      )}
 
       {summary && (
         <Card>

@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import type { Extracted } from '@/types/api'
+import { PersonalDataBar } from '@/components/cases/PersonalDataBar'
 
 export function DocumentDetailPage() {
   const { documentId } = useParams<{ documentId: string }>()
@@ -82,6 +83,7 @@ export function DocumentDetailPage() {
           </span>
         )}
       </div>
+      <PersonalDataBar caseId={document.case_id} visible={document.personal_data_visible} canReveal={document.can_reveal} />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <div className="flex min-w-0 flex-col gap-3">

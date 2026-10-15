@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import type { ReviewItem } from '@/types/api'
+import { PersonalDataBar } from '@/components/cases/PersonalDataBar'
 
 const REASON_LABEL: Record<string, string> = {
   low_confidence: 'Confianza baja',
@@ -128,11 +129,15 @@ function ReviewRow({ item }: { item: ReviewItem }) {
         {!correcting ? (
           <div className="flex items-center justify-between gap-3">
             <span className="text-sm text-muted-foreground">Valor actual: {String(item.current_value.value ?? '—')}</span>
-            {canCorrect && (
-              <Button size="sm" variant="outline" onClick={() => setCorrecting(true)}>
-                Corregir
-              </Button>
-            )}
+            {canCorrect &&
+              (item.personal_data_visible ? (
+                <Button size="sm" variant="outline" onClick={() => setCorrecting(true)}>
+                  Corregir
+                </Button>
+              ) : (
+                // A masked value cannot be corrected: see it first (VRT-58).
+                <PersonalDataBar caseId={item.case_id} visible={false} canReveal={item.can_reveal} compact />
+              ))}
           </div>
         ) : (
           <div className="flex flex-col gap-2">

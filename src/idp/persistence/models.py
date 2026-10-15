@@ -964,3 +964,29 @@ class UploadedFile(TenantScoped, Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     session: Mapped["UploadSession"] = relationship(back_populates="files")
+
+
+class DataAccess(TenantScoped, Base):
+    """Who saw a case's personal data, or removed it (VRT-58). Everything
+    is masked by default; a person or system that works the case can ask to
+    see it, and each time is recorded here — what, when, through which
+    channel; from the screen, one record opens a window of some minutes on
+    that case for that person. Also suppressions and expiries. The ids are plain columns, not
+    foreign keys: the record outlives what it is about."""
+
+    __tablename__ = "data_access_log"
+    __table_args__ = (Index("ix_data_access_log_case", "case_id"),)
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    action: Mapped[str] = mapped_column(String(32), nullable=False)  # ver_datos | descargar_original | suprimir | vencer
+    what: Mapped[str] = mapped_column(String(256), nullable=False)  # the resource, in words
+    case_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    document_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    actor: Mapped[str] = mapped_column(String(256), nullable=False)  # a person's e-mail, or "sistema · <client id>"
+    role: Mapped[str] = mapped_column(String(16), nullable=False)
+    channel: Mapped[str] = mapped_column(String(8), nullable=False)  # web | api | sistema
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # For "ver_datos" from the screen: the data stay visible to that person, for that case, until then.
+    until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+

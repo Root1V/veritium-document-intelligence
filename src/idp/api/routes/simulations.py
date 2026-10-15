@@ -18,7 +18,9 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from idp.api.deps import get_app_settings, get_current_user, get_db_session, require_role
+from idp.api.disclosure import CaseMaskers
+from idp.auth.authenticate import Principal
+from idp.api.deps import get_principal, get_app_settings, get_current_user, get_db_session, require_role
 from idp.config import Settings
 from idp.domain.simulation import Outcome, SimulationSummary, summarize
 from idp.persistence.models import Simulation, SimulationResult, User
@@ -126,16 +128,19 @@ async def start(
 
 
 @router.get("/{simulation_id}", response_model=SimulationDetail)
-async def get_simulation(simulation_id: uuid.UUID, session: AsyncSession = Depends(get_db_session)) -> SimulationDetail:
+async def get_simulation(
+    simulation_id: uuid.UUID, session: AsyncSession = Depends(get_db_session), principal: Principal = Depends(get_principal)
+) -> SimulationDetail:
     simulation = await _get(session, simulation_id)
+    maskers = CaseMaskers(session, principal)  # the reasons quote each case's data (VRT-58)
     results = sorted(simulation.results, key=lambda r: (r.actual_verdict == r.simulated_verdict and r.error is None, -r.created_at.timestamp()))
     return SimulationDetail(
         **_view(simulation).model_dump(),
         cases=[
-            CaseChange(
+            CaseChange.model_validate((await maskers(r.case_id)).json(CaseChange(
                 case_id=r.case_id, case_ref=r.case.external_ref, actual_verdict=r.actual_verdict, simulated_verdict=r.simulated_verdict,
                 added_reasons=r.added_reasons, removed_reasons=r.removed_reasons, error=r.error, decided_at=r.created_at,
-            )
+            ).model_dump(mode="json")))
             for r in results
         ],
     )

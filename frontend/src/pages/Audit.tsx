@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { Loader2 } from 'lucide-react'
-import { useAuditLog, useCorrectionSummary, useDocumentTypeCatalog } from '@/lib/queries'
+import { useAuditLog, useCorrectionSummary, useDataAccessLog, useDocumentTypeCatalog } from '@/lib/queries'
+import { isAdmin } from '@/lib/auth'
 import { humanizeFieldName, formatValue } from '@/lib/extraction'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -8,6 +9,63 @@ import { Badge } from '@/components/ui/badge'
 
 function formatTimestamp(iso: string): string {
   return new Date(iso).toLocaleString('es-PE', { dateStyle: 'medium', timeStyle: 'short' })
+}
+
+const CHANNEL_LABEL: Record<string, string> = { web: 'Pantalla', api: 'Sistema conectado' }
+
+/** Who saw the unit's personal data, or removed it (VRT-58). Admins only. */
+function DataAccessLog() {
+  const { data: entries, isLoading } = useDataAccessLog()
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Accesos a datos personales</CardTitle>
+        <CardDescription>
+          Cada vez que alguien pidió ver los datos personales de un expediente, descargó un original o buscó por un dato. El registro nunca guarda los
+          datos.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="overflow-x-auto p-0">
+        {isLoading ? (
+          <Loader2 className="m-4 size-5 animate-spin text-muted-foreground" />
+        ) : !entries?.length ? (
+          <p className="p-4 text-sm text-muted-foreground">Todavía nadie pidió ver datos personales.</p>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Cuándo</TableHead>
+                <TableHead>Quién</TableHead>
+                <TableHead>Qué hizo</TableHead>
+                <TableHead>Expediente</TableHead>
+                <TableHead>Para qué</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {entries.map((e) => (
+                <TableRow key={e.id}>
+                  <TableCell className="whitespace-nowrap text-xs">{formatTimestamp(e.at)}</TableCell>
+                  <TableCell className="text-xs">
+                    <div>{e.actor}</div>
+                    <div className="text-muted-foreground">
+                      {e.role} · {CHANNEL_LABEL[e.channel] ?? e.channel}
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-xs">
+                    {e.action_label} <span className="text-muted-foreground">({e.what})</span>
+                  </TableCell>
+                  <TableCell className="text-xs">
+                    {e.case_id ? <Link to={`/cases/${e.case_id}`} className="underline-offset-2 hover:underline">{e.case_ref ?? e.case_id.slice(0, 8)}</Link> : '—'}
+                  </TableCell>
+                  <TableCell className="text-xs text-muted-foreground">{e.reason ?? '—'}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </CardContent>
+    </Card>
+  )
 }
 
 function CorrectionSummary() {
@@ -106,6 +164,7 @@ export function AuditPage() {
           </CardContent>
         </Card>
       )}
+      {isAdmin() && <DataAccessLog />}
     </div>
   )
 }

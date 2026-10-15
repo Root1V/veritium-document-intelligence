@@ -21,7 +21,7 @@ from idp.llm import port
 from idp.parsing.normalize import ParsedBlock, ParsedDocument
 from idp.parsing.store import save_parsed
 from idp.persistence.db import get_session_factory
-from idp.persistence.models import Case, Document, Investigation, ReviewItem, ValidationIssue
+from idp.persistence.models import DataAccess, Case, Document, Investigation, ReviewItem, ValidationIssue
 from idp.persistence.repositories import DocumentTypeRepository, ExtractionRepository, UserRepository
 from idp.pipeline import investigation
 from idp.storage.object_store import S3ObjectStore
@@ -113,6 +113,11 @@ async def test_a_finding_is_investigated_and_its_suggestion_accepted(live_settin
 
                 queue = (await client.get("/review", headers=h)).json()
                 mine = next(i for i in queue if i["id"] == str(item_id))
+                assert mine["personal_data_visible"] is False  # masked until the reviewer asks to see them (VRT-58)
+                assert (await client.post(f"/v1/cases/{case_id}/reveal", headers=h, json={"reason": "corregir el código"})).status_code == 200
+                queue = (await client.get("/review", headers=h)).json()
+                mine = next(i for i in queue if i["id"] == str(item_id))
+                assert mine["personal_data_visible"] is True
                 assert mine["suggestion"]["value"] == "0012345" and mine["suggestion"]["investigation_id"] == done["id"]
 
                 fixed = await client.post(f"/review/{item_id}", headers=h, json={"corrected_value": "0012345", "reason_code": "ocr_misread"})
@@ -131,6 +136,7 @@ async def test_a_finding_is_investigated_and_its_suggestion_accepted(live_settin
                 assert opened["reason"] == "investigation" and opened["suggestion"]["value"] == "3900.00" and opened["current_value"]["value"] == 4000.0
     finally:
         async with factory() as session:
+            await session.execute(delete(DataAccess).where(DataAccess.case_id == case_id))
             await session.execute(delete(Investigation).where(Investigation.case_id == case_id))
             await session.execute(delete(Case).where(Case.id == case_id))
             await session.commit()

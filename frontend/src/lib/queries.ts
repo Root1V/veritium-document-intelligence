@@ -42,6 +42,8 @@ import type {
   LoginResponse,
   Me,
   SignInProviders,
+  PersonalDataState,
+  DataAccessEntry,
   BusinessUnitView,
   ManualRuleRequest,
   ReviewCorrectionRequest,
@@ -231,10 +233,16 @@ export function useDocumentFile(documentId: string | undefined) {
   return useQuery({
     queryKey: ['document-file', documentId],
     queryFn: async () => {
-      const { data } = await apiClient.get(`/documents/${documentId}/file`, { responseType: 'blob' })
-      const blob = data as Blob
-      // The type decides the viewer: a PDF renders with react-pdf, an image as an image (VRT-38).
-      return { url: URL.createObjectURL(blob), mimeType: blob.type }
+      try {
+        const { data } = await apiClient.get(`/documents/${documentId}/file`, { responseType: 'blob' })
+        const blob = data as Blob
+        // The type decides the viewer: a PDF renders with react-pdf, an image as an image (VRT-38).
+        return { url: URL.createObjectURL(blob), mimeType: blob.type, hidden: false }
+      } catch (error) {
+        // The original is all personal data: hidden until someone asks to see the case's (VRT-58).
+        if ((error as { response?: { status?: number } }).response?.status === 403) return { url: '', mimeType: '', hidden: true }
+        throw error
+      }
     },
     enabled: !!documentId,
     staleTime: Infinity,
@@ -356,7 +364,7 @@ export function useCaseProgress(caseId: string | undefined) {
   return useQuery({
     queryKey: ['cases', caseId, 'progress'],
     enabled: !!caseId,
-    queryFn: async () => (await apiClient.get<{ status: string; progress: CaseProgress }>(`/v1/cases/${caseId}`)).data,
+    queryFn: async () => (await apiClient.get<{ status: string; progress: CaseProgress; personal_data: PersonalDataState }>(`/v1/cases/${caseId}`)).data,
     refetchInterval: (query) => (query.state.data && ['processing', 'uploaded'].includes(query.state.data.status) ? 3_000 : false),
   })
 }
@@ -1000,4 +1008,19 @@ export function useBusinessUnitAction() {
         : (await apiClient.patch<BusinessUnitView>(`/v1/tenants/${action.key}`, { name: action.name })).data,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['tenants'] }),
   })
+}
+
+/** Show a case's personal data for a while — recorded in the unit's log (VRT-58). */
+export function useRevealCaseData() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ caseId, reason }: { caseId: string; reason?: string }) =>
+      (await apiClient.post<{ until: string }>(`/v1/cases/${caseId}/reveal`, { reason: reason || null })).data,
+    // Everything on screen about the case was fetched masked: fetch it again.
+    onSuccess: () => queryClient.invalidateQueries(),
+  })
+}
+
+export function useDataAccessLog() {
+  return useQuery({ queryKey: ['data-access'], queryFn: async () => (await apiClient.get<DataAccessEntry[]>('/v1/data-access')).data })
 }

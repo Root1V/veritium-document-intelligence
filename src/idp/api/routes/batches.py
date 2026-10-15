@@ -18,7 +18,9 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from idp.api.deps import get_app_settings, get_current_user, get_db_session, get_object_store, require_role
+from idp.api.deps import get_app_settings, get_current_user, get_db_session, get_object_store, get_principal, require_role
+from idp.api.disclosure import CaseMaskers, Disclosure, get_disclosure
+from idp.auth.authenticate import Principal
 from idp.api.schemas import DocumentSummary
 from idp.config import Settings
 from idp.persistence.db import get_session_factory
@@ -91,11 +93,12 @@ async def create_batch(
 
 
 @router.get("/{batch_id}", response_model=BatchStatusResponse)
-async def get_batch(batch_id: uuid.UUID, session: AsyncSession = Depends(get_db_session)) -> BatchStatusResponse:
+async def get_batch(batch_id: uuid.UUID, session: AsyncSession = Depends(get_db_session), disclosure: Disclosure = Depends(get_disclosure)) -> BatchStatusResponse:
     case = await CaseRepository(session).get(batch_id)
     if case is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="batch not found")
-    return _to_response(case)
+    masker = await disclosure.masker(session, case, what="lote")
+    return BatchStatusResponse.model_validate(masker.json(_to_response(case).model_dump(mode="json")))
 
 
 @router.get("/{batch_id}/stream")
@@ -103,6 +106,7 @@ async def stream_batch(
     batch_id: uuid.UUID,
     request: Request,
     settings: Settings = Depends(get_app_settings),
+    principal: Principal = Depends(get_principal),
 ) -> StreamingResponse:
     """Server-Sent Events alternative to polling GET /batches/{id} every 2s
     from the client. Deliberately NOT a real-time push wired directly from
@@ -130,9 +134,10 @@ async def stream_batch(
                 return
             async with factory() as session:
                 case = await CaseRepository(session).get(batch_id)
-            if case is None:
+                masker = await CaseMaskers(session, principal)(batch_id) if case is not None else None
+            if case is None or masker is None:
                 return
-            payload = _to_response(case).model_dump_json()
+            payload = json.dumps(masker.json(_to_response(case).model_dump(mode="json")))
             is_terminal = case.status in _TERMINAL_BATCH_STATUSES
             if payload != last_payload:
                 yield f"data: {payload}\n\n"
@@ -145,7 +150,9 @@ async def stream_batch(
 
 
 @router.get("/{batch_id}/entities", response_model=ConsolidatedView)
-async def get_batch_entities(batch_id: uuid.UUID, session: AsyncSession = Depends(get_db_session)) -> ConsolidatedView:
+async def get_batch_entities(
+    batch_id: uuid.UUID, session: AsyncSession = Depends(get_db_session), disclosure: Disclosure = Depends(get_disclosure)
+) -> ConsolidatedView:
     """The batch's consolidated semantic view (VRT-23): for each role and
     attribute, the resolved value, whether the documents agree, and the
     evidence per source. Becomes the `entities` section of the case result
@@ -157,5 +164,6 @@ async def get_batch_entities(batch_id: uuid.UUID, session: AsyncSession = Depend
     view = await resolve_semantic_view(session, await case_document_fields(DocumentRepository(session), batch_id), catalog_version=catalog_version)
     if view is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="no published semantic catalog")
-    return view
+    masker = await disclosure.masker(session, case, what="vista consolidada")
+    return ConsolidatedView.model_validate(masker.json(view.model_dump(mode="json")))
 

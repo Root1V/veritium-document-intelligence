@@ -44,6 +44,7 @@ from idp.events.inbound import DocumentRef
 from idp.mcp_server.auth import VeritiumTokenVerifier, caller, quota
 from idp.mcp_server.tasks import CaseRunTasks
 from idp.api.case_outcome import VERDICT_LABEL, CaseOutcome, FieldEvidence, case_outcome, field_evidence
+from idp.api.disclosure import CaseMaskers, case_masker
 from idp.api.routes.review import list_pending_review
 from idp.api.routes.upload_sessions import SessionRequest, create_session
 from idp.persistence.db import get_session_factory
@@ -358,7 +359,8 @@ def build(settings: Settings) -> MCPServer:
         async with factory() as session:
             if case_id is not None:
                 case_id = str((await _case(session, case_id)).id)
-            items = [i for i in await list_pending_review(session) if case_id is None or str(i.case_id) == case_id]
+            # Agents see the data masked (VRT-58): the queue says what waits and why, not the person's data.
+            items = [i for i in await list_pending_review(session, CaseMaskers(session, None)) if case_id is None or str(i.case_id) == case_id]
         pending = [
             PendingReview(
                 case_id=i.case_id, case_ref=i.case_ref, document=i.document_type_name or i.filename, field=i.label, value=i.current_value.get("value"),
@@ -402,7 +404,9 @@ def build(settings: Settings) -> MCPServer:
     async def get_field_evidence(case_id: str, attribute: str, role: str = "titular") -> FieldEvidence:
         async with factory() as session:
             try:
-                return await field_evidence(session, await _case(session, case_id), attribute, role)
+                case = await _case(session, case_id)
+                evidence = await field_evidence(session, case, attribute, role)
+                return FieldEvidence.model_validate((await case_masker(session, case)).json(evidence.model_dump(mode="json")))  # VRT-58
             except LookupError as exc:
                 raise ToolError(str(exc)) from exc
 
@@ -422,7 +426,7 @@ def build(settings: Settings) -> MCPServer:
             if latest is not None and latest.status == "running":
                 return LensReading(lens=lens.name, status="en curso")
             if latest is not None and latest.status == "done" and current:
-                return LensReading(lens=lens.name, status="lista", reading=LensOutput.model_validate(latest.output))
+                return LensReading(lens=lens.name, status="lista", reading=LensOutput.model_validate((await case_masker(session, case)).json(latest.output)))
             row = LensResult(case_id=case.id, lens_key=lens_key, definition=lens.model_dump(mode="json"), created_by=caller()["name"])
             session.add(row)
             await session.commit()
@@ -453,7 +457,7 @@ def build(settings: Settings) -> MCPServer:
                 case = await _case(session, case_id)
             except ToolError as exc:
                 raise ResourceNotFoundError(str(exc)) from exc
-            return (await build_case_result(session, case)).model_dump_json()
+            return json.dumps((await case_masker(session, case)).json((await build_case_result(session, case)).model_dump(mode="json")), ensure_ascii=False)
 
     return mcp
 

@@ -10,6 +10,8 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from idp.api.disclosure import case_masker
+
 from idp.api.case_contract import latest_run
 from idp.domain.case_progress import progress
 from idp.persistence.models import Case
@@ -37,6 +39,12 @@ class CaseOutcome(BaseModel):
 
 
 async def case_outcome(session: AsyncSession, case: Case) -> CaseOutcome:
+    """What an agent (MCP, A2A) learns of a case — with its personal data masked (VRT-58)."""
+    outcome = await _outcome(session, case)
+    return CaseOutcome.model_validate((await case_masker(session, case)).json(outcome.model_dump(mode="json")))
+
+
+async def _outcome(session: AsyncSession, case: Case) -> CaseOutcome:
     run = latest_run(case)
     run_status = run.status if run else None
     status: Literal["processing", "completed", "failed"] = (

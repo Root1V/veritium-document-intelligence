@@ -69,6 +69,9 @@ export interface DocumentDetailResponse {
   page_end: number | null
   extraction: Record<string, unknown> | null
   validation_issues: ValidationIssue[]
+  case_id: string
+  personal_data_visible: boolean // VRT-58: false = masked
+  can_reveal: boolean
 }
 
 export interface DocumentListResponse {
@@ -78,6 +81,8 @@ export interface DocumentListResponse {
 
 export interface ReviewItem {
   id: string
+  personal_data_visible: boolean // VRT-58
+  can_reveal: boolean
   document_id: string
   field_path: string
   current_value: { value: unknown }
@@ -1053,4 +1058,26 @@ export interface AssistantReply {
   answer: string
   cases: { id: string; label: string }[]
   consulted: string[]
+}
+
+/** Whether a case's personal data show in clear (VRT-58). */
+export interface PersonalDataState {
+  visible: boolean
+  can_reveal: boolean
+}
+
+/** One access to personal data, in the unit's log (VRT-58). */
+export interface DataAccessEntry {
+  id: string
+  at: string
+  action: string
+  action_label: string
+  what: string
+  actor: string
+  role: string
+  channel: string
+  reason: string | null
+  case_id: string | null
+  case_ref: string | null
+  document_id: string | null
 }

@@ -25,7 +25,10 @@ from httpx import ASGITransport, AsyncClient
 from idp.api.app import create_app
 from idp.auth.security import hash_password
 from idp.config import get_settings
+from sqlalchemy import delete
+
 from idp.persistence.db import get_session_factory
+from idp.persistence.models import DataAccess
 from idp.persistence.repositories import UserRepository
 from idp.storage.object_store import S3ObjectStore
 from tests.conftest import FIXTURES_DIR, GOLDEN_DIR, normalize_extracted_string
@@ -41,7 +44,7 @@ async def _ensure_test_user(live_settings) -> None:
     async with factory() as session:
         repo = UserRepository(session)
         if await repo.get_by_email(_TEST_USER_EMAIL) is None:
-            await repo.create(name="Test Runner", email=_TEST_USER_EMAIL, password_hash=hash_password(_TEST_USER_PASSWORD))
+            await repo.create(name="Test Runner", email=_TEST_USER_EMAIL, password_hash=hash_password(_TEST_USER_PASSWORD), role="operador")
             await session.commit()
 
 
@@ -91,7 +94,12 @@ async def test_upload_batch_and_retrieve_extraction(live_settings):
 
         assert document is not None, "timed out waiting for batch processing"
 
-        detail_resp = await client.get(f"/documents/{document['id']}", headers=headers)
+        masked = (await client.get(f"/documents/{document['id']}", headers=headers)).json()
+        assert masked["personal_data_visible"] is False, "personal data are masked by default (VRT-58)"
+        detail_resp = await client.get(f"/documents/{document['id']}", headers=headers, params={"reveal": "true"})
+    async with get_session_factory(live_settings)() as session:  # the test's own access, recorded like any other: not left in the dev unit's log
+        await session.execute(delete(DataAccess).where(DataAccess.actor == _TEST_USER_EMAIL))
+        await session.commit()
 
     assert detail_resp.status_code == 200
     detail = detail_resp.json()

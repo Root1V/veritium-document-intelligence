@@ -19,7 +19,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from idp.api.case_service import dispatch_run, open_reprocess_run
 from idp.api.routes.investigations import record_outcome
 from idp.pipeline.investigation import ACTION_LABEL
-from idp.api.deps import get_app_settings, get_current_user, get_db_session, require_role
+from idp.api.deps import get_app_settings, get_current_user, get_db_session, get_principal, require_role
+from idp.api.disclosure import CaseMaskers, can_reveal
+from idp.auth.authenticate import Principal
 from idp.config import Settings
 from idp.domain.correction_reasons import CORRECTION_REASONS, REASONS_BY_CODE, CorrectionReason, ReasonCode
 from idp.domain.document_type_catalog import DocumentTypeCatalog
@@ -68,7 +70,9 @@ class ReviewItemResponse(BaseModel):
     finding: str | None
     # What the discrepancy investigator suggests for this field (VRT-66), if it looked into it.
     suggestion: Suggestion | None = None
-
+    # VRT-58: false = masked; the reviewer asks to see the case's data to correct it.
+    personal_data_visible: bool = False
+    can_reveal: bool = False
 
 
 class ReviewCorrectionRequest(BaseModel):
@@ -80,6 +84,8 @@ class ReviewCorrectionRequest(BaseModel):
 
     @model_validator(mode="after")
     def _justified(self) -> ReviewCorrectionRequest:
+        if "•" in str(self.corrected_value):  # a masked value (VRT-58) would overwrite the real one
+            raise ValueError("el valor está oculto: pide ver los datos del expediente para corregirlo")
         reason = REASONS_BY_CODE[self.reason_code]
         if reason.requires_justification and len((self.justification or "").strip()) < 5:
             raise ValueError(f"el motivo '{reason.label}' requiere un sustento")
@@ -95,13 +101,25 @@ class ReviewCorrectionResponse(BaseModel):
 
 
 @router.get("", response_model=list[ReviewItemResponse])
-async def list_pending_review(session: AsyncSession = Depends(get_db_session)) -> list[ReviewItemResponse]:
+async def list_review_queue(session: AsyncSession = Depends(get_db_session), principal: Principal = Depends(get_principal)) -> list[ReviewItemResponse]:
+    items = await list_pending_review(session, CaseMaskers(session, principal))
+    return [i.model_copy(update={"can_reveal": can_reveal(principal.role)}) for i in items]
+
+
+async def list_pending_review(session: AsyncSession, maskers: CaseMaskers) -> list[ReviewItemResponse]:
+    """Each item with its case's personal data masked, unless the caller asked to see that case's (VRT-58)."""
     items = await ReviewRepository(session).list_pending()
     type_catalog = await DocumentTypeRepository(session).load_catalog()
     loaded = await SemanticCatalogRepository(session).load_active()
     semantic = loaded[0] if loaded is not None else None
     suggestions = await _suggestions(session, [i.document_id for i in items])
-    return [_describe(item, type_catalog, semantic).model_copy(update={"suggestion": suggestions.get((item.document_id, item.field_path))}) for item in items]
+    out = []
+    for item in items:
+        described = _describe(item, type_catalog, semantic).model_copy(update={"suggestion": suggestions.get((item.document_id, item.field_path))})
+        masker = await maskers(item.document.case_id)
+        described.personal_data_visible = not masker.active
+        out.append(ReviewItemResponse.model_validate(masker.json(described.model_dump(mode="json"))))
+    return out
 
 
 async def _suggestions(session: AsyncSession, document_ids: list[uuid.UUID]) -> dict[tuple[uuid.UUID, str], Suggestion]:

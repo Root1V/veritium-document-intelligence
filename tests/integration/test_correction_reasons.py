@@ -13,7 +13,7 @@ from sqlalchemy import delete
 from idp.api.app import create_app
 from idp.auth.security import hash_password
 from idp.persistence.db import get_session_factory
-from idp.persistence.models import Case, ReviewItem
+from idp.persistence.models import Case, DataAccess, ReviewItem
 from idp.persistence.repositories import CaseRepository, DocumentRepository, UserRepository
 
 pytestmark = [pytest.mark.usefixtures("require_postgres")]
@@ -34,7 +34,7 @@ async def test_a_correction_needs_a_reason_and_it_is_audited(live_settings):
         items = [ReviewItem(document_id=doc.id, field_path="net_pay", current_value={"value": 4304.0}, confidence=0.4, reason="low_confidence") for _ in range(2)]
         session.add_all(items)
         await session.commit()
-        case_id, item_ids = case.id, [i.id for i in items]
+        case_id, doc_id, item_ids = case.id, doc.id, [i.id for i in items]
 
     try:
         async with AsyncClient(transport=ASGITransport(app=create_app()), base_url="http://test") as client:
@@ -55,6 +55,9 @@ async def test_a_correction_needs_a_reason_and_it_is_audited(live_settings):
             )
             assert overridden.status_code == 200
 
+            masked = {e["reason_code"]: e for e in (await client.get("/audit", headers=h, params={"limit": 200})).json()["entries"] if e["document_id"] == str(doc_id)}
+            assert masked["ocr_misread"]["justification"] == "Se leyó •••", "the justification quotes the datum: masked by default (VRT-58)"
+            assert (await client.post(f"/v1/cases/{case_id}/reveal", headers=h)).status_code == 200
             entries = (await client.get("/audit", headers=h, params={"limit": 200})).json()["entries"]
             mine = {e["reason_code"]: e for e in entries if e["field_path"] == "net_pay" and e["reason_code"] in ("ocr_misread", "business_override")}
             assert mine["ocr_misread"]["reason_label"] == "Error de lectura (OCR)" and mine["ocr_misread"]["justification"] == "Se leyó 4304.0"
@@ -62,5 +65,6 @@ async def test_a_correction_needs_a_reason_and_it_is_audited(live_settings):
             assert any(r["reason_code"] == "business_override" and r["document_type"] == "payslip" and r["count"] >= 1 for r in summary)
     finally:
         async with factory() as session:
+            await session.execute(delete(DataAccess).where(DataAccess.case_id == case_id))
             await session.execute(delete(Case).where(Case.id == case_id))
             await session.commit()

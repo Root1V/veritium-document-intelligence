@@ -27,7 +27,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from idp.api.case_contract import CaseResultV1, ConditionResult, ProfileRef, Verdict, build_case_result, condition_result, latest_run, profile_ref
 from idp.api.case_service import dispatch_run, open_reprocess_run, open_run, read_uploads, request_fingerprint, resolve_profile_version, store_uploads
-from idp.api.deps import get_app_settings, get_current_user, get_db_session, get_object_store, require_role
+from idp.api.deps import get_app_settings, get_current_user, get_db_session, get_object_store, get_principal, require_role
+from idp.api.disclosure import REVEALERS, Disclosure, can_reveal, get_disclosure, open_window
+from idp.auth.authenticate import Principal
 from idp.config import Settings
 from idp.domain.case_progress import Progress, progress
 from idp.domain.reprocess import ReprocessScope
@@ -77,6 +79,13 @@ class RunBrief(BaseModel):
     finished_at: datetime | None
 
 
+class PersonalData(BaseModel):
+    """Whether this response shows the case's personal data in clear (VRT-58)."""
+
+    visible: bool
+    can_reveal: bool  # the caller's role may ask to see them (POST /v1/cases/{id}/reveal)
+
+
 class CaseSummary(BaseModel):
     id: uuid.UUID
     external_ref: str | None
@@ -89,6 +98,15 @@ class CaseSummary(BaseModel):
     runs: list[RunBrief]
     progress: Progress
     links: CaseLinks
+    personal_data: PersonalData
+
+
+class RevealRequest(BaseModel):
+    reason: str | None = Field(default=None, max_length=500, description="Para qué se necesitan los datos; queda en el registro.")
+
+
+class RevealResponse(BaseModel):
+    until: datetime
 
 
 class CaseListItem(BaseModel):
@@ -272,11 +290,14 @@ async def list_cases(
 
 
 @router.get("/{case_id}", response_model=CaseSummary)
-async def get_case(case_id: uuid.UUID, response: Response, session: AsyncSession = Depends(get_db_session)) -> CaseSummary:
+async def get_case(
+    case_id: uuid.UUID, response: Response, session: AsyncSession = Depends(get_db_session), disclosure: Disclosure = Depends(get_disclosure)
+) -> CaseSummary:
     case = await _case_or_404(session, case_id)
     if case.status in ("uploaded", "processing"):
         response.headers["Retry-After"] = "5"
-    return CaseSummary(
+    masker = await disclosure.masker(session, case, what="expediente")
+    summary = CaseSummary(
         id=case.id,
         external_ref=case.external_ref,
         channel=case.channel,
@@ -293,7 +314,20 @@ async def get_case(case_id: uuid.UUID, response: Response, session: AsyncSession
         runs=[RunBrief(run_number=r.run_number, trigger=r.trigger, scope=r.scope, status=r.status, started_at=r.started_at, finished_at=r.finished_at) for r in case.runs],
         progress=_progress(case),
         links=_links(case.id),
+        personal_data=PersonalData(visible=not masker.active, can_reveal=can_reveal(disclosure.principal.role)),
     )
+    return CaseSummary.model_validate(masker.json(summary.model_dump(mode="json")))
+
+
+@router.post("/{case_id}/reveal", response_model=RevealResponse, dependencies=[Depends(require_role(*REVEALERS))])
+async def reveal_personal_data(
+    case_id: uuid.UUID, body: RevealRequest | None = None, session: AsyncSession = Depends(get_db_session), principal: Principal = Depends(get_principal)
+) -> RevealResponse:
+    """Show this case's personal data to the caller for a while — recorded in
+    the unit's log of access to personal data (VRT-58)."""
+    case = await _case_or_404(session, case_id)
+    entry = await open_window(session, principal, case, body.reason if body else None)
+    return RevealResponse(until=entry.until)
 
 
 _ACCEPTED: dict[str, ExportFormat] = {
@@ -336,9 +370,11 @@ async def get_case_result(
     format: ExportFormat | None = Query(default=None, description="Exporta en ese formato y lo descarga; si falta, decide la cabecera Accept."),
     accept: str | None = Header(default=None),
     session: AsyncSession = Depends(get_db_session),
+    disclosure: Disclosure = Depends(get_disclosure),
 ) -> CaseResultV1 | Response:
     case = await _case_or_404(session, case_id)
-    result = await build_case_result(session, case)
+    masker = await disclosure.masker(session, case, what="resultado del expediente")
+    result = CaseResultV1.model_validate(masker.json((await build_case_result(session, case)).model_dump(mode="json")))
     fmt = format or _negotiate(accept)
     if format is None and fmt == "json":
         return result

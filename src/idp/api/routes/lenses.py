@@ -13,7 +13,9 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from idp.api.deps import get_app_settings, get_current_user, get_db_session, require_role
+from idp.api.disclosure import CaseMaskers
+from idp.auth.authenticate import Principal
+from idp.api.deps import get_principal, get_app_settings, get_current_user, get_db_session, require_role
 from idp.config import Settings
 from idp.domain.lenses import LensDefinition, LensOutput
 from idp.persistence.models import LensResult, User
@@ -66,13 +68,14 @@ async def save_lens(key: str, lens: LensDefinition, session: AsyncSession = Depe
 
 
 @router.get("/cases/{case_id}/lenses", response_model=list[CaseLens])
-async def case_lenses(case_id: uuid.UUID, session: AsyncSession = Depends(get_db_session)) -> list[CaseLens]:
+async def case_lenses(case_id: uuid.UUID, session: AsyncSession = Depends(get_db_session), principal: Principal = Depends(get_principal)) -> list[CaseLens]:
     case = await CaseRepository(session).get(case_id)
     if case is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="case not found")
     repo = LensRepository(session)
     types = {d.document_type for d in case.documents if d.status != "failed"}
     results = await repo.results_for_case(case_id)
+    masker = await CaseMaskers(session, principal)(case_id)  # a reading quotes the documents (VRT-58)
     out = []
     for lens in await repo.list_lenses():
         latest = next((r for r in results if r.lens_key == lens.key), None)
@@ -80,7 +83,7 @@ async def case_lenses(case_id: uuid.UUID, session: AsyncSession = Depends(get_db
             CaseLens(
                 lens=lens,
                 applicable=bool(case.documents) and (not lens.document_types or bool(types & set(lens.document_types))),
-                latest=_result_view(latest, lens) if latest else None,
+                latest=LensResultView.model_validate(masker.json(_result_view(latest, lens).model_dump(mode="json"))) if latest else None,
             )
         )
     return out

@@ -16,7 +16,9 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from idp.api.deps import get_current_user, get_db_session
+from idp.api.deps import get_current_user, get_db_session, get_principal
+from idp.api.disclosure import CaseMaskers
+from idp.auth.authenticate import Principal
 from idp.domain.correction_reasons import REASONS_BY_CODE
 from idp.persistence.repositories import ReviewRepository
 
@@ -49,13 +51,18 @@ async def list_audit_log(
     limit: int = 50,
     offset: int = 0,
     session: AsyncSession = Depends(get_db_session),
+    principal: Principal = Depends(get_principal),
 ) -> AuditLogResponse:
     repo = ReviewRepository(session)
     rows = await repo.list_audit_entries(limit=limit, offset=offset)
     total = await repo.count_audit_entries()
-    return AuditLogResponse(
-        total=total,
-        entries=[
+    maskers = CaseMaskers(session, principal)
+    entries = []
+    for row in rows:
+        document, path = row.review_item.document, row.review_item.field_path
+        # Both values are that field's; the one a correction replaced is no longer in the document (VRT-58).
+        masker = await maskers(document.case_id, (document.document_type, {path: row.original_value}), (document.document_type, {path: row.corrected_value}))
+        entries.append(AuditEntryResponse.model_validate(masker.json(
             AuditEntryResponse(
                 id=row.id,
                 document_id=row.review_item.document_id,
@@ -70,10 +77,9 @@ async def list_audit_log(
                 model_version=row.model_version,
                 prompt_version=row.prompt_version,
                 timestamp=row.timestamp,
-            )
-            for row in rows
-        ],
-    )
+            ).model_dump(mode="json")
+        )))
+    return AuditLogResponse(total=total, entries=entries)
 
 
 class CorrectionSummaryRow(BaseModel):

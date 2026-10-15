@@ -3,7 +3,7 @@
 // Both draw the same normalized [0,1] bboxes as percentage-positioned
 // boxes over the page they belong to.
 import { useEffect, useRef, useState } from 'react'
-import { Loader2 } from 'lucide-react'
+import { Loader2, EyeOff } from 'lucide-react'
 import { PdfViewer, type BboxHighlight } from '@/components/documents/PdfViewer'
 import { useDocumentFile } from '@/lib/queries'
 import { cn } from '@/lib/utils'
@@ -67,6 +67,14 @@ export function EvidenceViewer({
     return (
       <div className="flex h-96 items-center justify-center rounded-lg border">
         <Loader2 className="size-6 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
+  if (file.hidden) {
+    return (
+      <div className="flex h-96 flex-col items-center justify-center gap-2 rounded-lg border text-sm text-muted-foreground">
+        <EyeOff className="size-6" />
+        El documento original muestra datos personales: pulsa «Ver datos» para verlo.
       </div>
     )
   }

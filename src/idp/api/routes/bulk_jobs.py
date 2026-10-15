@@ -31,7 +31,9 @@ from sqlalchemy.orm import selectinload
 
 from idp.api.case_contract import latest_run
 from idp.api.case_service import Upload, resolve_profile_version, store_uploads
-from idp.api.deps import get_app_settings, get_current_user, get_db_session, get_object_store, require_role
+from idp.api.disclosure import CaseMaskers
+from idp.auth.authenticate import Principal
+from idp.api.deps import get_principal, get_app_settings, get_current_user, get_db_session, get_object_store, require_role
 from idp.config import Settings
 from idp.domain.bulk_archive import PROFILE, REFERENCE, Skipped, manifest_path, plan
 from idp.domain.case_progress import Progress, progress
@@ -233,14 +235,16 @@ async def get_bulk_job(job_id: uuid.UUID, session: AsyncSession = Depends(get_db
 
 
 @router.get("/{job_id}/results")
-async def bulk_job_results(job_id: uuid.UUID, session: AsyncSession = Depends(get_db_session)) -> Response:
+async def bulk_job_results(job_id: uuid.UUID, session: AsyncSession = Depends(get_db_session), principal: Principal = Depends(get_principal)) -> Response:
+    """The reasons quote each case's data: masked, like everywhere (VRT-58); each case's result has them for whoever may see them."""
     job = await _job_or_404(session, job_id)
+    maskers = CaseMaskers(session, principal)
     out = io.StringIO()
     writer = csv.writer(out, lineterminator="\n")
     writer.writerow(["expediente", "perfil", "resultado", "motivos", "id"])
     for c in job.cases:
         reasons = list(dict.fromkeys(r.get("message", "") for r in (c.verdict_reasons or []) if outcome(c) not in ("pending", "failed")))
-        writer.writerow([c.external_ref, c.profile_version.profile.key if c.profile_version else "", OUTCOME_LABEL[outcome(c)], " | ".join(reasons), str(c.id)])
+        writer.writerow([c.external_ref, c.profile_version.profile.key if c.profile_version else "", OUTCOME_LABEL[outcome(c)], (await maskers(c.id)).text(" | ".join(reasons)), str(c.id)])
     processed = {c.external_ref for c in job.cases}
     for s in job.skipped:
         # A file left out of a case that went ahead, or a whole case that did not.

@@ -21,13 +21,15 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from idp.api.case_service import read_uploads
+from idp.domain.pii import Masker
+from idp.domain.semantic import SemanticCatalog
 from idp.api.deps import get_app_settings, get_current_user, get_db_session, get_object_store, require_role
 from idp.config import Settings
 from idp.domain.tables import read_table
 from idp.domain.evaluation import RunComparison, compare_runs, parse_table, template_rows
 from idp.evaluation.runner import is_active, outcome_of, run_evaluation
 from idp.persistence.models import EvalCase, EvalRun, EvalSuite, User
-from idp.persistence.repositories import DocumentTypeRepository, EvaluationRepository
+from idp.persistence.repositories import SemanticCatalogRepository, DocumentTypeRepository, EvaluationRepository
 from idp.storage.object_store import S3ObjectStore
 
 router = APIRouter(prefix="/v1", tags=["evaluation"], dependencies=[Depends(get_current_user)])
@@ -231,9 +233,23 @@ async def create_golden_set(
     return _suite_detail(await _suite_or_404(session, suite.id))
 
 
+async def _catalog(session: AsyncSession) -> SemanticCatalog | None:
+    loaded = await SemanticCatalogRepository(session).load_active()
+    return loaded[0] if loaded else None
+
+
+def _masked(catalog: SemanticCatalog | None, document_type: str | None, *payloads: dict | None) -> Masker:
+    """A golden set holds a real person's data (they come from corrections): masked like a case's (VRT-58)."""
+    return Masker.for_documents(catalog, [(document_type, p) for p in payloads])
+
+
 @router.get("/eval-suites/{suite_id}", response_model=SuiteDetail)
 async def get_suite(suite_id: uuid.UUID, session: AsyncSession = Depends(get_db_session)) -> SuiteDetail:
-    return _suite_detail(await _suite_or_404(session, suite_id))
+    detail, catalog = _suite_detail(await _suite_or_404(session, suite_id)), await _catalog(session)
+    detail.cases = [
+        CaseView.model_validate(_masked(catalog, c.expected_document_type, c.expected_fields).json(c.model_dump(mode="json"))) for c in detail.cases
+    ]
+    return detail
 
 
 @router.post("/eval-suites/{suite_id}/runs", response_model=RunSummary, status_code=status.HTTP_202_ACCEPTED, dependencies=_can_run)
@@ -270,17 +286,18 @@ async def get_run(
     if run is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="run not found")
     cases = {c.id: c for c in run.suite.cases}
+    catalog = await _catalog(session)
     detail = RunDetail(
         **_run_summary(run).model_dump(),
         suite_id=run.suite_id,
         suite_name=run.suite.name,
         case_count=len(cases),
         results=[
-            ResultView(
+            ResultView.model_validate(_masked(catalog, cases[r.case_id].expected_document_type, cases[r.case_id].expected_fields, r.field_results).json(ResultView(
                 case_id=r.case_id, filename=cases[r.case_id].filename, expected_document_type=cases[r.case_id].expected_document_type,
                 predicted_document_type=r.predicted_document_type, classification_confidence=r.classification_confidence,
                 status=r.status, error=r.error, duration_ms=r.duration_ms, fields=r.field_results,
-            )
+            ).model_dump(mode="json")))
             for r in sorted(run.results, key=lambda r: cases[r.case_id].position)
         ],
     )

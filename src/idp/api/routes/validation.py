@@ -14,7 +14,9 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from idp.api.deps import get_current_user, get_db_session
+from idp.api.deps import get_current_user, get_db_session, get_principal
+from idp.api.disclosure import CaseMaskers
+from idp.auth.authenticate import Principal
 from idp.persistence.repositories import ValidationRepository
 
 router = APIRouter(prefix="/validation", tags=["validation"], dependencies=[Depends(get_current_user)])
@@ -51,29 +53,29 @@ async def list_validation_issues(
     limit: int = 50,
     offset: int = 0,
     session: AsyncSession = Depends(get_db_session),
+    principal: Principal = Depends(get_principal),
 ) -> ValidationLogResponse:
     repo = ValidationRepository(session)
     rows = await repo.list(category=category, severity=severity, rule_id=rule_id, document_type=document_type, limit=limit, offset=offset)
     total = await repo.count(category=category, severity=severity, rule_id=rule_id, document_type=document_type)
-    return ValidationLogResponse(
-        total=total,
-        issues=[
-            ValidationIssueResponse(
-                id=row.id,
-                document_id=row.document_id,
-                document_filename=row.document.original_filename if row.document else None,
-                document_type=row.document.document_type if row.document else None,
-                batch_id=row.case_id,
-                rule_id=row.rule_id,
-                category=row.category,
-                field_path=row.field_path,
-                severity=row.severity,
-                message=row.message,
-                confidence=row.confidence,
-                confidence_method=row.confidence_method,
-                explanation=row.explanation,
-                created_at=row.created_at,
-            )
-            for row in rows
-        ],
-    )
+    maskers = CaseMaskers(session, principal)  # findings quote the case's data (VRT-58)
+    issues = []
+    for row in rows:
+        issue = ValidationIssueResponse(
+            id=row.id,
+            document_id=row.document_id,
+            document_filename=row.document.original_filename if row.document else None,
+            document_type=row.document.document_type if row.document else None,
+            batch_id=row.case_id,
+            rule_id=row.rule_id,
+            category=row.category,
+            field_path=row.field_path,
+            severity=row.severity,
+            message=row.message,
+            confidence=row.confidence,
+            confidence_method=row.confidence_method,
+            explanation=row.explanation,
+            created_at=row.created_at,
+        )
+        issues.append(ValidationIssueResponse.model_validate((await maskers(row.case_id)).json(issue.model_dump(mode="json"))))
+    return ValidationLogResponse(total=total, issues=issues)

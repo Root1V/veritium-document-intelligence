@@ -3,7 +3,7 @@
 // (segmentation) without opening each one. PDFs render via react-pdf,
 // images as images (VRT-38).
 import { Document, Page } from 'react-pdf'
-import { Loader2 } from 'lucide-react'
+import { EyeOff, Loader2 } from 'lucide-react'
 import { useDocumentFile } from '@/lib/queries'
 
 export function DocumentThumbnail({ documentId, page }: { documentId: string; page: number }) {
@@ -13,6 +13,14 @@ export function DocumentThumbnail({ documentId, page }: { documentId: string; pa
     return (
       <div className="flex h-32 w-24 items-center justify-center rounded border bg-muted">
         <Loader2 className="size-4 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
+
+  if (file.hidden) {
+    return (
+      <div className="flex h-32 w-24 items-center justify-center rounded border bg-muted" title="Oculto: datos personales">
+        <EyeOff className="size-4 text-muted-foreground" />
       </div>
     )
   }

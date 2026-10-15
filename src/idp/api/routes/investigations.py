@@ -19,7 +19,9 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from idp.api.deps import get_app_settings, get_current_user, get_db_session, require_role
+from idp.api.disclosure import CaseMaskers
+from idp.auth.authenticate import Principal
+from idp.api.deps import get_principal, get_app_settings, get_current_user, get_db_session, require_role
 from idp.config import Settings
 from idp.persistence.models import Investigation, User, ValidationIssue
 from idp.persistence.repositories import CaseRepository
@@ -117,12 +119,15 @@ async def investigate_case(
 
 
 @router.get("/cases/{case_id}/investigations", response_model=list[InvestigationView])
-async def case_investigations(case_id: uuid.UUID, session: AsyncSession = Depends(get_db_session)) -> list[InvestigationView]:
+async def case_investigations(
+    case_id: uuid.UUID, session: AsyncSession = Depends(get_db_session), principal: Principal = Depends(get_principal)
+) -> list[InvestigationView]:
     rows = (await session.scalars(select(Investigation).where(Investigation.case_id == case_id).order_by(Investigation.created_at.desc()))).all()
     latest: dict[Any, Investigation] = {}
     for r in rows:
         latest.setdefault(r.validation_issue_id or r.id, r)
-    return [view(r) for r in latest.values()]
+    masker = await CaseMaskers(session, principal)(case_id)  # diagnosis and evidence quote the case's data (VRT-58)
+    return [InvestigationView.model_validate(masker.json(view(r).model_dump(mode="json"))) for r in latest.values()]
 
 
 @router.post("/investigations/{investigation_id}/dismiss", response_model=InvestigationView, dependencies=[Depends(require_role("operador", "admin"))])
