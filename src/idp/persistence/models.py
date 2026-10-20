@@ -57,6 +57,11 @@ class User(Base):
     password_hash: Mapped[str | None] = mapped_column(String(256), nullable=True)
     # "<issuer> <sub>" of the identity provider (VRT-57), once they signed in through it.
     subject: Mapped[str | None] = mapped_column(String(512), unique=True, nullable=True)
+    # A role over what every unit shares (VRT-71): "admin" changes the
+    # corporate catalogs, the rule library, the lenses and the units;
+    # "especialista_ia" the instructions to the model. From the provider's
+    # group "<prefix>:plataforma:<role>" at each sign-in, or set by the operator.
+    platform_role: Mapped[str | None] = mapped_column(String(16), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     memberships: Mapped[list["Membership"]] = relationship(back_populates="user", cascade="all, delete-orphan", order_by="Membership.tenant")

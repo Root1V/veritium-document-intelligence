@@ -76,10 +76,11 @@ async def _plant(factory, unit: str) -> dict[str, uuid.UUID]:
             return {"case": case.id, "document": document.id, "review": review.id, "endpoint": endpoint.id, "profile": profile.id}
 
 
-async def _person(factory, email: str, roles: dict[str, str]) -> None:
+async def _person(factory, email: str, roles: dict[str, str], *, platform_role: str | None = None) -> None:
     async with factory() as session:
         users = UserRepository(session)
         user = await users.create(name=email.split("@")[0], email=email, password_hash=hash_password(_PASSWORD))
+        user.platform_role = platform_role
         for unit, role in roles.items():
             await users.set_membership(user.id, unit, role)
         await session.commit()
@@ -177,41 +178,62 @@ async def test_a_person_works_in_several_units_one_token_each(live_settings, scr
 
 
 @pytest.mark.asyncio
-async def test_an_admin_registers_and_renames_units(live_settings, scratch_unit):
+async def test_the_platform_team_registers_units_and_a_units_admin_runs_only_their_own(live_settings, scratch_unit):
     factory = get_session_factory(live_settings)
-    admin, viewer = f"test-units-admin-{scratch_unit}@example.com", f"test-units-visor-{scratch_unit}@example.com"
+    platform, admin, viewer = (f"test-units-{who}-{scratch_unit}@example.com" for who in ("plataforma", "admin", "visor"))
+    await _person(factory, platform, {scratch_unit: "admin"}, platform_role="admin")
     await _person(factory, admin, {scratch_unit: "admin"})
     await _person(factory, viewer, {scratch_unit: "visor"})
-    new = f"{scratch_unit}-nueva"
+    new, sample = f"{scratch_unit}-nueva", f"{scratch_unit}-ejemplo"
     try:
         async with AsyncClient(transport=ASGITransport(app=create_app()), base_url="http://test") as client:
             async def token(email: str) -> dict[str, str]:
                 return {"Authorization": f"Bearer {(await client.post('/auth/login', json={'email': email, 'password': _PASSWORD})).json()['access_token']}"}
 
-            as_admin, as_viewer = await token(admin), await token(viewer)
+            as_platform, as_admin, as_viewer = await token(platform), await token(admin), await token(viewer)
+            assert (await client.get("/auth/me", headers=as_platform)).json()["platform_role"] == "admin"
+
+            # A unit's admin runs their unit — not the set of units, nor what every unit shares (VRT-71).
+            assert (await client.post("/v1/tenants", headers=as_admin, json={"key": new, "name": "Nueva"})).status_code == 403
             assert (await client.post("/v1/tenants", headers=as_viewer, json={"key": new, "name": "Nueva"})).status_code == 403
-            assert (await client.post("/v1/tenants", headers=as_admin, json={"key": "Con Espacios", "name": "Nueva"})).status_code == 400
-            created = await client.post("/v1/tenants", headers=as_admin, json={"key": new, "name": "Banca Nueva"})
+            corporate = [
+                ("put", "/v1/lenses/resumen-crediticio", {"key": "resumen-crediticio", "name": "x", "area": "riesgos", "kind": "summary", "instructions": "x"}),
+                ("post", "/v1/semantic-catalog/versions", {}),
+                ("post", "/v1/document-types/registrations", {}),
+                ("post", "/validation-rules/manual", {}),
+                ("put", "/v1/prompts/classify/draft", {"text": "x"}),
+            ]
+            for method, path, body in corporate:
+                r = await getattr(client, method)(path, headers=as_admin, json=body)
+                assert r.status_code == 403 and "plataforma" in r.json()["detail"], (path, r.status_code, r.text[:200])
+            assert (await client.get("/v1/semantic-catalog", headers=as_admin)).status_code == 200, "everyone reads what is shared"
+
+            assert (await client.post("/v1/tenants", headers=as_platform, json={"key": "Con Espacios", "name": "Nueva"})).status_code == 400
+            assert (await client.post("/v1/tenants", headers=as_platform, json={"key": "plataforma", "name": "Plataforma"})).status_code == 400, "reserved"
+            created = await client.post("/v1/tenants", headers=as_platform, json={"key": new, "name": "Banca Nueva"})
             assert created.status_code == 201, created.text
             assert f"veritium:{new}:operador" in created.json()["groups"] and created.json()["people"] == 0
-            assert (await client.post("/v1/tenants", headers=as_admin, json={"key": new, "name": "Otra"})).status_code == 409
-            renamed = await client.patch(f"/v1/tenants/{new}", headers=as_admin, json={"name": "Banca Renombrada"})
+            assert (await client.post("/v1/tenants", headers=as_platform, json={"key": sample, "name": "Con ejemplos", "examples": True})).status_code == 201
+            assert (await client.post("/v1/tenants", headers=as_platform, json={"key": new, "name": "Otra"})).status_code == 409
+            renamed = await client.patch(f"/v1/tenants/{new}", headers=as_platform, json={"name": "Banca Renombrada"})
             assert renamed.json()["name"] == "Banca Renombrada"
-            listed = {u["key"]: u for u in (await client.get("/v1/tenants", headers=as_admin)).json()}
-            assert listed[scratch_unit]["people"] == 2 and listed[new]["name"] == "Banca Renombrada"
-            # Registering opens it to no one: the admin does not work there, and it starts with the seed processes.
-            assert new not in {u["key"] for u in (await client.get("/auth/me", headers=as_admin)).json()["tenants"]}
-        with tenancy.acting_for(new):
-            async with factory() as session:
-                assert {"ad-hoc", "convenios"} <= {p.key for p in await ProcessProfileRepository(session).list_profiles()}
+            listed = {u["key"]: u for u in (await client.get("/v1/tenants", headers=as_platform)).json()}
+            assert listed[scratch_unit]["people"] == 3 and listed[new]["name"] == "Banca Renombrada"
+            # Registering opens it to no one: whoever registered it does not work there.
+            assert new not in {u["key"] for u in (await client.get("/auth/me", headers=as_platform)).json()["tenants"]}
+        for unit, expected in ((new, {"ad-hoc"}), (sample, {"ad-hoc", "convenios"})):  # a blank canvas, or with the examples
+            with tenancy.acting_for(unit):
+                async with factory() as session:
+                    assert {p.key for p in await ProcessProfileRepository(session).list_profiles()} == expected, unit
     finally:
         with tenancy.system():
             async with factory() as session:
-                for table in reversed(Base.metadata.sorted_tables):
-                    if "tenant" in table.c and table.name != "memberships":
-                        await session.execute(table.delete().where(table.c.tenant == new))
-                await session.execute(delete(Tenant).where(Tenant.key == new))
-                await session.execute(delete(User).where(User.email.in_([admin, viewer])))
+                for unit in (new, sample):
+                    for table in reversed(Base.metadata.sorted_tables):
+                        if "tenant" in table.c and table.name != "memberships":
+                            await session.execute(table.delete().where(table.c.tenant == unit))
+                    await session.execute(delete(Tenant).where(Tenant.key == unit))
+                await session.execute(delete(User).where(User.email.in_([platform, admin, viewer])))
                 await session.commit()
 
 

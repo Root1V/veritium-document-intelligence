@@ -13,7 +13,7 @@ import uuid
 import pytest
 from sqlalchemy import delete, select
 
-from idp.auth.oidc import SignInFailed, sign_in, units_from
+from idp.auth.oidc import SignInFailed, platform_role_from, sign_in, units_from
 from idp.auth.security import hash_password
 from idp.persistence.db import get_session_factory
 from idp.persistence.models import Membership, User
@@ -21,6 +21,14 @@ from idp.persistence.repositories import UserRepository
 
 pytestmark = [pytest.mark.usefixtures("require_postgres")]
 ISSUER = "https://idp.example.com/realms/prueba"
+
+
+def test_the_platform_group_is_a_role_and_not_a_unit(live_settings):
+    claims = {"groups": ["veritium:plataforma:admin", "veritium:pymes:operador"]}
+    assert units_from(live_settings, claims) == {"pymes": "operador"}, "«plataforma» is never a unit"
+    assert platform_role_from(live_settings, claims) == "admin"
+    assert platform_role_from(live_settings, {"groups": ["veritium:plataforma:especialista_ia"]}) == "especialista_ia"
+    assert platform_role_from(live_settings, {"groups": ["veritium:plataforma:visor", "otra:plataforma:admin"]}) is None
 
 
 def test_groups_name_a_unit_and_a_role(live_settings):
@@ -54,6 +62,10 @@ async def test_sign_in_creates_the_person_with_their_units(live_settings, scratc
             await session.commit()
             assert again.id == user.id
             assert await _memberships(session, user.id) == {other_unit: ("admin", "local")}
+
+            # The provider grants the platform role and takes it away (VRT-71).
+            assert (await sign_in(live_settings, session, {**claims, "groups": ["veritium:plataforma:admin"]})).platform_role == "admin"
+            assert (await sign_in(live_settings, session, {**claims, "groups": []})).platform_role is None
     finally:
         async with factory() as session:
             await session.execute(delete(User).where(User.email == email))

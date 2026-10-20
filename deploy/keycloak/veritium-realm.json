@@ -27,6 +27,9 @@
     },
     {
       "name": "veritium:no-registrada:admin"
+    },
+    {
+      "name": "veritium:plataforma:admin"
     }
   ],
   "clients": [
@@ -83,7 +86,8 @@
       ],
       "groups": [
         "veritium:default:admin",
-        "veritium:pymes:admin"
+        "veritium:pymes:admin",
+        "veritium:plataforma:admin"
       ]
     },
     {

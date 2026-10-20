@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { Navigate } from 'react-router-dom'
-import { getUserRole } from '@/lib/auth'
+import { getUserRole, isPlatformAdmin } from '@/lib/auth'
 import type { UserRole } from '@/types/api'
 
 /** Route-level gate for a specific role set, layered under ProtectedRoute
@@ -16,4 +16,9 @@ export function RequireRole({ roles, children }: { roles: UserRole[]; children: 
     return <Navigate to="/" replace />
   }
   return <>{children}</>
+}
+
+/** The same gate for what only the platform team does (VRT-71). */
+export function RequirePlatform({ children }: { children: ReactNode }) {
+  return isPlatformAdmin() ? <>{children}</> : <Navigate to="/" replace />
 }

@@ -37,6 +37,11 @@ class Principal:
     tenant: str
     role: str  # the caller's role in ``tenant``
 
+    @property
+    def platform_role(self) -> str | None:
+        """Over what every unit shares (VRT-71); a connected system never has one."""
+        return None if self.client is not None else self.user.platform_role
+
 
 async def authenticate(settings: Settings, session: AsyncSession, token: str) -> Principal:
     claims = decode_claims(settings, token)

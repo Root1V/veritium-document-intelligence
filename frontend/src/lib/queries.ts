@@ -1002,9 +1002,9 @@ export function useBusinessUnits() {
 export function useBusinessUnitAction() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async (action: { kind: 'create'; key: string; name: string } | { kind: 'rename'; key: string; name: string }) =>
+    mutationFn: async (action: { kind: 'create'; key: string; name: string; examples: boolean } | { kind: 'rename'; key: string; name: string }) =>
       action.kind === 'create'
-        ? (await apiClient.post<BusinessUnitView>('/v1/tenants', { key: action.key, name: action.name })).data
+        ? (await apiClient.post<BusinessUnitView>('/v1/tenants', { key: action.key, name: action.name, examples: action.examples })).data
         : (await apiClient.patch<BusinessUnitView>(`/v1/tenants/${action.key}`, { name: action.name })).data,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['tenants'] }),
   })

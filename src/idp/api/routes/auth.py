@@ -57,6 +57,7 @@ class Me(BaseModel):
     role: str  # in ``tenant``
     tenant: str
     tenants: list[Unit]  # every unit the person works in
+    platform_role: str | None = None  # over what every unit shares (VRT-71)
 
 
 class LoginResponse(Me):
@@ -75,7 +76,7 @@ async def signed_in(settings: Settings, session: AsyncSession, user: User, tenan
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="no tienes ninguna unidad de negocio asignada; pídela a tu administrador")
     unit = next((u for u in units if u.key == tenant), units[0])
     token = create_access_token(settings, user_id=user.id, tenant=unit.key)
-    return LoginResponse(access_token=token, user_name=user.name, role=unit.role, tenant=unit.key, tenants=units)
+    return LoginResponse(access_token=token, user_name=user.name, role=unit.role, tenant=unit.key, tenants=units, platform_role=user.platform_role)
 
 
 @router.post("/login", response_model=LoginResponse)
@@ -94,7 +95,7 @@ async def login(
 
 @router.get("/me", response_model=Me)
 async def me(principal: Principal = Depends(get_principal), session: AsyncSession = Depends(get_db_session)) -> Me:
-    return Me(user_name=principal.user.name, role=principal.role, tenant=principal.tenant, tenants=await _units(session, principal.user))
+    return Me(user_name=principal.user.name, role=principal.role, tenant=principal.tenant, tenants=await _units(session, principal.user), platform_role=principal.platform_role)
 
 
 class SwitchRequest(BaseModel):

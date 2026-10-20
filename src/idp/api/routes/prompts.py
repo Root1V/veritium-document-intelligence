@@ -19,13 +19,13 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from idp.api.deps import get_current_user, get_db_session, require_role
+from idp.api.deps import get_current_user, get_db_session, require_platform
 from idp.llm.prompts import EVALUATED, INFO, Prompt, current, draft_problems, fingerprint, get, set_published
 from idp.persistence.models import PromptEdit, PromptVersionRecord, User
 from idp.persistence.repositories import PromptEditRepository, PromptRepository
 
 router = APIRouter(prefix="/v1/prompts", tags=["prompts"], dependencies=[Depends(get_current_user)])
-_specialist = [Depends(require_role("especialista_ia"))]
+_specialist = [Depends(require_platform("admin", "especialista_ia"))]  # every unit runs them (VRT-71)
 
 
 class PromptVersionView(BaseModel):

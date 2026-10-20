@@ -29,6 +29,8 @@ async def test_a_rule_is_activated_only_when_its_cases_pass(live_settings):
         if await users.get_by_email(_ADMIN) is None:
             await users.create(name="Test Admin", email=_ADMIN, password_hash=hash_password(_PASSWORD), role="admin")
             await session.commit()
+        (await users.get_by_email(_ADMIN)).platform_role = "admin"  # corporate configuration is the platform team's (VRT-71)
+        await session.commit()
     suffix = uuid.uuid4().hex[:8]
     try:
         async with AsyncClient(transport=ASGITransport(app=create_app()), base_url="http://test") as client:

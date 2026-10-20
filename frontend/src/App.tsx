@@ -1,6 +1,6 @@
 import { Route, Routes } from 'react-router-dom'
 import { ProtectedRoute } from '@/components/layout/ProtectedRoute'
-import { RequireRole } from '@/components/layout/RequireRole'
+import { RequirePlatform, RequireRole } from '@/components/layout/RequireRole'
 import { LoginPage } from '@/pages/Login'
 import { DashboardPage } from '@/pages/Dashboard'
 import { UploadPage } from '@/pages/Upload'
@@ -16,6 +16,7 @@ import { ToolCatalogPage } from '@/pages/ToolCatalog'
 import { AssistantPage } from '@/pages/Assistant'
 import { ApiClientsPage } from '@/pages/ApiClients'
 import { BusinessUnitsPage } from '@/pages/BusinessUnits'
+import { GettingStartedPage } from '@/pages/GettingStarted'
 import { BulkJobDetailPage, BulkJobsPage } from '@/pages/BulkJobs'
 import { CasesPage } from '@/pages/Cases'
 import { CaseDetailPage } from '@/pages/CaseDetail'
@@ -109,9 +110,9 @@ export default function App() {
         path="/document-types/new"
         element={
           <ProtectedRoute>
-            <RequireRole roles={['admin']}>
+            <RequirePlatform>
               <NewDocumentTypePage />
-            </RequireRole>
+            </RequirePlatform>
           </ProtectedRoute>
         }
       />
@@ -132,12 +133,20 @@ export default function App() {
         }
       />
       <Route
+        path="/primeros-pasos"
+        element={
+          <ProtectedRoute>
+            <GettingStartedPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
         path="/unidades"
         element={
           <ProtectedRoute>
-            <RequireRole roles={['admin']}>
+            <RequirePlatform>
               <BusinessUnitsPage />
-            </RequireRole>
+            </RequirePlatform>
           </ProtectedRoute>
         }
       />

@@ -49,6 +49,7 @@ async def test_a_case_is_read_through_a_legal_lens_with_its_evidence(live_settin
         users = UserRepository(session)
         if await users.get_by_email(_ADMIN) is None:
             await users.create(name="Test Admin", email=_ADMIN, password_hash=hash_password(_PASSWORD), role="admin")
+        (await users.get_by_email(_ADMIN)).platform_role = "admin"  # corporate configuration is the platform team's (VRT-71)
         await LensRepository(session).ensure_seed()
         case = await CaseRepository(session).create(external_ref=f"test-{uuid.uuid4()}")
         letter = await DocumentRepository(session).create(case_id=case.id, storage_key=f"default/test/{uuid.uuid4()}/carta.pdf", original_filename="carta.pdf")

@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from idp.api.disclosure import CaseMaskers
 from idp.auth.authenticate import Principal
-from idp.api.deps import get_principal, get_app_settings, get_current_user, get_db_session, require_role
+from idp.api.deps import get_app_settings, get_current_user, get_db_session, get_principal, require_platform, require_role
 from idp.config import Settings
 from idp.domain.lenses import LensDefinition, LensOutput
 from idp.persistence.models import LensResult, User
@@ -58,7 +58,7 @@ async def list_lenses(session: AsyncSession = Depends(get_db_session)) -> list[L
     return await LensRepository(session).list_lenses()
 
 
-@router.put("/lenses/{key}", response_model=LensDefinition, dependencies=[Depends(require_role("admin"))])
+@router.put("/lenses/{key}", response_model=LensDefinition, dependencies=[Depends(require_platform("admin"))])
 async def save_lens(key: str, lens: LensDefinition, session: AsyncSession = Depends(get_db_session), user: User = Depends(get_current_user)) -> LensDefinition:
     if lens.key != key:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="la clave del cuerpo no coincide con la de la ruta")

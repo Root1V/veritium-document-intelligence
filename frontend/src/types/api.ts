@@ -333,6 +333,8 @@ export interface Me {
   role: UserRole
   tenant: string
   tenants: BusinessUnit[]
+  /** Over what every unit shares — catalogs, rules, lenses, prompts, units (VRT-71). */
+  platform_role: 'admin' | 'especialista_ia' | null
 }
 
 export interface LoginResponse extends Me {

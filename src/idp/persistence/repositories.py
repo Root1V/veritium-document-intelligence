@@ -19,7 +19,7 @@ from idp.domain.document_type_catalog import DocumentTypeCatalog, DocumentTypeDe
 from idp.domain.lenses import SEED_LENSES, LensDefinition
 from idp.domain.document_type_seed import seed_definitions
 from idp.domain.process_profile import ProcessProfileDefinition
-from idp.domain.process_profile_seed import SEED_PROFILES
+from idp.domain.process_profile_seed import AD_HOC_KEY, SEED_PROFILES
 from idp.domain.semantic import SemanticCatalog
 from idp.domain.semantic_seed import seed_catalog
 from idp.persistence import tenancy
@@ -59,14 +59,14 @@ from idp.persistence.models import (
 )
 
 
-async def register_tenant(session: AsyncSession, key: str, name: str) -> Tenant:
-    """A new business unit (VRT-57), with the seed processes to start from."""
+async def register_tenant(session: AsyncSession, key: str, name: str, *, examples: bool = False) -> Tenant:
+    """A new business unit (VRT-57): empty — only the built-in ad-hoc process — or with the example processes (VRT-71)."""
     unit = Tenant(key=key, name=name)
     session.add(unit)
     await session.commit()
     await session.refresh(unit)
     with tenancy.acting_for(key):
-        await ProcessProfileRepository(session).ensure_seed()
+        await ProcessProfileRepository(session).ensure_seed(examples=examples)
     return unit
 
 
@@ -1050,13 +1050,15 @@ class ProcessProfileRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    async def ensure_seed(self) -> None:
+    async def ensure_seed(self, *, examples: bool = True) -> None:
         """Publish the seed profiles as version 1 if the active unit has none —
-        idempotent, called at API startup after the semantic catalog seed."""
+        idempotent, called at API startup after the semantic catalog seed.
+        ``examples`` False: only the built-in ad-hoc profile, for a unit that
+        starts from a blank canvas (VRT-71)."""
         if await self._session.scalar(select(func.count()).select_from(ProcessProfile)):
             return
         now = datetime.now(UTC)
-        for key, name, description, build in SEED_PROFILES:
+        for key, name, description, build in SEED_PROFILES if examples else [p for p in SEED_PROFILES if p[0] == AD_HOC_KEY]:
             definition = build()
             profile = ProcessProfile(key=key, name=name, description=description)
             profile.versions.append(

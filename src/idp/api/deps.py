@@ -80,3 +80,17 @@ def require_role(*allowed_roles: str):
         return principal.user
 
     return checker
+
+
+def require_platform(*allowed_roles: str):
+    """What every business unit shares — the document-type and semantic
+    catalogs, the rule library, the lenses, the instructions to the model, the
+    units themselves — is changed only by the platform team (VRT-71), never
+    by a unit's admin: a change there reaches every unit."""
+
+    async def checker(principal: Annotated[Principal, Depends(get_principal)]) -> User:
+        if principal.platform_role not in allowed_roles:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="lo que comparten todas las unidades lo cambia el equipo de plataforma")
+        return principal.user
+
+    return checker

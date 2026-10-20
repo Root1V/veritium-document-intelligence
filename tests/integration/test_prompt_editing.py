@@ -59,6 +59,7 @@ async def test_a_prompt_change_is_drafted_tried_published_and_undone(live_settin
         for email, role in ((_ADMIN, "admin"), (_AI, "especialista_ia")):
             if await users.get_by_email(email) is None:
                 await users.create(name=f"Test {role}", email=email, password_hash=hash_password(_PASSWORD), role=role)
+        (await users.get_by_email(_AI)).platform_role = "especialista_ia"  # corporate configuration is the platform team's (VRT-71)
         await session.commit()
 
     classify = get("classify")

@@ -10,6 +10,7 @@ const USER_NAME_KEY = 'idp_user_name'
 const USER_ROLE_KEY = 'idp_user_role'
 const UNIT_KEY = 'idp_unit'
 const UNITS_KEY = 'idp_units'
+const PLATFORM_ROLE_KEY = 'idp_platform_role'
 // The last unit worked in survives signing out: the next sign-in starts there.
 const LAST_UNIT_KEY = 'idp_last_unit'
 // The identity provider's id_token, to end its session too on signing out (VRT-57).
@@ -54,6 +55,8 @@ export function setSession(token: string, me: Me): void {
   localStorage.setItem(USER_ROLE_KEY, me.role)
   localStorage.setItem(UNIT_KEY, me.tenant)
   localStorage.setItem(UNITS_KEY, JSON.stringify(me.tenants))
+  if (me.platform_role) localStorage.setItem(PLATFORM_ROLE_KEY, me.platform_role)
+  else localStorage.removeItem(PLATFORM_ROLE_KEY)
   localStorage.setItem(LAST_UNIT_KEY, me.tenant)
 }
 
@@ -62,7 +65,7 @@ export function setIdToken(idToken: string): void {
 }
 
 export function clearSession(): void {
-  for (const key of [TOKEN_KEY, USER_NAME_KEY, USER_ROLE_KEY, UNIT_KEY, UNITS_KEY, ID_TOKEN_KEY]) {
+  for (const key of [TOKEN_KEY, USER_NAME_KEY, USER_ROLE_KEY, UNIT_KEY, UNITS_KEY, ID_TOKEN_KEY, PLATFORM_ROLE_KEY]) {
     localStorage.removeItem(key)
   }
 }
@@ -96,4 +99,17 @@ export function isAdmin(): boolean {
 /** Edits the instructions to the model and tries them in evaluations (VRT-63). */
 export function isAISpecialist(): boolean {
   return getUserRole() === 'especialista_ia'
+}
+
+/** What every unit shares — document types, semantic catalog, rule library,
+ * lenses, the units themselves — is changed only by the platform team
+ * (VRT-71). The server enforces it; this only decides what to show. */
+export function isPlatformAdmin(): boolean {
+  return localStorage.getItem(PLATFORM_ROLE_KEY) === 'admin'
+}
+
+/** The instructions to the model run in every unit: the platform's AI specialists (or its admins) edit them. */
+export function canEditPrompts(): boolean {
+  const role = localStorage.getItem(PLATFORM_ROLE_KEY)
+  return role === 'admin' || role === 'especialista_ia'
 }

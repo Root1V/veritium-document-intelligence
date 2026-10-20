@@ -30,7 +30,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, s
 from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from idp.api.deps import get_app_settings, get_current_user, get_db_session, get_object_store, require_role
+from idp.api.deps import get_app_settings, get_current_user, get_db_session, get_object_store, require_platform
 from idp.classification.type_from_example import DraftMapping, checked_mappings, propose_type_from_example
 from idp.config import Settings
 from idp.domain.document_type_catalog import DocumentTypeDefinition, FieldSpec, compile_schema
@@ -208,7 +208,7 @@ async def get_document_type_version(key: str, version: int, session: AsyncSessio
 
 @admin_router.post("", response_model=TypeVersionDetail, status_code=status.HTTP_201_CREATED)
 async def create_document_type(
-    definition: DocumentTypeDefinition, session: AsyncSession = Depends(get_db_session), user: User = Depends(require_role("admin"))
+    definition: DocumentTypeDefinition, session: AsyncSession = Depends(get_db_session), user: User = Depends(require_platform("admin"))
 ) -> TypeVersionDetail:
     repo = DocumentTypeRepository(session)
     if await repo.get_by_key(definition.key) is not None:
@@ -220,7 +220,7 @@ async def create_document_type(
 
 @admin_router.post("/{key}/versions", response_model=TypeVersionDetail, status_code=status.HTTP_201_CREATED)
 async def create_document_type_draft(
-    key: str, definition: DocumentTypeDefinition, session: AsyncSession = Depends(get_db_session), user: User = Depends(require_role("admin"))
+    key: str, definition: DocumentTypeDefinition, session: AsyncSession = Depends(get_db_session), user: User = Depends(require_platform("admin"))
 ) -> TypeVersionDetail:
     if definition.key != key:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"la definición es de '{definition.key}', no de '{key}'")
@@ -233,7 +233,7 @@ async def create_document_type_draft(
 
 @admin_router.post("/{key}/versions/{version}/publish", response_model=TypeVersionDetail)
 async def publish_document_type_version(
-    key: str, version: int, session: AsyncSession = Depends(get_db_session), user: User = Depends(require_role("admin"))
+    key: str, version: int, session: AsyncSession = Depends(get_db_session), user: User = Depends(require_platform("admin"))
 ) -> TypeVersionDetail:
     repo = DocumentTypeRepository(session)
     record = await _type_or_404(repo, key)
@@ -253,7 +253,7 @@ async def publish_document_type_version(
 
 @admin_router.post("/{key}/versions/{version}/retire", response_model=TypeVersionDetail)
 async def retire_document_type_version(
-    key: str, version: int, session: AsyncSession = Depends(get_db_session), user: User = Depends(require_role("admin"))
+    key: str, version: int, session: AsyncSession = Depends(get_db_session), user: User = Depends(require_platform("admin"))
 ) -> TypeVersionDetail:
     repo = DocumentTypeRepository(session)
     record = await _type_or_404(repo, key)
@@ -281,7 +281,7 @@ class RegistrationRequest(BaseModel):
     suggestion_id: uuid.UUID | None = Field(default=None, description="La sugerencia aceptada que este registro resuelve.")
 
 
-@admin_router.post("/proposals", response_model=TypeProposalResponse, dependencies=[Depends(require_role("admin"))])
+@admin_router.post("/proposals", response_model=TypeProposalResponse, dependencies=[Depends(require_platform("admin"))])
 async def propose_document_type(
     file: Annotated[UploadFile | None, File(description="Documento de ejemplo.")] = None,
     document_id: Annotated[uuid.UUID | None, Form(description="O un documento ya cargado, p. ej. el de una sugerencia aceptada.")] = None,
@@ -327,7 +327,7 @@ async def propose_document_type(
 
 @admin_router.post("/registrations", response_model=TypeVersionDetail, status_code=status.HTTP_201_CREATED)
 async def register_document_type(
-    body: RegistrationRequest, session: AsyncSession = Depends(get_db_session), user: User = Depends(require_role("admin"))
+    body: RegistrationRequest, session: AsyncSession = Depends(get_db_session), user: User = Depends(require_platform("admin"))
 ) -> TypeVersionDetail:
     """Publishes the reviewed type as v1 and, when it brings mappings, a new
     semantic catalog version that includes them — everything is validated

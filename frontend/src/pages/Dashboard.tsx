@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { ClipboardCheck, Clock, FileText, Loader2, Sparkles, Upload } from 'lucide-react'
+import { ClipboardCheck, Clock, FileText, Loader2, Sparkles, Upload, Compass } from 'lucide-react'
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts'
 import { useDocumentList, useReviewQueue, useTypeSuggestions } from '@/lib/queries'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -75,6 +75,16 @@ export function DashboardPage() {
         <h1 className="text-2xl font-semibold tracking-tight">Hola, {getUserName() ?? ''} 👋</h1>
         <p className="text-muted-foreground">Aquí tienes un resumen de tu plataforma documental.</p>
       </div>
+
+      {documentList?.total === 0 && (
+        // A unit that has not processed anything yet: where to start (VRT-71).
+        <Link to="/primeros-pasos" className="flex items-center gap-3 rounded-lg border border-primary/40 bg-primary/5 p-4 text-sm hover:bg-primary/10">
+          <Compass className="size-5 text-primary" />
+          <span>
+            <span className="font-medium">Tu unidad todavía no tiene expedientes.</span> Empieza por los primeros pasos: qué preparar y en qué orden.
+          </span>
+        </Link>
+      )}
 
       <div className="grid grid-cols-2 gap-4 md:grid-cols-5">
         <StatCard label="Documentos" value={documentList?.total ?? '—'} icon={FileText} />

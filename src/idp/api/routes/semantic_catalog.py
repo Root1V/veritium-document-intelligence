@@ -20,7 +20,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from idp.api.deps import get_current_user, get_db_session, require_role
+from idp.api.deps import get_current_user, get_db_session, require_platform
 from idp.domain.document_type_catalog import DocumentTypeCatalog
 from idp.domain.semantic import SemanticCatalog
 from idp.persistence.models import SemanticCatalogVersion, User
@@ -104,7 +104,7 @@ async def get_catalog_version(version: int, session: AsyncSession = Depends(get_
 async def create_catalog_draft(
     catalog: SemanticCatalog,
     session: AsyncSession = Depends(get_db_session),
-    user: User = Depends(require_role("admin")),
+    user: User = Depends(require_platform("admin")),
 ) -> CatalogVersionDetail:
     errors = mapping_errors(catalog, await DocumentTypeRepository(session).load_catalog())
     if errors:
@@ -117,7 +117,7 @@ async def create_catalog_draft(
 async def publish_catalog_version(
     version: int,
     session: AsyncSession = Depends(get_db_session),
-    user: User = Depends(require_role("admin")),
+    user: User = Depends(require_platform("admin")),
 ) -> CatalogVersionDetail:
     repo = SemanticCatalogRepository(session)
     row = await repo.get_version(version)

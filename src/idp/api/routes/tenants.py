@@ -1,4 +1,5 @@
-"""GET/POST/PATCH /v1/tenants — the business units (VRT-57), for admins.
+"""GET/POST/PATCH /v1/tenants — the business units (VRT-57), for the
+platform team (VRT-71): a unit's admin runs their unit, not the set of them.
 
 Registering a unit opens it to no one: who works in it, and with which
 role, comes from the identity provider's groups "<prefix>:<unit>:<role>"
@@ -14,14 +15,14 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from idp.api.deps import get_app_settings, get_db_session, require_role
-from idp.auth.oidc import ROLES
+from idp.api.deps import get_app_settings, get_db_session, require_platform
+from idp.auth.oidc import PLATFORM, ROLES
 from idp.config import Settings
 from idp.persistence import tenancy
 from idp.persistence.models import Membership, Tenant
 from idp.persistence.repositories import register_tenant
 
-router = APIRouter(prefix="/v1/tenants", tags=["tenants"], dependencies=[Depends(require_role("admin"))])
+router = APIRouter(prefix="/v1/tenants", tags=["tenants"], dependencies=[Depends(require_platform("admin"))])
 
 
 class UnitView(BaseModel):
@@ -35,6 +36,7 @@ class UnitView(BaseModel):
 class UnitRequest(BaseModel):
     key: str = Field(description="Identificador: minúsculas, dígitos y guiones; va en los grupos y no cambia.")
     name: str = Field(min_length=2, max_length=256)
+    examples: bool = Field(default=False, description="Con los procesos de ejemplo; si no, empieza vacía (solo el proceso interno ad-hoc).")
 
 
 class RenameRequest(BaseModel):
@@ -61,12 +63,14 @@ async def list_units(session: AsyncSession = Depends(get_db_session), settings: 
 
 @router.post("", response_model=UnitView, status_code=status.HTTP_201_CREATED)
 async def create_unit(body: UnitRequest, session: AsyncSession = Depends(get_db_session), settings: Settings = Depends(get_app_settings)) -> UnitView:
-    """A new unit, with the seed processes to start from."""
+    """A new unit: empty by default — a blank canvas — or with the example processes."""
     if not tenancy.valid_key(body.key):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="el identificador admite minúsculas, dígitos y guiones (hasta 63)")
+    if body.key == PLATFORM:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"'{PLATFORM}' está reservado: sus grupos dan el rol de plataforma, no una unidad")
     if await session.get(Tenant, body.key) is not None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="ya existe una unidad con ese identificador")
-    unit = await register_tenant(session, body.key, body.name.strip())
+    unit = await register_tenant(session, body.key, body.name.strip(), examples=body.examples)
     return _view(settings, unit, 0)
 
 

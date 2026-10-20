@@ -1,8 +1,8 @@
 import { NavLink } from 'react-router-dom'
 import { toast } from 'sonner'
-import { LayoutDashboard, Upload, Files, ClipboardCheck, Sparkles, BookOpen, History, LogOut, FileStack, Users, ShieldCheck, ListChecks, Network, Workflow, FolderOpen, FolderArchive, FlaskConical, Gauge, SplitSquareHorizontal, Scale, MessageSquareText, KeyRound, Wrench, Bot, Building2 } from 'lucide-react'
+import { LayoutDashboard, Upload, Files, ClipboardCheck, Sparkles, BookOpen, History, LogOut, FileStack, Users, ShieldCheck, ListChecks, Network, Workflow, FolderOpen, FolderArchive, FlaskConical, Gauge, SplitSquareHorizontal, Scale, MessageSquareText, KeyRound, Wrench, Bot, Building2, Compass } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { canExecute, getUnit, getUnits, getUserName, getUserRole, isAdmin, setSession, signOut } from '@/lib/auth'
+import { canExecute, getUnit, getUnits, getUserName, getUserRole, isAdmin, isPlatformAdmin, setSession, signOut } from '@/lib/auth'
 import { useSwitchUnit } from '@/lib/queries'
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -17,6 +17,7 @@ const ROLE_LABEL: Record<string, string> = {
 
 const NAV_ITEMS = [
   { to: '/', label: 'Inicio', icon: LayoutDashboard, end: true, requiresExecute: false },
+  { to: '/primeros-pasos', label: 'Primeros pasos', icon: Compass, requiresExecute: false },
   { to: '/upload', label: 'Subir documentos', icon: Upload, requiresExecute: true },
   { to: '/cases', label: 'Expedientes', icon: FolderOpen, requiresExecute: false },
   { to: '/asistente', label: 'Asistente', icon: Bot, requiresExecute: false },
@@ -138,7 +139,7 @@ export function Sidebar() {
             Usuarios
           </NavLink>
         )}
-        {isAdmin() && (
+        {isPlatformAdmin() && (
           <NavLink
             to="/unidades"
             className={({ isActive }) =>

@@ -37,6 +37,8 @@ async def test_register_publishes_the_type_and_its_mappings_and_a_rejection_leav
         if await users.get_by_email(_ADMIN) is None:
             await users.create(name="Test Admin", email=_ADMIN, password_hash=hash_password(_PASSWORD), role="admin")
             await session.commit()
+        (await users.get_by_email(_ADMIN)).platform_role = "admin"  # corporate configuration is the platform team's (VRT-71)
+        await session.commit()
         catalog_versions_before = await session.scalar(select(func.max(SemanticCatalogVersion.version)))
 
     key, rejected_key = f"test_{uuid.uuid4().hex[:8]}", f"test_{uuid.uuid4().hex[:8]}"

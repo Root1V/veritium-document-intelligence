@@ -14,7 +14,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { errorDetail } from '@/lib/apiErrors'
-import { isAISpecialist } from '@/lib/auth'
+import { canEditPrompts } from '@/lib/auth'
 import { percent } from '@/lib/evaluation'
 import { cn } from '@/lib/utils'
 import { diffLines } from '@/lib/textDiff'
@@ -28,6 +28,7 @@ import {
   useSavePromptDraft,
 } from '@/lib/queries'
 import type { PromptView } from '@/types/api'
+import { SharedConfigNote } from '@/components/layout/SharedConfigNote'
 
 const date = (iso: string | null) => (iso ? new Date(iso).toLocaleString('es-PE', { dateStyle: 'medium', timeStyle: 'short' }) : '—')
 
@@ -177,7 +178,7 @@ function DraftPanel({ prompt }: { prompt: PromptView }) {
           Ninguna evaluación ejercita esta instrucción: publico sin prueba automática y revisaré sus resultados.
         </label>
       )}
-      {isAISpecialist() && (
+      {canEditPrompts() && (
         <div className="flex gap-2">
           <Button
             size="sm"
@@ -204,7 +205,7 @@ function DraftPanel({ prompt }: { prompt: PromptView }) {
 function PromptCard({ prompt, used, from }: { prompt: PromptView; used: string | undefined; from: string }) {
   const restore = useRestorePrompt()
   const [editing, setEditing] = useState(false)
-  const specialist = isAISpecialist()
+  const specialist = canEditPrompts()
   const back = (version: string, reason: string) =>
     restore.mutate({ name: prompt.name, version, reason }, { onSuccess: () => toast.success('Listo: esa versión está en uso.'), onError: (e) => toast.error(errorDetail(e)) })
 
@@ -288,7 +289,7 @@ export function PromptsPage() {
         <p className="text-muted-foreground">
           Lo que la plataforma le pide al modelo en cada tarea. Cada instrucción tiene una versión: si su texto cambia, la versión cambia, y cada
           expediente y cada evaluación guardan con cuál se hicieron.{' '}
-          {isAISpecialist()
+          {canEditPrompts()
             ? 'Como especialista IA puedes proponer cambios: se guardan como borrador, se prueban en una evaluación y luego se publican.'
             : 'Solo el rol Especialista IA puede cambiarlas.'}
         </p>
@@ -309,6 +310,7 @@ export function PromptsPage() {
           </p>
         )}
       </div>
+      <SharedConfigNote show={!canEditPrompts()} />
 
       {isLoading ? (
         <Loader2 className="size-5 animate-spin text-muted-foreground" />

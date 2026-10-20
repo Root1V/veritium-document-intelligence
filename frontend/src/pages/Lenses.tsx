@@ -12,9 +12,10 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { errorDetail } from '@/lib/apiErrors'
-import { isAdmin } from '@/lib/auth'
+import { isPlatformAdmin } from '@/lib/auth'
 import { useDocumentTypeCatalog, useLenses, useSaveLens } from '@/lib/queries'
 import type { LensDefinition, PlaybookItem } from '@/types/api'
+import { SharedConfigNote } from '@/components/layout/SharedConfigNote'
 
 const AREA = { riesgos: 'Riesgos', legal: 'Legal' } as const
 const IMPORTANCE = { alta: 'Importante', media: 'Normal', baja: 'Menor' } as const
@@ -48,7 +49,7 @@ function LensCard({ lens, typeName }: { lens: LensDefinition; typeName: Record<s
       <CardHeader>
         <CardTitle className="flex flex-wrap items-center gap-2">
           <Badge variant="secondary">{AREA[lens.area]}</Badge> {lens.name}
-          {isAdmin() && !editing && (
+          {isPlatformAdmin() && !editing && (
             <Button size="sm" variant="outline" className="ml-auto" onClick={() => setDraft(structuredClone(lens))}>
               Editar
             </Button>
@@ -165,6 +166,7 @@ export function LensesPage() {
           lo que debe cumplir. Cada afirmación cita dónde lo dice el documento. Se usan desde la vista de cada expediente.
         </p>
       </div>
+      <SharedConfigNote show={!isPlatformAdmin()} />
       {isLoading ? (
         <Loader2 className="size-5 animate-spin text-muted-foreground" />
       ) : (

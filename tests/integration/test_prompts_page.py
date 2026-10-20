@@ -25,6 +25,8 @@ async def test_every_prompt_in_use_is_listed_with_its_version(live_settings):
         if await users.get_by_email(_ADMIN) is None:
             await users.create(name="Test Admin", email=_ADMIN, password_hash=hash_password(_PASSWORD), role="admin")
             await session.commit()
+        (await users.get_by_email(_ADMIN)).platform_role = "admin"  # corporate configuration is the platform team's (VRT-71)
+        await session.commit()
         # What the API does when it starts.
         await PromptRepository(session).record([(p.name, p.version, p.text) for p in current()])
 

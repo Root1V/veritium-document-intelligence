@@ -1,4 +1,4 @@
-// Business units (VRT-57), for admins: register a unit and rename it. Who
+// Business units (VRT-57), for the platform team (VRT-71): register a unit — blank, or with the example processes — and rename it. Who
 // works in each one, and with which role, comes from the corporate identity
 // provider's groups — the page lists the ones to create there.
 import { useState } from 'react'
@@ -29,6 +29,7 @@ export function BusinessUnitsPage() {
   const [name, setName] = useState('')
   const [key, setKey] = useState('')
   const [keyTouched, setKeyTouched] = useState(false)
+  const [examples, setExamples] = useState(false)
   const copy = (text: string) => navigator.clipboard.writeText(text).then(() => toast.success('Copiado.'))
   const shownKey = keyTouched ? key : toKey(name)
 
@@ -45,7 +46,9 @@ export function BusinessUnitsPage() {
       <Card>
         <CardHeader>
           <CardTitle>Nueva unidad</CardTitle>
-          <CardDescription>Empieza vacía, con los procesos de ejemplo. Nadie entra hasta que tenga un grupo de la unidad.</CardDescription>
+          <CardDescription>
+            Empieza en blanco: solo el proceso interno «Ad-hoc», que usa la carga directa. Nadie entra hasta que tenga un grupo de la unidad.
+          </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-wrap items-end gap-2">
           <label className="flex flex-col gap-1">
@@ -64,17 +67,22 @@ export function BusinessUnitsPage() {
               className="w-56 font-mono"
             />
           </label>
+          <label className="flex items-center gap-2 self-center text-sm">
+            <input type="checkbox" checked={examples} onChange={(e) => setExamples(e.target.checked)} />
+            Incluir procesos de ejemplo
+          </label>
           <Button
             disabled={name.trim().length < 2 || !shownKey || action.isPending}
             onClick={() =>
               action.mutate(
-                { kind: 'create', key: shownKey, name: name.trim() },
+                { kind: 'create', key: shownKey, name: name.trim(), examples },
                 {
                   onSuccess: (u) => {
                     toast.success(`Unidad «${u.name}» creada. Ahora crea sus grupos en la cuenta corporativa.`)
                     setName('')
                     setKey('')
                     setKeyTouched(false)
+                    setExamples(false)
                   },
                   onError: (e) => toast.error(errorDetail(e)),
                 },

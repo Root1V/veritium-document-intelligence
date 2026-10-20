@@ -29,6 +29,9 @@ from idp.persistence.models import Membership, Tenant, User
 from idp.persistence.repositories import UserRepository
 
 ROLES = {"admin", "operador", "visor", "especialista_ia"}
+# The groups "<prefix>:plataforma:<role>" are not a unit: they are a role over what every unit shares (VRT-71).
+PLATFORM = "plataforma"
+PLATFORM_ROLES = {"admin", "especialista_ia"}
 _LEEWAY_SECONDS = 30
 
 
@@ -132,9 +135,17 @@ def units_from(settings: Settings, claims: dict[str, Any]) -> dict[str, str]:
     for group in groups if isinstance(groups, list) else []:
         prefix, _, rest = str(group).lstrip("/").partition(":")
         unit, _, role = rest.partition(":")
-        if prefix == settings.oidc_group_prefix and role in ROLES and (unit not in found or rank.index(role) > rank.index(found[unit])):
+        if prefix == settings.oidc_group_prefix and unit != PLATFORM and role in ROLES and (unit not in found or rank.index(role) > rank.index(found[unit])):
             found[unit] = role
     return found
+
+
+def platform_role_from(settings: Settings, claims: dict[str, Any]) -> str | None:
+    """The role over what every unit shares, from a group "<prefix>:plataforma:<role>"; admin wins."""
+    groups = claims.get(settings.oidc_groups_claim) or []
+    roles = {str(g).lstrip("/").split(":")[2] for g in (groups if isinstance(groups, list) else [])
+             if str(g).lstrip("/").count(":") == 2 and str(g).lstrip("/").startswith(f"{settings.oidc_group_prefix}:{PLATFORM}:")}
+    return "admin" if "admin" in roles else next(iter(roles & PLATFORM_ROLES), None)
 
 
 async def sign_in(settings: Settings, session: AsyncSession, claims: dict[str, Any]) -> User:
@@ -155,6 +166,7 @@ async def sign_in(settings: Settings, session: AsyncSession, claims: dict[str, A
         user = User(name=str(claims.get("name") or email), email=email, password_hash=None, subject=subject)
         session.add(user)
         await session.flush()
+    user.platform_role = platform_role_from(settings, claims)  # the provider's to grant and to take away
     registered = set(await session.scalars(select(Tenant.key)))
     granted = {unit: role for unit, role in units_from(settings, claims).items() if unit in registered}
     local = set(await session.scalars(select(Membership.tenant).where(Membership.user_id == user.id, Membership.source == "local")))

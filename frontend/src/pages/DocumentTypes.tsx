@@ -1,11 +1,12 @@
 import { Link } from 'react-router-dom'
 import { Loader2, Plus } from 'lucide-react'
 import { useDocumentTypeCatalog } from '@/lib/queries'
-import { isAdmin } from '@/lib/auth'
+import { isPlatformAdmin } from '@/lib/auth'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { humanizeFieldName } from '@/lib/extraction'
+import { SharedConfigNote } from '@/components/layout/SharedConfigNote'
 
 export function DocumentTypesPage() {
   const { data: catalog, isLoading } = useDocumentTypeCatalog()
@@ -21,7 +22,7 @@ export function DocumentTypesPage() {
             (<code>/v1/document-types</code>).
           </p>
         </div>
-        {isAdmin() && (
+        {isPlatformAdmin() && (
           <Button asChild>
             <Link to="/document-types/new">
               <Plus className="size-4" /> Nuevo tipo desde un ejemplo
@@ -29,6 +30,7 @@ export function DocumentTypesPage() {
           </Button>
         )}
       </div>
+      <SharedConfigNote show={!isPlatformAdmin()} />
 
       {isLoading ? (
         <div className="flex h-48 items-center justify-center">
@@ -50,7 +52,7 @@ export function DocumentTypesPage() {
                         <Badge variant="outline">pendiente de registrar</Badge>
                       </div>
                       <CardDescription>{type.rationale}</CardDescription>
-                      {isAdmin() && (
+                      {isPlatformAdmin() && (
                         <Button asChild variant="outline" size="sm" className="mt-2 self-start">
                           <Link
                             to={`/document-types/new?document_id=${type.document_id}&suggestion_id=${type.suggestion_id}&name=${encodeURIComponent(type.suggested_display_name)}`}

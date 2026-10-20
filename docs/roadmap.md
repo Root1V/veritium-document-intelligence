@@ -387,6 +387,13 @@ Método, mediciones y aprendizajes: [eficiencia-modelos-ia.md](eficiencia-modelo
 - `INFERENCE_ROUTE=governed`: el `InferencePort` usa el `HttpModel` de synaptum contra aeon-modelgw con el token de Veritium. Pide **perfiles** (`deploy/aeon/model_policy.yaml`: razonamiento y visión, locales y `restricted`) y aeon resuelve el modelo con su credencial de prometheus. Obligatoria en producción.
 - Cada llamada va atribuida: la de un paso de expediente, a su run de aeon y al agente `veritium-case-run`; la demás (asistente, lentes, investigaciones, borradores), a un run propio y al agente `veritium-service`. Los presupuestos (llamadas, tokens, USD) están en los manifiestos (`deploy/aeon/agents/`); al agotarse, aeon responde 402 y Veritium lo dice así. El costo queda por run en el ledger de aeon.
 - Fuera: el diario compartido de synaptum (S-5), porque aeon ignora `sub_run_id` al leerlo (reportado); la durabilidad la siguen dando la actividad y la idempotencia de prometheus. Y el resto de S-4 (`/decide`, `/execute`).
+- Bloqueada (`VRT-AEON-008`): `/v1/chat/completions` responde 502 a un turno con argumentos de tool rotos (el bucle de `VRT-69`) en vez de pasarlo, así que la extracción falla por la ruta gobernada. Desarrollo vuelve a la autónoma hasta que aeon lo arregle.
+## VRT-71 — Administración de plataforma y unidad en blanco
+**Why:** para entregar una unidad a una persona real del banco: que configure su proceso desde cero sin poder cambiar lo que usan las demás unidades. **Scope:**
+- Rol de plataforma (`veritium:plataforma:admin` o `:especialista_ia` en el proveedor, o por script): solo ese rol cambia tipos de documento, catálogo semántico, biblioteca de reglas, lentes, instrucciones al modelo y las unidades. El admin de una unidad configura lo suyo: procesos, personas, sistemas, conservación.
+- Una unidad nueva nace en blanco (solo el proceso interno ad-hoc); los procesos de ejemplo, si se piden. `plataforma` es un identificador reservado.
+- «Primeros pasos»: el orden para dejar lista una unidad, quién hace cada paso y el enlace; el inicio de una unidad vacía lleva ahí.
+
 ## VRT-57 — SSO OIDC y multi-tenant
 **Why:** identidad corporativa y varias unidades de negocio que no deben ver lo de las otras. **Scope:**
 - Tenant = unidad de negocio de una misma empresa. Son de cada unidad: expedientes y todo lo que cuelga de ellos, procesos, sistemas conectados, webhooks, maestros, evaluación, calibración, simulaciones y cargas. Son corporativos: catálogos de tipos y semántico, biblioteca de reglas, lentes, instrucciones al modelo y las personas.

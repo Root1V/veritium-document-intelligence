@@ -14,7 +14,7 @@ import {
   useUpdateValidationRule,
   useValidationRules,
 } from '@/lib/queries'
-import { canExecute } from '@/lib/auth'
+import { isPlatformAdmin } from '@/lib/auth'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -24,6 +24,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import type { RuleCelCategory, RuleTestCase, RuleTestResult, ValidationRule } from '@/types/api'
+import { SharedConfigNote } from '@/components/layout/SharedConfigNote'
 
 const CATEGORY_OPTIONS: { value: RuleCelCategory; label: string }[] = [
   { value: 'self', label: 'Interna del documento' },
@@ -602,7 +603,7 @@ function ToggleList() {
 }
 
 export function ValidationRulesPage() {
-  const canResolve = canExecute()
+  const canResolve = isPlatformAdmin() // the rule library runs in every unit (VRT-71)
   const { data: drafts, isLoading } = useValidationRules({ kind: 'cel', status_filter: 'draft' })
 
   return (
@@ -614,6 +615,7 @@ export function ValidationRulesPage() {
           activa/desactiva reglas existentes.
         </p>
       </div>
+      <SharedConfigNote show={!isPlatformAdmin()} />
 
       {canResolve && <NewRuleForm />}
 

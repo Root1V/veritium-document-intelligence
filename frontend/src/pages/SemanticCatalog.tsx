@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { errorDetail } from '@/lib/apiErrors'
-import { isAdmin } from '@/lib/auth'
+import { isPlatformAdmin } from '@/lib/auth'
 import {
   useCreateCatalogDraft,
   useDocumentTypeCatalog,
@@ -19,6 +19,7 @@ import {
   useSemanticCatalogVersions,
 } from '@/lib/queries'
 import type { DocumentTypeFieldInfo, FieldMapping, SemanticAttribute, SemanticCatalog } from '@/types/api'
+import { SharedConfigNote } from '@/components/layout/SharedConfigNote'
 
 // --- a small editable table: read mode shows text, edit mode the editors ---
 
@@ -224,7 +225,7 @@ export function SemanticCatalogPage() {
         </div>
         <div className="flex items-center gap-2">
           <Badge variant="outline">publicado v{active?.version}</Badge>
-          {isAdmin() && !editing && (
+          {isPlatformAdmin() && !editing && (
             <Button onClick={() => setDraft(structuredClone(active!.catalog))}>
               <Pencil className="size-4" /> Editar
             </Button>
@@ -242,6 +243,7 @@ export function SemanticCatalogPage() {
           )}
         </div>
       </div>
+      <SharedConfigNote show={!isPlatformAdmin()} />
 
       {pendingDraft && !editing && (
         <Card className="border-amber-300 bg-amber-50 dark:bg-amber-950/30">
@@ -249,7 +251,7 @@ export function SemanticCatalogPage() {
             <span>
               Hay un borrador <strong>v{pendingDraft.version}</strong> sin publicar ({pendingDraft.created_by}).
             </span>
-            {isAdmin() && (
+            {isPlatformAdmin() && (
               <Button size="sm" onClick={() => publishVersion(pendingDraft.version)} disabled={publish.isPending}>
                 Publicar v{pendingDraft.version}
               </Button>

@@ -32,7 +32,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, field_validator, model_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from idp.api.deps import get_app_settings, get_current_user, get_db_session, require_role
+from idp.api.deps import get_app_settings, get_current_user, get_db_session, require_platform
 from idp.config import Settings
 from idp.domain.rule_draft import RuleDraft, RuleTestCase
 from idp.persistence.models import User, ValidationRuleDefinition
@@ -148,7 +148,7 @@ class DraftRuleResponse(BaseModel):
     rule: ValidationRuleResponse | None = None
 
 
-@router.post("/draft", response_model=DraftRuleResponse, dependencies=[Depends(require_role("operador", "admin"))])
+@router.post("/draft", response_model=DraftRuleResponse, dependencies=[Depends(require_platform("admin"))])
 async def draft_new_rule(
     body: DraftRuleRequest,
     settings: Settings = Depends(get_app_settings),
@@ -197,7 +197,7 @@ async def draft_new_rule(
     return DraftRuleResponse(outcome="ok", questions=[], rule=_to_response(row))
 
 
-@router.post("/manual", response_model=ValidationRuleResponse, dependencies=[Depends(require_role("operador", "admin"))])
+@router.post("/manual", response_model=ValidationRuleResponse, dependencies=[Depends(require_platform("admin"))])
 async def create_manual_rule(
     body: ManualRuleRequest,
     session: AsyncSession = Depends(get_db_session),
@@ -249,7 +249,7 @@ class UpdateRuleRequest(BaseModel):
     test_cases: list[RuleTestCase] | None = None
 
 
-@router.patch("/{definition_id}", response_model=ValidationRuleResponse, dependencies=[Depends(require_role("operador", "admin"))])
+@router.patch("/{definition_id}", response_model=ValidationRuleResponse, dependencies=[Depends(require_platform("admin"))])
 async def update_rule(
     definition_id: uuid.UUID,
     body: UpdateRuleRequest,
@@ -342,7 +342,7 @@ async def run_rule_tests(definition_id: uuid.UUID, session: AsyncSession = Depen
     return TestRunResponse(results=results, all_ok=bool(results) and all(r.ok for r in results))
 
 
-@router.post("/{definition_id}/activate", response_model=ValidationRuleResponse, dependencies=[Depends(require_role("operador", "admin"))])
+@router.post("/{definition_id}/activate", response_model=ValidationRuleResponse, dependencies=[Depends(require_platform("admin"))])
 async def activate_rule(
     definition_id: uuid.UUID,
     session: AsyncSession = Depends(get_db_session),
@@ -351,7 +351,7 @@ async def activate_rule(
     return await _resolve(definition_id, "active", current_user.name, session)
 
 
-@router.post("/{definition_id}/reject", response_model=ValidationRuleResponse, dependencies=[Depends(require_role("operador", "admin"))])
+@router.post("/{definition_id}/reject", response_model=ValidationRuleResponse, dependencies=[Depends(require_platform("admin"))])
 async def reject_rule(
     definition_id: uuid.UUID,
     session: AsyncSession = Depends(get_db_session),
@@ -360,7 +360,7 @@ async def reject_rule(
     return await _resolve(definition_id, "rejected", current_user.name, session)
 
 
-@router.post("/{definition_id}/disable", response_model=ValidationRuleResponse, dependencies=[Depends(require_role("operador", "admin"))])
+@router.post("/{definition_id}/disable", response_model=ValidationRuleResponse, dependencies=[Depends(require_platform("admin"))])
 async def disable_active_rule(
     definition_id: uuid.UUID,
     session: AsyncSession = Depends(get_db_session),
@@ -417,7 +417,7 @@ async def _set_toggle(rule_id: str, decision: str, settings: Settings, session: 
     return ToggleRuleResponse(rule_id=row.rule_id, category=row.category, description=description, status=row.status)
 
 
-@router.post("/toggles/{rule_id:path}/disable", response_model=ToggleRuleResponse, dependencies=[Depends(require_role("operador", "admin"))])
+@router.post("/toggles/{rule_id:path}/disable", response_model=ToggleRuleResponse, dependencies=[Depends(require_platform("admin"))])
 async def disable_hardcoded_rule(
     rule_id: str,
     settings: Settings = Depends(get_app_settings),
@@ -427,7 +427,7 @@ async def disable_hardcoded_rule(
     return await _set_toggle(rule_id, "disabled", settings, session, current_user)
 
 
-@router.post("/toggles/{rule_id:path}/enable", response_model=ToggleRuleResponse, dependencies=[Depends(require_role("operador", "admin"))])
+@router.post("/toggles/{rule_id:path}/enable", response_model=ToggleRuleResponse, dependencies=[Depends(require_platform("admin"))])
 async def enable_hardcoded_rule(
     rule_id: str,
     settings: Settings = Depends(get_app_settings),
