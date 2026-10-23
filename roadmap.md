@@ -112,4 +112,4 @@ Estados: `done` · `todo` · `blocked` (espera a otro equipo) · `superseded` (a
 | VRT-60 | Conectores RENIEC / SUNAT / SBS | todo | Validación contra fuentes oficiales como tools. |
 | VRT-61 | Antifraude forense | todo | Detección de documentos alterados o generados con IA. |
 | VRT-62 | Auditoría inmutable y cumplimiento | todo | Hash encadenado y requisitos del DS 115-2025-PCM. |
-| VRT-71 | Administración de plataforma y unidad en blanco | todo | Lo compartido lo cambia el equipo de plataforma; unidades vacías; primeros pasos. |
+| VRT-71 | Administración de plataforma y unidad en blanco | done | Lo compartido lo cambia el equipo de plataforma; unidades vacías; primeros pasos. |
