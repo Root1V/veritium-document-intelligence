@@ -1095,3 +1095,47 @@ export interface DataAccessEntry {
   case_ref: string | null
   document_id: string | null
 }
+
+// GET /v1/overview — the unit at a glance (VRT-74).
+export interface Comparison {
+  value: number | null
+  previous: number | null
+}
+
+export interface DayCount {
+  day: string
+  continued: number
+  human_review: number
+  return_to_client: number
+  in_progress: number
+}
+
+export interface ReasonCount {
+  label: string
+  decision: VerdictDecision
+  count: number
+}
+
+export interface AttentionItem {
+  kind: 'failed' | 'review' | 'client'
+  case_id: string
+  case_ref: string
+  title: string
+  since: string
+}
+
+export interface Overview {
+  days: number
+  received: Comparison
+  straight_through: Comparison
+  decided: number
+  time_to_verdict_seconds: Comparison
+  pending_review: number
+  oldest_pending: string | null
+  in_review: number
+  waiting_client: number
+  failed_documents: number
+  daily: DayCount[]
+  reasons: ReasonCount[]
+  attention: AttentionItem[]
+}

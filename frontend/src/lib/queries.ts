@@ -69,6 +69,7 @@ import type {
   UpdateTypeSuggestionRequest,
   ValidationLogResponse,
   ValidationRule,
+  Overview,
 } from '@/types/api'
 
 const TERMINAL_BATCH_STATUSES = new Set(['completed'])
@@ -1055,5 +1056,14 @@ export function useSuppressCaseData() {
     mutationFn: async ({ caseId, reason }: { caseId: string; reason: string }) =>
       (await apiClient.post<{ removed_at: string; files_removed: number }>(`/v1/cases/${caseId}/suppress`, { reason })).data,
     onSuccess: () => queryClient.invalidateQueries(),
+  })
+}
+
+/** The unit at a glance for its home page (VRT-74). */
+export function useOverview(days: number) {
+  return useQuery({
+    queryKey: ['overview', days],
+    queryFn: async () => (await apiClient.get<Overview>('/v1/overview', { params: { days } })).data,
+    refetchInterval: 60_000,
   })
 }

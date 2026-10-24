@@ -14,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from opentelemetry import trace
 from sqlalchemy import select
 
-from idp.api.routes import api_clients, assistant, audit, auth, batches, bulk_jobs, data_access, events, investigations, tools, calibration, cases, document_types, documents, evaluation, lenses, profiles, prompts, simulations, upload_sessions, review, semantic_catalog, tenants, type_suggestions, users, validation, validation_rules, webhooks
+from idp.api.routes import api_clients, overview, assistant, audit, auth, batches, bulk_jobs, data_access, events, investigations, tools, calibration, cases, document_types, documents, evaluation, lenses, profiles, prompts, simulations, upload_sessions, review, semantic_catalog, tenants, type_suggestions, users, validation, validation_rules, webhooks
 from idp.config import get_settings
 from idp.llm.port import inference_lifespan
 from idp.search.models import search_models_lifespan
@@ -87,6 +87,7 @@ def create_app() -> FastAPI:
     app.include_router(auth.router)
     app.include_router(batches.router)
     app.include_router(cases.router)
+    app.include_router(overview.router)
     app.include_router(documents.router)
     app.include_router(document_types.router)
     app.include_router(document_types.admin_router)
