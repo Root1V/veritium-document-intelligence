@@ -119,6 +119,6 @@ Estados: `done` · `todo` · `blocked` (espera a otro equipo) · `superseded` (a
 
 | ID | Feature | Estado | Descripción |
 |---|---|---|---|
-| VRT-73 | Navegación por tareas y lenguaje de negocio | todo | Menú agrupado por rol, barra superior con búsqueda, configuración y reportes en páginas índice, estados en español. |
+| VRT-73 | Navegación por tareas y lenguaje de negocio | done | Menú agrupado por rol, barra superior con búsqueda, configuración y reportes en páginas índice, estados en español. |
 | VRT-74 | Inicio para decidir, por rol | todo | Indicadores con su comparación, lo que requiere atención y gráficos con métricas reales. |
 | VRT-75 | Login y páginas de trabajo | todo | Ingreso corporativo primero; plantilla común de página; expediente y revisión con lo técnico plegado. |
