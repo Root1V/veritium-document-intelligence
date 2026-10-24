@@ -88,7 +88,7 @@ export function DocumentsPage() {
     <div className="flex flex-col gap-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Documentos</h1>
-        <p className="text-muted-foreground">Explora y filtra todos los documentos procesados ({total} en total).</p>
+        <p className="text-muted-foreground">Todos los documentos recibidos ({total}). Busca por DNI, nombre o de qué trata, o filtra por estado, tipo y proceso.</p>
       </div>
 
       <div className="flex flex-wrap gap-3">
@@ -159,15 +159,16 @@ export function DocumentsPage() {
                 <TableRow>
                   <TableHead>Documento</TableHead>
                   <TableHead>Tipo</TableHead>
-                  <TableHead>Confianza</TableHead>
+                  <TableHead>Expediente</TableHead>
                   <TableHead>Estado</TableHead>
+                  <TableHead>Llegó</TableHead>
                   {isAdmin() && <TableHead className="w-10" />}
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {documents.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={5} className="text-center text-sm text-muted-foreground">
+                    <TableCell colSpan={6} className="text-center text-sm text-muted-foreground">
                       Sin documentos que coincidan con los filtros.
                     </TableCell>
                   </TableRow>
@@ -185,14 +186,15 @@ export function DocumentsPage() {
                         <span className="text-sm">{typeName(doc.document_type)}</span>
                       </TableCell>
                       <TableCell>
-                        {doc.classification_confidence !== null ? (
-                          <span className="text-xs">{(doc.classification_confidence * 100).toFixed(0)}%</span>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">—</span>
-                        )}
+                        <Link to={`/cases/${doc.batch_id}`} className="text-sm hover:underline">
+                          {doc.case_ref ?? doc.batch_id.slice(0, 8)}
+                        </Link>
                       </TableCell>
                       <TableCell>
                         <StatusBadge status={doc.needs_review ? 'needs_review' : doc.status} />
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
+                        {doc.created_at ? new Date(doc.created_at).toLocaleDateString('es', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
                       </TableCell>
                       {isAdmin() && (
                         <TableCell>

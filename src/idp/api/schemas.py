@@ -4,6 +4,7 @@ single ``routes/*.py`` file so neither has to import from the other."""
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 
 from pydantic import BaseModel
 
@@ -28,3 +29,6 @@ class DocumentSummary(BaseModel):
     page_start: int | None
     page_end: int | None
     match: SearchMatch | None = None  # only in search results
+    # Which case it is in and when it arrived (VRT-78), for the documents list.
+    case_ref: str | None = None
+    created_at: datetime | None = None

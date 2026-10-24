@@ -36,6 +36,8 @@ export interface DocumentSummary {
   page_end: number | null
   /** Only in search results (VRT-59): where it matched, never what it says. */
   match?: SearchMatch | null
+  case_ref?: string | null
+  created_at?: string | null
 }
 
 export interface SearchMatch {

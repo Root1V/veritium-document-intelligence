@@ -13,6 +13,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Response, status
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from idp.api.case_service import dispatch_run, open_run
@@ -21,6 +22,7 @@ from idp.api.disclosure import CaseMaskers, Disclosure, actor_of, can_reveal, ge
 from idp.auth.authenticate import Principal
 from idp.api.schemas import DocumentSummary, SearchMatch
 from idp.config import Settings
+from idp.persistence.models import Case
 from idp.persistence.repositories import CaseRepository, DocumentRepository
 from idp.pipeline.deletion import delete_document, purge
 from idp.pipeline.retention import CaseBusy
@@ -98,6 +100,8 @@ async def list_documents(
         documents = await repo.list(filters, limit=limit, offset=offset)
         total = await repo.count(filters)
     maskers = CaseMaskers(session, principal)
+    case_ids = {doc.case_id for doc in documents}
+    refs = dict((await session.execute(select(Case.id, Case.external_ref).where(Case.id.in_(case_ids)))).all()) if case_ids else {}
     return DocumentListResponse(
         total=total,
         documents=[
@@ -113,6 +117,8 @@ async def list_documents(
                 page_start=doc.page_start,
                 page_end=doc.page_end,
                 match=_match(matches[doc.id]) if doc.id in matches else None,
+                case_ref=refs.get(doc.case_id),
+                created_at=doc.created_at,
             )
             for doc in documents
         ],

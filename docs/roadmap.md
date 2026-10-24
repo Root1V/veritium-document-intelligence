@@ -447,3 +447,6 @@ Método, mediciones y aprendizajes: [eficiencia-modelos-ia.md](eficiencia-modelo
 
 ## VRT-77 — Revisar como cola de trabajo
 **Why:** «Revisar» era una lista plana del más nuevo al más viejo: quien revisa saltaba de expediente en expediente y lo que más esperaba quedaba al fondo. **Scope:** campos agrupados por expediente, el que más espera primero (la cola expone `created_at`); filtros por motivo con su conteo; resumen de cuántos y desde cuándo; «todo al día» cuando no hay nada; la tasa del investigador pasa al pie.
+
+## VRT-78 — Documentos con su expediente
+**Why:** la lista de documentos no decía de qué expediente era cada uno ni cuándo llegó, y mostraba la confianza de clasificación, un dato técnico. **Scope:** columnas Documento, Tipo, Expediente (enlace), Estado y Llegó; la lista expone `case_ref` y `created_at`.
