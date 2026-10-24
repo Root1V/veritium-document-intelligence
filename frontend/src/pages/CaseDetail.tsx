@@ -5,7 +5,7 @@
 // reprocessed on its own as a new run (VRT-40), and the result exported (VRT-41).
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { CheckCircle2, CircleAlert, Download, Loader2, RefreshCw, Search } from 'lucide-react'
+import { Bot, CheckCircle2, ChevronLeft, CircleAlert, CircleX, Download, Loader2, MessageSquareText, MoreHorizontal, RefreshCw, Search, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { InvestigationPanel } from '@/components/cases/InvestigationPanel'
 import { LensesCard } from '@/components/cases/LensesCard'
@@ -14,11 +14,12 @@ import { EvidenceViewer } from '@/components/documents/EvidenceViewer'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { errorDetail } from '@/lib/apiErrors'
 import { canExecute, isAISpecialist, isAdmin } from '@/lib/auth'
-import { DeleteButton } from '@/components/DeleteButton'
+import { DeleteButton, useDeleteAction } from '@/components/DeleteButton'
+import { cn } from '@/lib/utils'
 import { StatusBadge } from '@/components/StatusBadge'
 import { DELETE_CASE } from '@/pages/Cases'
 import {
@@ -28,11 +29,11 @@ import {
   useCaseResult,
   useDocumentTypeCatalog,
   useInvestigate,
+  useProcessProfiles,
   useReprocessCase,
   useWaiveCondition,
   type CaseExportFormat,
 } from '@/lib/queries'
-import { VERDICT_LABEL, VERDICT_VARIANT } from '@/lib/verdict'
 import type { CaseCondition, CaseResult, ReprocessScope } from '@/types/api'
 import { PersonalDataBar } from '@/components/cases/PersonalDataBar'
 
@@ -156,23 +157,162 @@ const EXPORTS: { format: CaseExportFormat; label: string }[] = [
   { format: 'json', label: 'JSON' },
 ]
 
-function ExportMenu({ caseId }: { caseId: string }) {
+/** The decision first, as a traffic light, with why and what to do next (VRT-75). */
+function VerdictBanner({
+  decision,
+  busy,
+  reasons,
+  runError,
+}: {
+  decision: CaseResult['verdict']['decision'] | null
+  busy: boolean
+  reasons: { decision: CaseResult['verdict']['decision']; message: string; count: number }[]
+  runError: string | null
+}) {
+  const look = busy || !decision ? VERDICT_LOOK.pending : VERDICT_LOOK[decision]
+  const { Icon } = look
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button size="sm" variant="ghost" className="h-6 px-2 text-xs">
-          <Download className="size-3" />
-          Exportar
+    <div className={cn('flex flex-col gap-3 rounded-lg border p-4 sm:flex-row sm:items-start', look.className)}>
+      <Icon className={cn('size-6 shrink-0', busy && 'animate-spin')} aria-hidden />
+      <div className="flex min-w-0 flex-1 flex-col gap-1">
+        <span className="text-base font-semibold">{look.title}</span>
+        <span className="text-sm opacity-90">{look.next}</span>
+        {!busy && reasons.length > 0 && (
+          <ul className="mt-1 flex flex-col gap-0.5 text-sm">
+            {reasons.map((r) => (
+              <li key={`${r.decision}|${r.message}`} className="flex gap-2">
+                <span aria-hidden>•</span>
+                <span>
+                  {r.message}
+                  {r.count > 1 && <span className="opacity-70"> (×{r.count})</span>}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+        {runError && <span className="text-sm text-destructive">La última corrida falló: {runError}</span>}
+      </div>
+      {!busy && decision === 'human_review' && canExecute() && (
+        <Button asChild size="sm" className="shrink-0">
+          <Link to="/review">Revisar campos</Link>
         </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start">
-        {EXPORTS.map((e) => (
-          <DropdownMenuItem key={e.format} onSelect={() => downloadCaseResult(caseId, e.format).catch((err) => toast.error(errorDetail(err)))}>
-            {e.label}
-          </DropdownMenuItem>
-        ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
+      )}
+    </div>
+  )
+}
+
+const VERDICT_LOOK = {
+  continue: {
+    Icon: CheckCircle2,
+    title: 'Puede continuar',
+    next: 'Los documentos están completos y las validaciones pasaron.',
+    className: 'border-emerald-300 bg-emerald-50 text-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-200',
+  },
+  human_review: {
+    Icon: CircleAlert,
+    title: 'Necesita revisión humana',
+    next: 'Revisa los campos y observaciones de abajo; el veredicto se actualiza al corregir.',
+    className: 'border-amber-300 bg-amber-50 text-amber-900 dark:bg-amber-950/30 dark:text-amber-200',
+  },
+  return_to_client: {
+    Icon: CircleX,
+    title: 'Devolver al cliente',
+    next: 'Pide al cliente lo que falta; al llegar, el expediente se vuelve a evaluar solo.',
+    className: 'border-red-300 bg-red-50 text-red-900 dark:bg-red-950/30 dark:text-red-200',
+  },
+  pending: {
+    Icon: Loader2,
+    title: 'En proceso',
+    next: 'Se están leyendo y validando los documentos.',
+    className: 'border-sky-300 bg-sky-50 text-sky-900 dark:bg-sky-950/30 dark:text-sky-200',
+  },
+} as const
+
+/** The case's name, its decision and one way to act; everything else in "⋯", the technical folded (VRT-75). */
+function CaseHeader({ result, statusLabel, busy, onDeleted }: { result: CaseResult; statusLabel?: string; busy: boolean; onDeleted: () => void }) {
+  const reprocess = useReprocessCase()
+  const { data: profiles } = useProcessProfiles()
+  const processName = result.case.profile ? (profiles?.find((p) => p.key === result.case.profile?.key)?.name ?? result.case.profile.key) : 'Sin proceso'
+  const remove = useDeleteAction({ path: `/v1/cases/${result.case.id}`, question: DELETE_CASE, askReason: true, onDone: onDeleted })
+  const caseId = result.case.id
+  const arrived = new Date(result.case.created_at).toLocaleString('es', { dateStyle: 'medium', timeStyle: 'short' })
+  return (
+    <div className="flex flex-col gap-2">
+      <Link to="/cases" className="inline-flex w-fit items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+        <ChevronLeft className="size-4" /> Expedientes
+      </Link>
+      <div className="flex flex-wrap items-start gap-3">
+        <div className="flex min-w-0 flex-1 flex-col gap-1">
+          <h1 className="text-2xl font-semibold tracking-tight">{result.case.external_ref ?? result.case.id.slice(0, 8)}</h1>
+          <span className="text-sm text-muted-foreground">
+            {processName} · llegó el {arrived}
+            {statusLabel && ` · ${statusLabel}`}
+          </span>
+        </div>
+        <Button asChild variant="outline" size="sm">
+          <Link to={`/asistente?case=${caseId}`}>
+            <Bot className="size-4" /> Preguntar al asistente
+          </Link>
+        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="icon" className="size-8" aria-label="Más acciones">
+              <MoreHorizontal className="size-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-56">
+            {canExecute() && (
+              <DropdownMenuItem
+                disabled={busy || reprocess.isPending}
+                onSelect={() => {
+                  if (!confirm('Se vuelve a leer todo el expediente con el modelo; las correcciones se conservan. ¿Continuar?')) return
+                  reprocess.mutate(
+                    { caseId, scope: { kind: 'case' } },
+                    { onSuccess: (run) => toast.success(`Corrida ${run.run_number} en curso.`), onError: (e) => toast.error(errorDetail(e)) },
+                  )
+                }}
+              >
+                <RefreshCw className="size-4" /> Volver a procesar
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">Descargar resultado</DropdownMenuLabel>
+            {EXPORTS.map((e) => (
+              <DropdownMenuItem key={e.format} onSelect={() => downloadCaseResult(caseId, e.format).catch((err) => toast.error(errorDetail(err)))}>
+                <Download className="size-4" /> {e.label}
+              </DropdownMenuItem>
+            ))}
+            {result.run && (
+              <DropdownMenuItem asChild>
+                <Link to={`/prompts?case=${caseId}`}>
+                  <MessageSquareText className="size-4" /> Instrucciones usadas
+                </Link>
+              </DropdownMenuItem>
+            )}
+            {isAdmin() && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem variant="destructive" disabled={remove.pending} onSelect={remove.run}>
+                  <Trash2 className="size-4" /> Eliminar expediente
+                </DropdownMenuItem>
+              </>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+      <details className="text-xs text-muted-foreground">
+        <summary className="w-fit cursor-pointer select-none hover:text-foreground">Detalle técnico</summary>
+        <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1">
+          <span>
+            {result.case.profile
+              ? `Proceso ${result.case.profile.key} v${result.case.profile.version} · catálogo de datos v${result.case.profile.semantic_catalog_version}`
+              : 'Sin proceso'}
+          </span>
+          <span>Canal {result.case.channel}</span>
+          {result.run && <span>Corrida {result.run.run_number} ({RUN_STATUS[result.run.status] ?? result.run.status}){runLabel(result.run)}</span>}
+          <span className="font-mono">{caseId}</span>
+        </div>
+      </details>
+    </div>
   )
 }
 
@@ -225,31 +365,7 @@ export function CaseDetailPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center gap-3">
-        <h1 className="text-xl font-semibold tracking-tight">{result.case.external_ref ?? result.case.id.slice(0, 8)}</h1>
-        {decision && <Badge variant={VERDICT_VARIANT[decision]}>{VERDICT_LABEL[decision]}</Badge>}
-        <Badge variant="outline">{summary?.progress.status_label ?? result.case.status}</Badge>
-        <span className="text-xs text-muted-foreground">
-          {result.case.profile ? `perfil ${result.case.profile.key} v${result.case.profile.version} · catálogo v${result.case.profile.semantic_catalog_version}` : 'sin perfil'} · canal {result.case.channel}
-          {result.run && ` · corrida ${result.run.run_number} (${RUN_STATUS[result.run.status] ?? result.run.status})${runLabel(result.run)}`}
-        </span>
-        <ReprocessButton caseId={result.case.id} scope={{ kind: 'case' }} label="Reprocesar expediente" busy={busy} />
-        <ExportMenu caseId={result.case.id} />
-        {result.run && (
-          <Link to={`/prompts?case=${result.case.id}`} className="text-xs underline">
-            instrucciones usadas
-          </Link>
-        )}
-        <Link to={`/asistente?case=${result.case.id}`} className="ml-auto text-sm underline">
-          Preguntar al asistente
-        </Link>
-        <Link to="/cases" className="text-sm underline">
-          Volver a expedientes
-        </Link>
-        {isAdmin() && (
-          <DeleteButton askReason path={`/v1/cases/${result.case.id}`} label="Eliminar expediente" question={DELETE_CASE} onDone={() => navigate('/cases')} />
-        )}
-      </div>
+      <CaseHeader result={result} statusLabel={summary?.progress.status_label} busy={busy} onDeleted={() => navigate('/cases')} />
       {summary?.personal_data && (
         <PersonalDataBar
           caseId={result.case.id}
@@ -259,7 +375,9 @@ export function CaseDetailPage() {
         />
       )}
 
-      {summary && (
+      <VerdictBanner decision={decision} busy={busy} reasons={reasons} runError={result.run?.error ?? null} />
+
+      {summary && (busy || summary.progress.failed_documents > 0) && (
         <Card>
           <CardContent className="py-4">
             <ProgressFunnel progress={summary.progress} />
@@ -269,28 +387,6 @@ export function CaseDetailPage() {
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,560px)]">
         <div className="flex min-w-0 flex-col gap-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Veredicto: {decision ? VERDICT_LABEL[decision] : 'pendiente'}</CardTitle>
-              <CardDescription>Qué debe hacer el proceso y por qué.</CardDescription>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-1 text-sm">
-              {reasons.length === 0 && <span className="text-muted-foreground">Sin observaciones.</span>}
-              {reasons.map((r) => (
-                <div key={`${r.decision}|${r.message}`} className="flex items-start gap-2">
-                  <Badge variant={VERDICT_VARIANT[r.decision]} className="shrink-0 text-[10px]">
-                    {VERDICT_LABEL[r.decision]}
-                  </Badge>
-                  <span>
-                    {r.message}
-                    {r.count > 1 && <span className="text-muted-foreground"> (×{r.count})</span>}
-                  </span>
-                </div>
-              ))}
-              {result.run?.error && <span className="text-destructive">Error de la corrida: {result.run.error}</span>}
-            </CardContent>
-          </Card>
-
           {result.conditions.length > 0 && (
             <Card>
               <CardHeader>

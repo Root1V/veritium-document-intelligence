@@ -239,9 +239,9 @@ export function TypeSuggestionsPage() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Tipos de documento nuevos</h1>
         <p className="text-muted-foreground">
-          Cuando un documento cae en <code>generic</code>, el sistema puede proponer un tipo nuevo. Antes de decidir, se
-          puede editar la propuesta (nombre, campos). Aceptar solo marca la propuesta como accionable — no registra el
-          tipo automáticamente: registrarlo es publicar su definición en el catálogo de tipos.
+          Cuando llega un documento que no se parece a ningún tipo conocido, Veritium propone uno nuevo con sus datos. Puedes
+          ajustar el nombre y los campos antes de decidir. Al aceptarlo queda listo para que el equipo de plataforma lo registre
+          en Tipos de documento.
         </p>
       </div>
 
