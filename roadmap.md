@@ -108,7 +108,7 @@ Estados: `done` · `todo` · `blocked` (espera a otro equipo) · `superseded` (a
 | VRT-56 | Ruta de inferencia gobernada | blocked | synaptum → aeon-modelgw → prometheus, con presupuestos y costo por corrida. Espera `VRT-AEON-008`. |
 | VRT-57 | SSO OIDC y multi-tenant | done | Identidad corporativa y aislamiento por tenant. |
 | VRT-58 | PII y retención | done | Enmascaramiento según la clase PII semántica; políticas de retención y borrado. |
-| VRT-59 | Búsqueda híbrida | todo | Por palabras, escritura parecida y significado, en Postgres con halfvec. |
+| VRT-59 | Búsqueda híbrida | done | Por palabras, escritura parecida y significado, en Postgres con halfvec. |
 | VRT-60 | Conectores RENIEC / SUNAT / SBS | todo | Validación contra fuentes oficiales como tools. |
 | VRT-61 | Antifraude forense | todo | Detección de documentos alterados o generados con IA. |
 | VRT-62 | Auditoría inmutable y cumplimiento | todo | Hash encadenado y requisitos del DS 115-2025-PCM. |
