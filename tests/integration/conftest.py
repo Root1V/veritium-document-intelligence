@@ -22,7 +22,9 @@ from idp.config import Settings
 from idp.llm.port import inference_lifespan
 from idp.persistence import tenancy
 from idp.persistence.db import get_session_factory
-from idp.persistence.models import Base, Membership, Tenant
+from idp.persistence.models import Base, Case, Membership, Tenant
+from idp.pipeline.deletion import delete_case, purge
+from idp.storage.object_store import S3ObjectStore
 
 
 def _port_open(host: str, port: int, timeout: float = 1.0) -> bool:
@@ -110,3 +112,18 @@ async def other_unit(live_settings: Settings, require_postgres: None) -> AsyncIt
     """A second throwaway unit, for tests about what one unit sees of another."""
     async with _throwaway_unit(live_settings) as key:
         yield key
+
+
+
+@pytest_asyncio.fixture
+async def made_cases(live_settings: Settings) -> AsyncIterator[list[uuid.UUID]]:
+    """The cases a test makes in the dev unit: deleted afterwards with their
+    files, or each run of the suite leaves them there (VRT-72)."""
+    made: list[uuid.UUID] = []
+    yield made
+    async with get_session_factory(live_settings)() as session:
+        keys: set[str] = set()
+        for case_id in made:
+            if (case := await session.get(Case, case_id)) is not None:
+                keys |= await delete_case(session, case, actor="pruebas", role="sistema", channel="sistema")
+        await purge(session, S3ObjectStore(live_settings), keys)

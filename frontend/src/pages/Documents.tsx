@@ -9,6 +9,8 @@ import { Link } from 'react-router-dom'
 import { ChevronLeft, ChevronRight, FileText, Loader2, Search } from 'lucide-react'
 import { useDocumentList, useDocumentTypeCatalog, useProcessProfiles } from '@/lib/queries'
 import type { SearchMatch } from '@/types/api'
+import { DeleteButton } from '@/components/DeleteButton'
+import { isAdmin } from '@/lib/auth'
 import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Button } from '@/components/ui/button'
@@ -177,12 +179,13 @@ export function DocumentsPage() {
                   <TableHead>Confianza</TableHead>
                   <TableHead>Estado</TableHead>
                   <TableHead>Revisión</TableHead>
+                  {isAdmin() && <TableHead className="w-10" />}
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {documents.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={5} className="text-center text-sm text-muted-foreground">
+                    <TableCell colSpan={6} className="text-center text-sm text-muted-foreground">
                       Sin documentos que coincidan con los filtros.
                     </TableCell>
                   </TableRow>
@@ -218,6 +221,16 @@ export function DocumentsPage() {
                         </Badge>
                       </TableCell>
                       <TableCell>{doc.needs_review && <Badge variant="destructive">Requiere revisión</Badge>}</TableCell>
+                      {isAdmin() && (
+                        <TableCell>
+                          <DeleteButton
+                            iconOnly
+                            label="Eliminar documento"
+                            path={`/documents/${doc.id}`}
+                            question="Se eliminará para siempre este documento con su archivo y lo leído de él, y su expediente se volverá a evaluar sin él."
+                          />
+                        </TableCell>
+                      )}
                     </TableRow>
                   ))
                 )}

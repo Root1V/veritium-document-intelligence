@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import uuid
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -60,7 +61,7 @@ def in_process_executor(monkeypatch):
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("in_process_executor")
-async def test_upload_batch_and_retrieve_extraction(live_settings):
+async def test_upload_batch_and_retrieve_extraction(live_settings, made_cases):
     S3ObjectStore(live_settings).ensure_bucket()
     await _ensure_test_user(live_settings)
     app = create_app()
@@ -80,6 +81,7 @@ async def test_upload_batch_and_retrieve_extraction(live_settings):
             response = await client.post("/batches", files={"files": ("boleta_pagos1.png", fh, "image/png")}, headers=headers)
         assert response.status_code == 201
         batch_id = response.json()["batch_id"]
+        made_cases.append(uuid.UUID(batch_id))
 
         deadline = asyncio.get_event_loop().time() + 120
         document = None

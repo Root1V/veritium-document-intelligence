@@ -30,7 +30,7 @@ pytestmark = [pytest.mark.usefixtures("require_postgres", "require_minio", "requ
 _MAX_ATTEMPTS = 3
 
 
-async def _run_fixture(live_settings, filename: str):
+async def _run_fixture(live_settings, filename: str, made: list):
     factory = get_session_factory(live_settings)
     object_store = S3ObjectStore(live_settings)
     object_store.ensure_bucket()
@@ -38,6 +38,7 @@ async def _run_fixture(live_settings, filename: str):
     async with factory() as session:
         document_repo = DocumentRepository(session)
         case = await CaseRepository(session).create()
+        made.append(case.id)
 
         document = await document_repo.create(case_id=case.id, storage_key="", original_filename=filename)
         storage_key = object_store.key_for(tenant="default", case_id=str(case.id), document_id=str(document.id), filename=filename)
@@ -51,13 +52,13 @@ async def _run_fixture(live_settings, filename: str):
         return await document_repo.get(document.id)
 
 
-async def _run_fixture_with_retries(live_settings, filename: str, *, max_attempts: int = _MAX_ATTEMPTS):
+async def _run_fixture_with_retries(live_settings, filename: str, made: list, *, max_attempts: int = _MAX_ATTEMPTS):
     """Retries on non-convergence only (document.extraction is None) —
     never retries a converged-but-wrong result, since that would mask a
     real regression instead of absorbing model variance."""
     document = None
     for attempt in range(1, max_attempts + 1):
-        document = await _run_fixture(live_settings, filename)
+        document = await _run_fixture(live_settings, filename, made)
         if document.extraction is not None:
             return document, attempt
         assert document.status in ("needs_review", "failed"), (
@@ -68,8 +69,8 @@ async def _run_fixture_with_retries(live_settings, filename: str, *, max_attempt
 
 
 @pytest.mark.asyncio
-async def test_payslip_fixture_end_to_end_with_grounding_and_golden_values(live_settings):
-    document, attempts = await _run_fixture_with_retries(live_settings, "boleta_pagos1.png")
+async def test_payslip_fixture_end_to_end_with_grounding_and_golden_values(live_settings, made_cases):
+    document, attempts = await _run_fixture_with_retries(live_settings, "boleta_pagos1.png", made_cases)
     assert document is not None
     assert document.document_type == "payslip"
     assert document.extraction is not None, (
