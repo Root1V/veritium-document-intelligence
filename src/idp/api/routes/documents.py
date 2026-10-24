@@ -2,7 +2,8 @@
 plus validation issues (with explanation), per the explainability design.
 Personal data masked unless the caller asked to see the case's (VRT-58);
 the original file only then, and searching by a value only for whoever may
-see them."""
+see them. DELETE /documents/{id} removes one for good and re-evaluates its
+case (admin; VRT-72)."""
 
 from __future__ import annotations
 
@@ -10,16 +11,19 @@ import mimetypes
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Response, status
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from idp.api.deps import get_app_settings, get_current_user, get_db_session, get_object_store, get_principal
-from idp.api.disclosure import CaseMaskers, Disclosure, can_reveal, get_disclosure, record, window_open
+from idp.api.case_service import dispatch_run, open_run
+from idp.api.deps import get_app_settings, get_current_user, get_db_session, get_object_store, get_principal, require_role
+from idp.api.disclosure import CaseMaskers, Disclosure, actor_of, can_reveal, get_disclosure, record, window_open
 from idp.auth.authenticate import Principal
 from idp.api.schemas import DocumentSummary, SearchMatch
 from idp.config import Settings
 from idp.persistence.repositories import CaseRepository, DocumentRepository
+from idp.pipeline.deletion import delete_document, purge
+from idp.pipeline.retention import CaseBusy
 from idp.search.models import search_models
 from idp.search.query import Filters, Hit, search
 from idp.storage.object_store import S3ObjectStore
@@ -134,6 +138,36 @@ async def get_document_file(
     content = object_store.get(document.storage_key)
     content_type = mimetypes.guess_type(document.original_filename)[0] or "application/octet-stream"
     return Response(content=content, media_type=content_type)
+
+
+@router.delete("/{document_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_role("admin"))])
+async def delete_document_for_good(
+    document_id: uuid.UUID,
+    background_tasks: BackgroundTasks,
+    session: AsyncSession = Depends(get_db_session),
+    principal: Principal = Depends(get_principal),
+    object_store: S3ObjectStore = Depends(get_object_store),
+    settings: Settings = Depends(get_app_settings),
+) -> Response:
+    """Delete a document (e.g. uploaded by mistake) with its file and what was
+    read from it; a new run re-evaluates the case without it, so its verdict
+    and what it lacks are current."""
+    document = await DocumentRepository(session).get(document_id)
+    if document is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="document not found")
+    case = await CaseRepository(session).get(document.case_id)
+    if case.anonymized_at is not None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="los datos de este expediente se suprimieron: elimina el expediente completo")
+    try:
+        keys = await delete_document(session, document, actor=actor_of(principal), role=principal.role, channel="api" if principal.client else "web")
+    except CaseBusy as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    await purge(session, object_store, keys)
+    case = await CaseRepository(session).get(case.id)
+    run = await open_run(session, case, trigger="document_removed")
+    await session.commit()
+    await dispatch_run(session, settings, case, run, background_tasks)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/{document_id}", response_model=DocumentDetailResponse)

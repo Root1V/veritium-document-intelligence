@@ -34,7 +34,7 @@ _DECISION = {"continue": "Continuar", "human_review": "Revisión humana", "retur
 _CONDITION = {"open": "falta", "resolved": "cumplida", "waived": "dispensada"}
 _ATTRIBUTE = {"consistent": "coincide", "conflict": "conflicto", "single_source": "una fuente"}
 _SEVERITY = {"error": "error", "warning": "advertencia", "info": "info"}
-_TRIGGER = {"submit": "envío", "documents_added": "documentos agregados", "reprocess": "reproceso", "correction": "corrección"}
+_TRIGGER = {"submit": "envío", "documents_added": "documentos agregados", "reprocess": "reproceso", "correction": "corrección", "document_removed": "documento eliminado"}
 
 
 class ExportLabels(BaseModel):

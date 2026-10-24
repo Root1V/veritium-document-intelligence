@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { errorDetail } from '@/lib/apiErrors'
 import { canExecute, isAISpecialist } from '@/lib/auth'
+import { DeleteButton } from '@/components/DeleteButton'
 import { percent } from '@/lib/evaluation'
 import { downloadFile, useCreateEvalSuite, useCreateGoldenSet, useDocumentTypeCatalog, useEvalSuites } from '@/lib/queries'
 
@@ -138,12 +139,13 @@ export function EvaluationPage() {
               <TableHead>Última corrida</TableHead>
               <TableHead>Clasificación</TableHead>
               <TableHead>Campos</TableHead>
+              <TableHead className="w-10" />
             </TableRow>
           </TableHeader>
           <TableBody>
             {(suites ?? []).length === 0 && (
               <TableRow>
-                <TableCell colSpan={6} className="text-sm text-muted-foreground">
+                <TableCell colSpan={7} className="text-sm text-muted-foreground">
                   Todavía no hay suites.
                 </TableCell>
               </TableRow>
@@ -163,6 +165,16 @@ export function EvaluationPage() {
                 <TableCell className="text-sm">{s.latest_run ? `${s.latest_run.status} · ${new Date(s.latest_run.created_at).toLocaleString()}` : '—'}</TableCell>
                 <TableCell>{percent(s.latest_run?.metrics?.classification)}</TableCell>
                 <TableCell>{percent(s.latest_run?.metrics?.fields)}</TableCell>
+                <TableCell>
+                  {(canExecute() || isAISpecialist()) && (
+                    <DeleteButton
+                      iconOnly
+                      path={`/v1/eval-suites/${s.id}`}
+                      label="Eliminar suite"
+                      question={`Se eliminará para siempre la suite «${s.name}» con sus corridas y sus archivos.`}
+                    />
+                  )}
+                </TableCell>
               </TableRow>
             ))}
           </TableBody>

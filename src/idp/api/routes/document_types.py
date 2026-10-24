@@ -8,6 +8,8 @@ POST /v1/document-types                                  new type, as draft v1 (
 POST /v1/document-types/{key}/versions                   new draft version (admin)
 POST /v1/document-types/{key}/versions/{version}/publish draft -> published (admin)
 POST /v1/document-types/{key}/versions/{version}/retire  published -> retired (admin)
+DELETE /v1/document-types/{key}/versions/{version}       a draft, for good (admin; VRT-72)
+DELETE /v1/document-types/{key}                          the type: for good if nothing used it, else archived (admin; VRT-72)
 POST /v1/document-types/proposals                        draft a new type from an example document (admin, VRT-33)
 POST /v1/document-types/registrations                    register a reviewed draft: type published + its semantic
                                                          mappings as a new catalog version (admin, VRT-33)
@@ -23,11 +25,12 @@ from __future__ import annotations
 import asyncio
 import re
 import uuid
-from datetime import datetime
-from typing import Annotated
+from datetime import UTC, datetime
+from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile, status
 from pydantic import BaseModel, Field, ValidationError
+from sqlalchemy import Text, exists, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from idp.api.deps import get_app_settings, get_current_user, get_db_session, get_object_store, require_platform
@@ -35,7 +38,8 @@ from idp.classification.type_from_example import DraftMapping, checked_mappings,
 from idp.config import Settings
 from idp.domain.document_type_catalog import DocumentTypeDefinition, FieldSpec, compile_schema
 from idp.domain.semantic import FieldMapping, SemanticCatalog
-from idp.persistence.models import DocumentTypeRecord, DocumentTypeVersion, User
+from idp.persistence import tenancy
+from idp.persistence.models import Document, DocumentTypeRecord, DocumentTypeVersion, ProcessProfileVersion, SemanticCatalogVersion, User
 from idp.persistence.repositories import DocumentRepository, DocumentTypeRepository, SemanticCatalogRepository, TypeSuggestionRepository
 from idp.pipeline.orchestrator import parse_example
 from idp.storage.object_store import S3ObjectStore
@@ -261,6 +265,54 @@ async def retire_document_type_version(
     if row.status != "published":
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"solo se retira una versión publicada (está '{row.status}')")
     return _detail(record, await repo.set_status(row, status="retired", actor=user.email))
+
+
+@admin_router.delete("/{key}/versions/{version}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_document_type_draft(
+    key: str, version: int, session: AsyncSession = Depends(get_db_session), _: User = Depends(require_platform("admin"))
+) -> Response:
+    """A draft goes for good; a published version is retired instead — extractions name it."""
+    row = _version_or_404(await _type_or_404(DocumentTypeRepository(session), key), version)
+    if row.status != "draft":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="solo se elimina un borrador; una versión publicada se retira")
+    await session.delete(row)
+    await session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+class RemovedResponse(BaseModel):
+    outcome: Literal["deleted", "archived"]
+
+
+async def _in_use(session: AsyncSession, key: str) -> bool:
+    """A document of any unit is of this type, or a process or the semantic catalog names it."""
+    quoted = f'"{key}"'
+    with tenancy.system():  # the catalog is every unit's
+        return any([
+            await session.scalar(select(exists().where(Document.document_type == key))),
+            await session.scalar(select(exists().where(ProcessProfileVersion.definition.cast(Text).contains(quoted)))),
+            await session.scalar(select(exists().where(SemanticCatalogVersion.definition.cast(Text).contains(quoted)))),
+        ])
+
+
+@admin_router.delete("/{key}", response_model=RemovedResponse)
+async def delete_document_type(key: str, session: AsyncSession = Depends(get_db_session), _: User = Depends(require_platform("admin"))) -> RemovedResponse:
+    """A type nothing used goes for good (VRT-72). One that documents,
+    processes or the semantic catalog use is archived: its published
+    versions are retired, so no new document is classified as it, and its
+    drafts go; what was read with it keeps reading."""
+    record = await _type_or_404(DocumentTypeRepository(session), key)
+    if not await _in_use(session, key):
+        await session.delete(record)
+        await session.commit()
+        return RemovedResponse(outcome="deleted")
+    for row in list(record.versions):
+        if row.status == "draft":
+            record.versions.remove(row)
+        elif row.status == "published":
+            row.status, row.retired_at = "retired", datetime.now(UTC)
+    await session.commit()
+    return RemovedResponse(outcome="archived")
 
 
 # --- a new type from an example (VRT-33) -------------------------------------

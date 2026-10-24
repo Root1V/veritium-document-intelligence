@@ -150,11 +150,18 @@ async def expire(settings: Settings, *, now: datetime | None = None) -> int:
 
 
 async def run(settings: Settings, stop: asyncio.Event) -> None:
+    from idp.pipeline.deletion import housekeep  # imports this module
+
     while not stop.is_set():
         try:
             if expired := await expire(settings):
                 log.info("conservación: %d expediente(s) anonimizados por plazo vencido", expired)
         except Exception:
             log.exception("conservación: la revisión falló")
+        try:
+            if removed := await housekeep(settings):
+                log.info("limpieza: %d registro(s) técnicos vencidos eliminados", removed)
+        except Exception:
+            log.exception("limpieza: la revisión falló")
         with contextlib.suppress(TimeoutError):
             await asyncio.wait_for(stop.wait(), timeout=settings.retention_check_minutes * 60)

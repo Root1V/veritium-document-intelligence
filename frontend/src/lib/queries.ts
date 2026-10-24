@@ -1028,6 +1028,17 @@ export function useDataAccessLog() {
 }
 
 /** Remove a case's personal data for good, on request (VRT-58). Admins only. */
+/** Deletes what ``path`` names (VRT-72); ``reason`` stays in the record. A
+ * thing already in use comes back ``archived`` instead of ``deleted``. */
+export function useRemove() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ path, reason }: { path: string; reason?: string }) =>
+      (await apiClient.delete<{ outcome?: 'deleted' | 'archived' } | ''>(path, reason ? { data: { reason } } : undefined)).data || {},
+    onSuccess: () => queryClient.invalidateQueries(),
+  })
+}
+
 export function useSuppressCaseData() {
   const queryClient = useQueryClient()
   return useMutation({

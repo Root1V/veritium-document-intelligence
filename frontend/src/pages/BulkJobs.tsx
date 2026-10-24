@@ -2,7 +2,7 @@
 // one folder per case. Its cases advance a few at a time so online work is
 // never held back; each job shows how far it is and how its cases ended.
 import { useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Download, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
@@ -13,7 +13,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { ProgressFunnel } from '@/components/cases/ProgressFunnel'
 import { errorDetail } from '@/lib/apiErrors'
-import { canExecute } from '@/lib/auth'
+import { canExecute, isAdmin } from '@/lib/auth'
+import { DeleteButton } from '@/components/DeleteButton'
 import { downloadFile, useBulkJob, useBulkJobs, useProcessProfiles, useSubmitBulkJob } from '@/lib/queries'
 import { cn } from '@/lib/utils'
 import type { BulkJobSummary, BulkOutcome } from '@/types/api'
@@ -25,6 +26,8 @@ const OUTCOMES: { key: BulkOutcome; label: string; dot: string }[] = [
   { key: 'failed', label: 'Con error', dot: 'bg-slate-500' },
   { key: 'pending', label: 'En curso', dot: 'bg-sky-500' },
 ]
+const DELETE_JOB = 'Se eliminarán para siempre la carga y todos sus expedientes, con sus documentos y archivos.'
+
 const OUTCOME = Object.fromEntries(OUTCOMES.map((o) => [o.key, o]))
 
 function downloadResults(job: { id: string }) {
@@ -199,9 +202,12 @@ export function BulkJobsPage() {
                       <div>{j.created_by}</div>
                     </TableCell>
                     <TableCell>
-                      <Button variant="outline" size="sm" onClick={() => downloadResults(j)}>
-                        <Download className="size-3.5" /> Resultados
-                      </Button>
+                      <div className="flex items-center gap-1">
+                        <Button variant="outline" size="sm" onClick={() => downloadResults(j)}>
+                          <Download className="size-3.5" /> Resultados
+                        </Button>
+                        {isAdmin() && <DeleteButton iconOnly path={`/v1/bulk-jobs/${j.id}`} label="Eliminar carga" question={DELETE_JOB} />}
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -217,6 +223,7 @@ export function BulkJobsPage() {
 export function BulkJobDetailPage() {
   const { jobId } = useParams<{ jobId: string }>()
   const { data: job, isLoading } = useBulkJob(jobId)
+  const navigate = useNavigate()
   if (isLoading || !job) return <Loader2 className="size-6 animate-spin text-muted-foreground" />
 
   return (
@@ -229,6 +236,7 @@ export function BulkJobDetailPage() {
         <Link to="/bulk" className="ml-auto text-sm underline">
           Volver a cargas masivas
         </Link>
+        {isAdmin() && <DeleteButton path={`/v1/bulk-jobs/${job.id}`} label="Eliminar carga" question={DELETE_JOB} onDone={() => navigate('/bulk')} />}
       </div>
       <Card>
         <CardContent className="flex flex-wrap items-center gap-6 py-4">

@@ -113,3 +113,4 @@ Estados: `done` · `todo` · `blocked` (espera a otro equipo) · `superseded` (a
 | VRT-61 | Antifraude forense | todo | Detección de documentos alterados o generados con IA. |
 | VRT-62 | Auditoría inmutable y cumplimiento | todo | Hash encadenado y requisitos del DS 115-2025-PCM. |
 | VRT-71 | Administración de plataforma y unidad en blanco | done | Lo compartido lo cambia el equipo de plataforma; unidades vacías; primeros pasos. |
+| VRT-72 | Borrado físico y lógico | todo | «Eliminar» en cada pantalla: lo que nadie usó se borra con sus archivos; lo usado se archiva; limpieza técnica a 30 días. |

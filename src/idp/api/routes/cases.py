@@ -3,6 +3,7 @@
 POST /v1/cases                      submit a case under a process profile (202; Idempotency-Key)
 POST /v1/cases/{id}/documents       add documents to an open case → new run (202)
 POST /v1/cases/{id}/reprocess       redo a case, document, rule or attribute → new run (202; VRT-40)
+DELETE /v1/cases/{id}               delete the case and its files for good (admin; VRT-72)
 GET  /v1/cases                      list (filter by external_ref)
 GET  /v1/cases/{id}                 status, documents, runs
 GET  /v1/cases/{id}/result          the result contract v1 (api/case_contract.py), or its YAML /
@@ -30,6 +31,7 @@ from idp.api.case_service import dispatch_run, open_reprocess_run, open_run, rea
 from idp.api.deps import get_app_settings, get_current_user, get_db_session, get_object_store, get_principal, require_role
 from idp.api.disclosure import REVEALERS, Disclosure, actor_of, can_reveal, get_disclosure, open_window
 from idp.domain.process_profile import ProcessProfileDefinition
+from idp.pipeline.deletion import delete_case, purge
 from idp.pipeline.retention import CaseBusy, anonymize_case
 from idp.auth.authenticate import Principal
 from idp.config import Settings
@@ -370,6 +372,27 @@ async def suppress_personal_data(
     except CaseBusy as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     return SuppressResponse(removed_at=case.anonymized_at, files_removed=removed)
+
+
+class DeleteRequest(BaseModel):
+    reason: str = Field(min_length=5, max_length=500, description="Por qué se elimina, p. ej. se subió por error; queda en el registro.")
+
+
+@router.delete("/{case_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_role("admin"))])
+async def delete_case_for_good(
+    case_id: uuid.UUID, body: DeleteRequest, session: AsyncSession = Depends(get_db_session), principal: Principal = Depends(get_principal),
+    object_store: S3ObjectStore = Depends(get_object_store),
+) -> Response:
+    """Delete the case and everything of it — documents, files, readings,
+    findings, runs — for good (VRT-72). Only the record of who deleted it,
+    when and why stays, in the data access log."""
+    case = await _case_or_404(session, case_id)
+    try:
+        keys = await delete_case(session, case, actor=actor_of(principal), role=principal.role, channel="api" if principal.client else "web", note=body.reason)
+    except CaseBusy as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    await purge(session, object_store, keys)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 _ACCEPTED: dict[str, ExportFormat] = {

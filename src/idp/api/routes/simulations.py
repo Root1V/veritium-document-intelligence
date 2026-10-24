@@ -4,6 +4,7 @@ GET  /v1/simulations              list, newest first
 POST /v1/simulations              what_if over past cases (202), or start a shadow
 GET  /v1/simulations/{id}         summary and the cases that change
 POST /v1/simulations/{id}/stop    stop a shadow
+DELETE /v1/simulations/{id}       delete a finished one (VRT-72)
 Admins only: it is how a profile change is checked before publishing."""
 
 from __future__ import annotations
@@ -12,7 +13,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Literal
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -154,3 +155,15 @@ async def stop(simulation_id: uuid.UUID, session: AsyncSession = Depends(get_db_
     simulation.status, simulation.finished_at = "stopped", datetime.now(UTC)
     await session.commit()
     return _view(await _get(session, simulation_id))
+
+
+@router.delete("/{simulation_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=_admin)
+async def delete_simulation(simulation_id: uuid.UUID, session: AsyncSession = Depends(get_db_session)) -> Response:
+    simulation = await session.get(Simulation, simulation_id)
+    if simulation is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="simulation not found")
+    if simulation.status in ("pending", "running"):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="la simulación sigue en curso: detenla o espera a que termine")
+    await session.delete(simulation)
+    await session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

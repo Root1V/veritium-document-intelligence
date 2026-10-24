@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { getUnit, getUnits } from '@/lib/auth'
 import type { UserRole } from '@/types/api'
+import { DeleteButton } from '@/components/DeleteButton'
 
 const ROLE_LABEL: Record<UserRole, string> = {
   admin: 'Admin',
@@ -131,6 +132,7 @@ export function UsersPage() {
                 <TableHead>Correo</TableHead>
                 <TableHead>Rol</TableHead>
                 <TableHead>Se gestiona en</TableHead>
+                <TableHead className="w-10" />
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -144,6 +146,16 @@ export function UsersPage() {
                     </Badge>
                   </TableCell>
                   <TableCell className="text-muted-foreground">{user.managed_by === 'idp' ? 'Cuenta corporativa' : 'Veritium'}</TableCell>
+                  <TableCell>
+                    {user.managed_by === 'local' && (
+                      <DeleteButton
+                        iconOnly
+                        label="Quitar de la unidad"
+                        path={`/users/${user.id}`}
+                        question={`¿Quitar a ${user.name} de esta unidad? Deja de tener acceso aquí; lo que hizo sigue registrado a su nombre.`}
+                      />
+                    )}
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>

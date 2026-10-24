@@ -4,7 +4,7 @@
 // opens the evidence viewer on its page with its box. Each of them can be
 // reprocessed on its own as a new run (VRT-40), and the result exported (VRT-41).
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { CheckCircle2, CircleAlert, Download, Loader2, RefreshCw, Search } from 'lucide-react'
 import { toast } from 'sonner'
 import { InvestigationPanel } from '@/components/cases/InvestigationPanel'
@@ -17,7 +17,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { errorDetail } from '@/lib/apiErrors'
-import { canExecute, isAISpecialist } from '@/lib/auth'
+import { canExecute, isAISpecialist, isAdmin } from '@/lib/auth'
+import { DeleteButton } from '@/components/DeleteButton'
+import { DELETE_CASE } from '@/pages/Cases'
 import {
   downloadCaseResult,
   useCaseInvestigations,
@@ -183,6 +185,7 @@ function fieldEvidence(result: CaseResult, documentId: string, fieldPath: string
 }
 
 export function CaseDetailPage() {
+  const navigate = useNavigate()
   const { caseId } = useParams<{ caseId: string }>()
   const { data: result, isLoading } = useCaseResult(caseId)
   const { data: investigations } = useCaseInvestigations(caseId)
@@ -242,6 +245,9 @@ export function CaseDetailPage() {
         <Link to="/cases" className="text-sm underline">
           Volver a expedientes
         </Link>
+        {isAdmin() && (
+          <DeleteButton askReason path={`/v1/cases/${result.case.id}`} label="Eliminar expediente" question={DELETE_CASE} onDone={() => navigate('/cases')} />
+        )}
       </div>
       {summary?.personal_data && (
         <PersonalDataBar
@@ -428,6 +434,14 @@ export function CaseDetailPage() {
                     <Link to={`/documents/${d.id}`} className="text-xs underline">
                       campos
                     </Link>
+                    {isAdmin() && !summary?.personal_data?.removed_at && (
+                      <DeleteButton
+                        iconOnly
+                        path={`/documents/${d.id}`}
+                        label="Eliminar documento"
+                        question="Se eliminará para siempre este documento con su archivo y lo leído de él, y el expediente se volverá a evaluar sin él."
+                      />
+                    )}
                   </span>
                 </div>
               ))}

@@ -4,9 +4,13 @@ import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useCases } from '@/lib/queries'
 import { VERDICT_LABEL, VERDICT_VARIANT } from '@/lib/verdict'
-import { canExecute } from '@/lib/auth'
+import { canExecute, isAdmin } from '@/lib/auth'
+import { DeleteButton } from '@/components/DeleteButton'
 import { UploadLinkDialog } from '@/components/cases/UploadLinkDialog'
 import { ProgressFunnel } from '@/components/cases/ProgressFunnel'
+
+export const DELETE_CASE =
+  'Se eliminará para siempre el expediente con sus documentos, archivos, lecturas y hallazgos. Solo queda el registro de quién lo eliminó y por qué.'
 
 export function CasesPage() {
   const { data: cases, isLoading } = useCases()
@@ -32,6 +36,7 @@ export function CasesPage() {
               <TableHead>Avance</TableHead>
               <TableHead>Veredicto</TableHead>
               <TableHead>Creado</TableHead>
+              {isAdmin() && <TableHead className="w-10" />}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -58,6 +63,11 @@ export function CasesPage() {
                   )}
                 </TableCell>
                 <TableCell className="text-sm text-muted-foreground">{new Date(c.created_at).toLocaleString()}</TableCell>
+                {isAdmin() && (
+                  <TableCell>
+                    <DeleteButton iconOnly askReason path={`/v1/cases/${c.id}`} label="Eliminar expediente" question={DELETE_CASE} />
+                  </TableCell>
+                )}
               </TableRow>
             ))}
           </TableBody>

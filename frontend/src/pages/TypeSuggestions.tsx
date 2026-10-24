@@ -3,6 +3,7 @@ import { Loader2, Pencil, Plus, Sparkles, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { useResolveTypeSuggestion, useTypeSuggestions, useUpdateTypeSuggestion } from '@/lib/queries'
 import { canExecute } from '@/lib/auth'
+import { DeleteButton } from '@/components/DeleteButton'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -215,6 +216,11 @@ function SuggestionCard({ suggestion, canResolve }: { suggestion: TypeSuggestion
                   <Pencil className="size-3.5" />
                   Editar
                 </Button>
+                <DeleteButton
+                  className="ml-auto"
+                  path={`/type-suggestions/${suggestion.id}`}
+                  question="Se eliminará para siempre esta sugerencia. El documento que la originó no cambia."
+                />
               </>
             )}
           </div>

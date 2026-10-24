@@ -1376,11 +1376,11 @@ class LensRepository:
         await self._session.commit()
 
     async def list_lenses(self) -> list[LensDefinition]:
-        rows = (await self._session.scalars(select(LensRecord).order_by(LensRecord.key))).all()
+        rows = (await self._session.scalars(select(LensRecord).where(LensRecord.archived_at.is_(None)).order_by(LensRecord.key))).all()
         return [LensDefinition.model_validate(r.definition) for r in rows]
 
     async def get(self, key: str) -> LensDefinition | None:
-        row = await self._session.scalar(select(LensRecord).where(LensRecord.key == key))
+        row = await self._session.scalar(select(LensRecord).where(LensRecord.key == key, LensRecord.archived_at.is_(None)))
         return LensDefinition.model_validate(row.definition) if row else None
 
     async def save(self, lens: LensDefinition, *, by: str) -> None:
@@ -1388,8 +1388,14 @@ class LensRepository:
         if row is None:
             self._session.add(LensRecord(key=lens.key, definition=lens.model_dump(mode="json"), updated_by=by))
         else:
-            row.definition, row.updated_by = lens.model_dump(mode="json"), by
+            row.definition, row.updated_by, row.archived_at = lens.model_dump(mode="json"), by, None
         await self._session.flush()
+
+    async def archive(self, key: str) -> bool:
+        row = await self._session.scalar(select(LensRecord).where(LensRecord.key == key, LensRecord.archived_at.is_(None)))
+        if row is not None:
+            row.archived_at = datetime.now(UTC)
+        return row is not None
 
     async def results_for_case(self, case_id: uuid.UUID) -> list[LensResult]:
         stmt = select(LensResult).where(LensResult.case_id == case_id).order_by(LensResult.created_at.desc())

@@ -23,6 +23,7 @@ ACTION_LABEL = {
     "buscar": "Buscó por un dato",
     "suprimir": "Suprimió los datos",
     "vencer": "Venció el plazo de conservación",
+    "eliminar": "Eliminó",
 }
 
 

@@ -4,6 +4,7 @@ POST /v1/calibration                     compute a new version from the labelled
 GET  /v1/calibration/{version}           its per-field metrics, bins and suggested thresholds
 POST /v1/calibration/{version}/activate  review routing uses it from the next run on
 POST /v1/calibration/deactivate          back to the raw model confidence
+DELETE /v1/calibration/{version}         a draft never activated (VRT-72); the others stay, runs name them
 Computing and activating are for admins: activating changes which fields
 go to a human."""
 
@@ -13,7 +14,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -122,3 +123,13 @@ async def activate(version: int, session: AsyncSession = Depends(get_db_session)
     await CalibrationRepository(session).activate(row, by=user.name)
     await session.commit()
     return await _detail(session, row)
+
+
+@router.delete("/{version}", status_code=status.HTTP_204_NO_CONTENT, dependencies=_admin)
+async def delete_draft(version: int, session: AsyncSession = Depends(get_db_session)) -> Response:
+    row = await _version_or_404(session, version)
+    if row.status != "draft":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="solo se elimina una versión que nunca se activó: las corridas citan las demás")
+    await session.delete(row)
+    await session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

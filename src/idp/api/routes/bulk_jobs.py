@@ -5,6 +5,7 @@ GET  /v1/bulk-jobs                 list, with how far each one is
 GET  /v1/bulk-jobs/template        the manifest to fill, for a profile
 GET  /v1/bulk-jobs/{id}            its cases, each with its progress and verdict
 GET  /v1/bulk-jobs/{id}/results    one row per case (CSV, opens in Excel)
+DELETE /v1/bulk-jobs/{id}          the job and its cases, for good (admin; VRT-72)
 
 The cases run in the ``bulk`` lane and are released a few at a time by the
 feeder (pipeline/bulk.py); ``bulk_job.completed`` is emitted at the end."""
@@ -31,7 +32,7 @@ from sqlalchemy.orm import selectinload
 
 from idp.api.case_contract import latest_run
 from idp.api.case_service import Upload, resolve_profile_version, store_uploads
-from idp.api.disclosure import CaseMaskers
+from idp.api.disclosure import CaseMaskers, actor_of
 from idp.auth.authenticate import Principal
 from idp.api.deps import get_principal, get_app_settings, get_current_user, get_db_session, get_object_store, require_role
 from idp.config import Settings
@@ -41,6 +42,8 @@ from idp.domain.tables import read_table
 from idp.persistence.models import BulkJob, Case, CaseRun, ProcessProfileVersion, User
 from idp.persistence.repositories import CaseRepository, CaseRunRepository
 from idp.pipeline.bulk import outcome
+from idp.pipeline.deletion import delete_bulk_job, purge
+from idp.pipeline.retention import CaseBusy
 from idp.storage.object_store import S3ObjectStore
 
 router = APIRouter(prefix="/v1/bulk-jobs", tags=["bulk-jobs"], dependencies=[Depends(get_current_user)])
@@ -255,3 +258,19 @@ async def bulk_job_results(job_id: uuid.UUID, session: AsyncSession = Depends(ge
         media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": f'attachment; filename="resultados-{job.id.hex[:8]}.csv"'},
     )
+
+
+@router.delete("/{job_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_role("admin"))])
+async def delete_bulk_job_for_good(
+    job_id: uuid.UUID, session: AsyncSession = Depends(get_db_session), principal: Principal = Depends(get_principal),
+    object_store: S3ObjectStore = Depends(get_object_store),
+) -> Response:
+    """Delete the job and every case it brought, with their files (VRT-72);
+    refused while any of them is still being processed."""
+    job = await _job_or_404(session, job_id)
+    try:
+        keys = await delete_bulk_job(session, job, actor=actor_of(principal), role=principal.role, channel="api" if principal.client else "web")
+    except CaseBusy as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="hay expedientes del lote procesándose; inténtalo cuando terminen") from exc
+    await purge(session, object_store, keys)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

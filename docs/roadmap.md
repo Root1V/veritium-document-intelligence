@@ -394,6 +394,13 @@ Método, mediciones y aprendizajes: [eficiencia-modelos-ia.md](eficiencia-modelo
 - Una unidad nueva nace en blanco (solo el proceso interno ad-hoc); los procesos de ejemplo, si se piden. `plataforma` es un identificador reservado.
 - «Primeros pasos»: el orden para dejar lista una unidad, quién hace cada paso y el enlace; el inicio de una unidad vacía lleva ahí.
 
+## VRT-72 — Borrado físico y lógico
+**Why:** no había cómo borrar nada, y lo subido por error o de prueba ocupaba espacio para siempre (los archivos son lo que más pesa). **Scope:**
+- Físico, con archivos: expediente (solo admin, con motivo en el registro de accesos), documento suelto (el expediente se reevalúa), carga masiva con sus expedientes, suite de evaluación, prueba, sugerencia de tipo, borradores (proceso, tipo, catálogo, regla, calibración), archivo quitado de una sesión de carga. Un archivo se borra solo cuando ninguna fila lo usa.
+- Lógico cuando la historia lo nombra: proceso, tipo documental o lente ya usados se archivan; una regla que ya se aplicó se desactiva. Una persona se quita de la unidad; una unidad solo se borra sin expedientes.
+- Limpieza automática a 30 días (`technical_retention_days`): eventos y entregas de webhook, tareas A2A terminadas y sesiones de carga cerradas.
+- Fuera: auditoría y registros de acceso y validación, que nunca se borran. Al borrar un expediente se va su historial de correcciones; queda la constancia de quién lo borró.
+
 ## VRT-57 — SSO OIDC y multi-tenant
 **Why:** identidad corporativa y varias unidades de negocio que no deben ver lo de las otras. **Scope:**
 - Tenant = unidad de negocio de una misma empresa. Son de cada unidad: expedientes y todo lo que cuelga de ellos, procesos, sistemas conectados, webhooks, maestros, evaluación, calibración, simulaciones y cargas. Son corporativos: catálogos de tipos y semántico, biblioteca de reglas, lentes, instrucciones al modelo y las personas.

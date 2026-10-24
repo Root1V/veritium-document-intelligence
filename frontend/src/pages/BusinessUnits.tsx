@@ -1,4 +1,4 @@
-// Business units (VRT-57), for the platform team (VRT-71): register a unit — blank, or with the example processes — and rename it. Who
+// Business units (VRT-57), for the platform team (VRT-71): register a unit — blank, or with the example processes — rename it, or delete one without cases (VRT-72). Who
 // works in each one, and with which role, comes from the corporate identity
 // provider's groups — the page lists the ones to create there.
 import { useState } from 'react'
@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { errorDetail } from '@/lib/apiErrors'
 import { useBusinessUnitAction, useBusinessUnits } from '@/lib/queries'
+import { DeleteButton } from '@/components/DeleteButton'
 
 const ROLE_LABEL: Record<string, string> = { admin: 'Admin', operador: 'Operador', visor: 'Visor', especialista_ia: 'Especialista IA' }
 
@@ -137,18 +138,26 @@ export function BusinessUnitsPage() {
                       </div>
                     </TableCell>
                     <TableCell>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={action.isPending}
-                        onClick={() => {
-                          const next = prompt(`Nuevo nombre para «${u.name}»`, u.name)?.trim()
-                          if (next && next !== u.name)
-                            action.mutate({ kind: 'rename', key: u.key, name: next }, { onSuccess: () => toast.success('Nombre actualizado.'), onError: (e) => toast.error(errorDetail(e)) })
-                        }}
-                      >
-                        <Pencil className="size-3.5" /> Renombrar
-                      </Button>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={action.isPending}
+                          onClick={() => {
+                            const next = prompt(`Nuevo nombre para «${u.name}»`, u.name)?.trim()
+                            if (next && next !== u.name)
+                              action.mutate({ kind: 'rename', key: u.key, name: next }, { onSuccess: () => toast.success('Nombre actualizado.'), onError: (e) => toast.error(errorDetail(e)) })
+                          }}
+                        >
+                          <Pencil className="size-3.5" /> Renombrar
+                        </Button>
+                        <DeleteButton
+                          iconOnly
+                          label="Eliminar unidad"
+                          path={`/v1/tenants/${u.key}`}
+                          question={`¿Eliminar la unidad «${u.name}»? Solo se puede si no tiene expedientes: se borran sus procesos, sistemas conectados y accesos.`}
+                        />
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}

@@ -12,6 +12,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { errorDetail } from '@/lib/apiErrors'
 import { isAdmin } from '@/lib/auth'
+import { DeleteButton } from '@/components/DeleteButton'
 import { cn } from '@/lib/utils'
 import { useCalibration, useCalibrations, useComputeCalibration, useSetActiveCalibration } from '@/lib/queries'
 import type { CalibrationDetail, CalibrationSummary } from '@/types/api'
@@ -266,6 +267,14 @@ export function CalibrationPage() {
                     Usar esta medición
                   </Button>
                 ))}
+              {isAdmin() && detail.status === 'draft' && (
+                <DeleteButton
+                  path={`/v1/calibration/${detail.version}`}
+                  label="Eliminar medición"
+                  question="Se eliminará para siempre esta medición, que nunca se usó."
+                  onDone={() => setPicked(undefined)}
+                />
+              )}
             </CardContent>
           </Card>
 

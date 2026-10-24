@@ -6,6 +6,7 @@ POST /v1/eval-suites                    from a CSV/Excel table + the files it na
 POST /v1/eval-suites/from-corrections   golden set from the human corrections
 GET  /v1/eval-suites/{id}               cases and runs
 POST /v1/eval-suites/{id}/runs          run it (202), or resume its unfinished run
+DELETE /v1/eval-suites/{id}             the suite, its runs and its files, for good (VRT-72)
 GET  /v1/eval-runs/{id}                 metrics and results; ?baseline= compares with another run"""
 
 from __future__ import annotations
@@ -30,6 +31,7 @@ from idp.domain.evaluation import RunComparison, compare_runs, parse_table, temp
 from idp.evaluation.runner import is_active, outcome_of, run_evaluation
 from idp.persistence.models import EvalCase, EvalRun, EvalSuite, User
 from idp.persistence.repositories import SemanticCatalogRepository, DocumentTypeRepository, EvaluationRepository
+from idp.pipeline.deletion import purge
 from idp.storage.object_store import S3ObjectStore
 
 router = APIRouter(prefix="/v1", tags=["evaluation"], dependencies=[Depends(get_current_user)])
@@ -310,3 +312,17 @@ async def get_run(
             [outcome_of(r, cases[r.case_id]) for r in base.results], [outcome_of(r, cases[r.case_id]) for r in run.results]
         )
     return detail
+
+
+@router.delete("/eval-suites/{suite_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=_can_run)
+async def delete_suite(
+    suite_id: uuid.UUID, session: AsyncSession = Depends(get_db_session), object_store: S3ObjectStore = Depends(get_object_store)
+) -> Response:
+    """Its files go too, unless a case's document still uses them (a golden set from corrections)."""
+    suite = await _suite_or_404(session, suite_id)
+    if await EvaluationRepository(session).unfinished_run(suite.id) is not None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="la suite se está corriendo; inténtalo cuando termine")
+    keys = {c.storage_key for c in suite.cases}
+    await session.delete(suite)
+    await purge(session, object_store, keys)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

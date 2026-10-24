@@ -10,6 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { errorDetail } from '@/lib/apiErrors'
 import { isPlatformAdmin } from '@/lib/auth'
+import { DeleteButton } from '@/components/DeleteButton'
 import {
   useCreateCatalogDraft,
   useDocumentTypeCatalog,
@@ -252,9 +253,16 @@ export function SemanticCatalogPage() {
               Hay un borrador <strong>v{pendingDraft.version}</strong> sin publicar ({pendingDraft.created_by}).
             </span>
             {isPlatformAdmin() && (
-              <Button size="sm" onClick={() => publishVersion(pendingDraft.version)} disabled={publish.isPending}>
-                Publicar v{pendingDraft.version}
-              </Button>
+              <span className="flex items-center gap-2">
+                <DeleteButton
+                  label="Descartar borrador"
+                  path={`/v1/semantic-catalog/versions/${pendingDraft.version}`}
+                  question={`Se eliminará para siempre el borrador v${pendingDraft.version} del catálogo semántico.`}
+                />
+                <Button size="sm" onClick={() => publishVersion(pendingDraft.version)} disabled={publish.isPending}>
+                  Publicar v{pendingDraft.version}
+                </Button>
+              </span>
             )}
           </CardContent>
         </Card>

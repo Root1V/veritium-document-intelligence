@@ -8,7 +8,8 @@ never code. Accepting only marks the proposal actionable; it does NOT
 register the type in ``domain/document_types.py`` — turning an accepted
 proposal into a real, registered ``DocumentType`` (schema + extractor +
 prompts) remains a deliberate code change, same as every type added to
-this platform so far."""
+this platform so far. DELETE /type-suggestions/{id} removes one for
+good, pending or decided — nothing reads it after (VRT-72)."""
 
 from __future__ import annotations
 
@@ -16,7 +17,7 @@ import re
 import uuid
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -158,3 +159,13 @@ async def reject_suggestion(
     current_user: User = Depends(get_current_user),
 ) -> TypeSuggestionResponse:
     return await _resolve(suggestion_id, "rejected", current_user.name, session)
+
+
+@router.delete("/{suggestion_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_role("operador", "admin"))])
+async def delete_suggestion(suggestion_id: uuid.UUID, session: AsyncSession = Depends(get_db_session)) -> Response:
+    row = await session.get(DocumentTypeSuggestion, suggestion_id)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="suggestion not found")
+    await session.delete(row)
+    await session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

@@ -4,6 +4,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { isAdmin } from '@/lib/auth'
+import { DeleteButton } from '@/components/DeleteButton'
 import { useProcessProfiles } from '@/lib/queries'
 
 export function ProfilesPage() {
@@ -45,11 +46,13 @@ export function ProfilesPage() {
             {(profiles ?? []).map((p) => {
               const active = p.versions.find((v) => v.version === p.active_version)
               const draft = p.versions.find((v) => v.status === 'draft')
+              const archived = p.versions.length > 0 && p.versions.every((v) => v.status === 'retired')
               return (
                 <TableRow key={p.key}>
                   <TableCell>
                     <div className="font-medium">{p.name}</div>
                     <code className="text-xs text-muted-foreground">{p.key}</code>
+                    {archived && <Badge variant="secondary" className="ml-2">archivado</Badge>}
                   </TableCell>
                   <TableCell>{p.active_version ? `v${p.active_version}` : '—'}</TableCell>
                   <TableCell>{active ? `v${active.semantic_catalog_version}` : '—'}</TableCell>
@@ -60,6 +63,14 @@ export function ProfilesPage() {
                         probar el borrador
                       </Link>
                     )}
+                    {draft && isAdmin() && (
+                      <DeleteButton
+                        iconOnly
+                        label="Descartar borrador"
+                        path={`/v1/profiles/${p.key}/versions/${draft.version}`}
+                        question={`Se eliminará para siempre el borrador v${draft.version} de «${p.name}».`}
+                      />
+                    )}
                   </TableCell>
                   <TableCell className="text-right">
                     {isAdmin() && (
@@ -68,6 +79,14 @@ export function ProfilesPage() {
                           <Pencil className="size-3.5" /> Nueva versión
                         </Link>
                       </Button>
+                    )}
+                    {isAdmin() && p.key !== 'ad-hoc' && !archived && (
+                      <DeleteButton
+                        iconOnly
+                        label="Eliminar proceso"
+                        path={`/v1/profiles/${p.key}`}
+                        question={`¿Eliminar el proceso «${p.name}»? Si ningún expediente lo usó, se borra del todo; si ya se usó, se archiva: no recibe expedientes nuevos y los existentes conservan su versión.`}
+                      />
                     )}
                   </TableCell>
                 </TableRow>

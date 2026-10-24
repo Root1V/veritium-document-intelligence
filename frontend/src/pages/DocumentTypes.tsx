@@ -1,7 +1,8 @@
 import { Link } from 'react-router-dom'
 import { Loader2, Plus } from 'lucide-react'
 import { useDocumentTypeCatalog } from '@/lib/queries'
-import { isPlatformAdmin } from '@/lib/auth'
+import { canExecute, isPlatformAdmin } from '@/lib/auth'
+import { DeleteButton } from '@/components/DeleteButton'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -61,6 +62,14 @@ export function DocumentTypesPage() {
                           </Link>
                         </Button>
                       )}
+                      {canExecute() && (
+                        <DeleteButton
+                          className="self-start"
+                          label="Descartar sugerencia"
+                          path={`/type-suggestions/${type.suggestion_id}`}
+                          question="Se eliminará para siempre esta sugerencia. El documento que la originó no cambia."
+                        />
+                      )}
                     </CardHeader>
                   </Card>
                 ))}
@@ -76,7 +85,17 @@ export function DocumentTypesPage() {
                   <CardHeader>
                     <CardTitle className="flex items-center justify-between gap-2 text-sm">
                       <span>{type.display_name}</span>
-                      <Badge variant="outline" className="font-mono text-[11px]">v{type.version}</Badge>
+                      <span className="flex items-center gap-1">
+                        <Badge variant="outline" className="font-mono text-[11px]">v{type.version}</Badge>
+                        {isPlatformAdmin() && (
+                          <DeleteButton
+                            iconOnly
+                            label="Eliminar tipo"
+                            path={`/v1/document-types/${type.name}`}
+                            question={`¿Eliminar el tipo «${type.display_name}»? Si nada lo usó, se borra del todo; si ya hay documentos, procesos o mapeos que lo usan, se archiva: ningún documento nuevo se clasificará así y lo ya leído se conserva.`}
+                          />
+                        )}
+                      </span>
                     </CardTitle>
                     <p className="font-mono text-xs text-muted-foreground">{type.name}</p>
                     <CardDescription>{type.description}</CardDescription>

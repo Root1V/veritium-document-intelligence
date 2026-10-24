@@ -4,22 +4,23 @@ platform team (VRT-71): a unit's admin runs their unit, not the set of them.
 Registering a unit opens it to no one: who works in it, and with which
 role, comes from the identity provider's groups "<prefix>:<unit>:<role>"
 (or from Usuarios, for accounts kept in Veritium). So each unit lists the
-groups to create there. Units are not deleted: their data would go with them."""
+groups to create there. Only a unit without cases is deleted (VRT-72), with
+its configuration and who worked in it; one with cases keeps them."""
 
 from __future__ import annotations
 
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from idp.api.deps import get_app_settings, get_db_session, require_platform
 from idp.auth.oidc import PLATFORM, ROLES
 from idp.config import Settings
 from idp.persistence import tenancy
-from idp.persistence.models import Membership, Tenant
+from idp.persistence.models import Base, Case, Membership, Tenant
 from idp.persistence.repositories import register_tenant
 
 router = APIRouter(prefix="/v1/tenants", tags=["tenants"], dependencies=[Depends(require_platform("admin"))])
@@ -85,3 +86,24 @@ async def rename_unit(
     unit.name = body.name.strip()
     await session.commit()
     return _view(settings, unit, (await _people(session)).get(key, 0))
+
+
+@router.delete("/{key}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_unit(key: str, session: AsyncSession = Depends(get_db_session)) -> Response:
+    unit = await session.get(Tenant, key)
+    if unit is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="no existe esa unidad")
+    if key == tenancy.active():
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="estás trabajando en esta unidad: cámbiate a otra para eliminarla")
+    with tenancy.acting_for(key):
+        cases = await session.scalar(select(func.count()).select_from(Case))
+        if cases:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"la unidad tiene {cases} expediente(s): elimínalos primero")
+        # Its configuration — processes, connected systems, webhooks, suites… — dependents first.
+        for table in reversed(Base.metadata.sorted_tables):
+            if "tenant" in table.c and table.name != "memberships":
+                await session.execute(delete(table).where(table.c.tenant == key))
+    await session.execute(delete(Membership).where(Membership.tenant == key))
+    await session.delete(unit)
+    await session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

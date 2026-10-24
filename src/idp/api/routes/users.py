@@ -3,17 +3,20 @@ admin-only. Lets an admin add teammates with a role (admin | operador |
 visor) from the UI instead of always needing shell access to run
 ``scripts/create_user.py``; the script remains the way to bootstrap the very
 first admin. People who sign in through the identity provider get their
-units and roles from its groups: here they are only shown."""
+units and roles from its groups: here they are only shown. DELETE
+/users/{id} takes someone out of the unit (VRT-72); the person stays, so
+their name in the records still says who did what."""
 
 from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from idp.api.deps import get_db_session, require_role
+from idp.api.deps import get_current_user, get_db_session, require_role
 from idp.auth.security import hash_password
 from idp.persistence import tenancy
 from idp.persistence.models import Membership, User
@@ -64,3 +67,17 @@ async def create_user(body: CreateUserRequest, session: AsyncSession = Depends(g
     membership = await repo.set_membership(user.id, tenant, body.role)
     await session.commit()
     return _to_response(user, membership)
+
+
+@router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def remove_from_unit(user_id: uuid.UUID, session: AsyncSession = Depends(get_db_session), current: User = Depends(get_current_user)) -> Response:
+    if user_id == current.id:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="no puedes quitarte a ti mismo de la unidad")
+    membership = await session.scalar(select(Membership).where(Membership.user_id == user_id, Membership.tenant == tenancy.current()))
+    if membership is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="user not found")
+    if membership.source == "idp":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="su acceso viene del proveedor de identidad: quítalo del grupo allí")
+    await session.delete(membership)
+    await session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

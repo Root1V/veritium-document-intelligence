@@ -18,18 +18,20 @@ from __future__ import annotations
 
 import re
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel, Field, field_validator
+from sqlalchemy import exists, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from idp.api.deps import get_app_settings, get_current_user, get_db_session, require_role
 from idp.config import Settings
 from idp.domain.process_profile import LEGACY_RULE_IDS, ProcessProfileDefinition, cross_reference_errors
 from idp.domain.semantic import SemanticCatalog
-from idp.persistence.models import ProcessProfile, ProcessProfileVersion, User
+from idp.domain.process_profile_seed import AD_HOC_KEY
+from idp.persistence.models import Case, ProcessProfile, ProcessProfileVersion, UploadSession, User
 from idp.persistence.repositories import DocumentTypeRepository, ProcessProfileRepository, SemanticCatalogRepository, ValidationRuleRepository
 from idp.pipeline.orchestrator import hardcoded_rule_metadata
 from idp.validation.rules.semantic_rules import format_rule_id, format_rules
@@ -322,3 +324,47 @@ async def _known_rule_ids(session: AsyncSession, settings: Settings) -> set[str]
     hardcoded = {rule_id for rule_id, _, _ in hardcoded_rule_metadata(settings)}
     cel = {row.rule_id for row in await ValidationRuleRepository(session).list_all(kind="cel") if row.status != "rejected"}
     return hardcoded | cel
+
+
+@router.delete("/{key}/versions/{version}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_profile_draft(
+    key: str, version: int, session: AsyncSession = Depends(get_db_session), _: User = Depends(require_role("admin"))
+) -> Response:
+    """A draft goes for good (VRT-72); a published version is retired instead — cases name it."""
+    repo = ProcessProfileRepository(session)
+    row = await _version_or_404(repo, await _profile_or_404(repo, key), version)
+    if row.status != "draft":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="solo se elimina un borrador; una versión publicada se retira")
+    await session.delete(row)
+    await session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+class RemovedResponse(BaseModel):
+    outcome: Literal["deleted", "archived"]
+
+
+@router.delete("/{key}", response_model=RemovedResponse)
+async def delete_profile(key: str, session: AsyncSession = Depends(get_db_session), _: User = Depends(require_role("admin"))) -> RemovedResponse:
+    """A process no case ever used goes for good (VRT-72). One that cases
+    used is archived: its published versions are retired, so no new case
+    can use it, and its drafts go; those cases keep the version they ran under."""
+    profile = await _profile_or_404(ProcessProfileRepository(session), key)
+    if profile.key == AD_HOC_KEY:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="el proceso interno ad-hoc no se elimina: lo usan las cargas sin proceso")
+    ids = [v.id for v in profile.versions]
+    used = bool(ids) and any([
+        await session.scalar(select(exists().where(Case.profile_version_id.in_(ids)))),
+        await session.scalar(select(exists().where(UploadSession.profile_version_id.in_(ids)))),
+    ])
+    if not used:
+        await session.delete(profile)
+        await session.commit()
+        return RemovedResponse(outcome="deleted")
+    for row in list(profile.versions):
+        if row.status == "draft":
+            profile.versions.remove(row)
+        elif row.status == "published":
+            row.status, row.retired_at = "retired", datetime.now(UTC)
+    await session.commit()
+    return RemovedResponse(outcome="archived")

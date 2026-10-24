@@ -1,6 +1,7 @@
 """Lenses of Risk and Legal (VRT-45).
 GET  /v1/lenses                         the lenses
 PUT  /v1/lenses/{key}                   create or edit one (admin): its playbook is Legal's to keep
+DELETE /v1/lenses/{key}                 archive one (admin; VRT-72): its readings keep their definition
 GET  /v1/cases/{id}/lenses              the lenses that apply to a case, with their latest reading
 POST /v1/cases/{id}/lenses/{key}        read the case through a lens (202)"""
 
@@ -9,7 +10,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response, status
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -65,6 +66,14 @@ async def save_lens(key: str, lens: LensDefinition, session: AsyncSession = Depe
     await LensRepository(session).save(lens, by=user.name)
     await session.commit()
     return lens
+
+
+@router.delete("/lenses/{key}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_platform("admin"))])
+async def archive_lens(key: str, session: AsyncSession = Depends(get_db_session)) -> Response:
+    if not await LensRepository(session).archive(key):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="lens not found")
+    await session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/cases/{case_id}/lenses", response_model=list[CaseLens])

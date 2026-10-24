@@ -15,6 +15,7 @@ import {
   useValidationRules,
 } from '@/lib/queries'
 import { isPlatformAdmin } from '@/lib/auth'
+import { DeleteButton } from '@/components/DeleteButton'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -485,6 +486,11 @@ function RuleDraftCard({ rule }: { rule: ValidationRule }) {
                 <Pencil className="size-3.5" />
                 Editar
               </Button>
+              <DeleteButton
+                className="ml-auto"
+                path={`/validation-rules/${rule.id}`}
+                question="Se eliminará para siempre este borrador de regla. Nunca se aplicó a ningún expediente."
+              />
             </>
           )}
         </div>

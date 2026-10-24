@@ -57,7 +57,7 @@ def create_app() -> FastAPI:
         stop = asyncio.Event()
         task = asyncio.create_task(dispatcher.run(settings, stop)) if settings.webhook_dispatcher_enabled else None
         feeder = asyncio.create_task(bulk.run(settings, stop))  # releases bulk jobs' cases a few at a time (VRT-48)
-        keeper = asyncio.create_task(retention.run(settings, stop))  # anonymizes cases whose retention term ran out (VRT-58)
+        keeper = asyncio.create_task(retention.run(settings, stop))  # anonymizes cases whose retention term ran out (VRT-58); purges old technical records (VRT-72)
         # The event bus, when configured: outbox out, commands in (VRT-49).
         events = asyncio.create_task(bus.run(settings, stop)) if settings.event_bus_brokers else None
         # The MCP server (VRT-51) and the in-process executor / rule drafting, which call models; search, its own (VRT-59).

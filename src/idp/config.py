@@ -55,6 +55,9 @@ class Settings(BaseSettings):
     # --- Personal data (VRT-58) ---
     # How often the API looks for cases whose process's retention term ran out.
     retention_check_minutes: float = 60.0
+    # Days kept of what is only technical (VRT-72): events and webhook
+    # deliveries, finished A2A tasks, closed upload sessions.
+    technical_retention_days: int = 30
     # Hosts of the model gateway accepted in production besides loopback and
     # private addresses (e.g. prometheus.interno): the models read whole documents.
     model_gateway_hosts: list[str] = []

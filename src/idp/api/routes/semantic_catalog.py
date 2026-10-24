@@ -6,6 +6,7 @@ GET  /v1/semantic-catalog/versions/{version}    one version, with its catalog
 POST /v1/semantic-catalog/versions              new draft (admin); the catalog is validated on the way in (422 if inconsistent),
                                                 and its mappings against the published document types (400)
 POST /v1/semantic-catalog/versions/{version}/publish   draft -> published (admin)
+DELETE /v1/semantic-catalog/versions/{version}          a draft, for good (admin; VRT-72)
 
 Published versions are immutable: a change is always a new draft version.
 The web page is /semantic-catalog (VRT-34)."""
@@ -16,7 +17,7 @@ import re
 import uuid
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -126,3 +127,15 @@ async def publish_catalog_version(
     if row.status != "draft":
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"version {version} is already {row.status}; published versions are immutable")
     return _detail(await repo.publish(row, published_by=user.email))
+
+
+@router.delete("/versions/{version}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_catalog_draft(version: int, session: AsyncSession = Depends(get_db_session), _: User = Depends(require_platform("admin"))) -> Response:
+    row = await SemanticCatalogRepository(session).get_version(version)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="catalog version not found")
+    if row.status != "draft":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="solo se elimina un borrador: los procesos fijan las versiones publicadas")
+    await session.delete(row)
+    await session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

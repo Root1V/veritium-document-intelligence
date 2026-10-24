@@ -18,9 +18,9 @@ guarantee: PATCH only ever touches the DB row, never generates code.
 Unlike document types, though, there is no separate manual code step for
 activation — the generic interpreter (validation/rules/generic.py) already
 exists, so activating a row makes it execute in the very next batch run.
-No row is ever hard-deleted here either — "eliminar" a rule is a status
-transition (disabled/rejected), same convention as the rest of this
-platform."""
+A rule that ever ran is never hard-deleted — findings name it, so
+"eliminar" it is a status transition (disabled); DELETE /validation-rules/{id}
+removes for good only a draft or a rejected one, which never ran (VRT-72)."""
 
 from __future__ import annotations
 
@@ -28,14 +28,16 @@ import asyncio
 import uuid
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel, field_validator, model_validator
+from sqlalchemy import Text, exists, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from idp.api.deps import get_app_settings, get_current_user, get_db_session, require_platform
 from idp.config import Settings
 from idp.domain.rule_draft import RuleDraft, RuleTestCase
-from idp.persistence.models import User, ValidationRuleDefinition
+from idp.persistence import tenancy
+from idp.persistence.models import ProcessProfileVersion, User, ValidationRuleDefinition
 from idp.persistence.repositories import DocumentTypeRepository, SemanticCatalogRepository, ValidationRuleRepository
 from idp.pipeline.orchestrator import hardcoded_rule_metadata
 from idp.validation.cel import CelCompileError, compile_expression
@@ -375,6 +377,23 @@ async def disable_active_rule(
     row = await repo.set_status(definition_id, status="disabled", reviewer_identity=current_user.name)
     await session.commit()
     return _to_response(row)
+
+
+@router.delete("/{definition_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_platform("admin"))])
+async def delete_rule(definition_id: uuid.UUID, session: AsyncSession = Depends(get_db_session)) -> Response:
+    row = await ValidationRuleRepository(session).get(definition_id)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="rule not found")
+    if row.status not in ("draft", "rejected"):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="una regla que ya se aplicó no se elimina (los hallazgos la citan): desactívala")
+    if row.status == "draft":
+        with tenancy.system():  # a draft may already be bound by any unit's process
+            bound = await session.scalar(select(exists().where(ProcessProfileVersion.definition.cast(Text).contains(f'"{row.rule_id}"'))))
+        if bound:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="un proceso ya usa esta regla: recházala en vez de eliminarla")
+    await session.delete(row)
+    await session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 # --- Toggle endpoints for the hardcoded rule_ids ----------------------------

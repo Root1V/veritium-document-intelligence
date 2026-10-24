@@ -16,6 +16,7 @@ import { isPlatformAdmin } from '@/lib/auth'
 import { useDocumentTypeCatalog, useLenses, useSaveLens } from '@/lib/queries'
 import type { LensDefinition, PlaybookItem } from '@/types/api'
 import { SharedConfigNote } from '@/components/layout/SharedConfigNote'
+import { DeleteButton } from '@/components/DeleteButton'
 
 const AREA = { riesgos: 'Riesgos', legal: 'Legal' } as const
 const IMPORTANCE = { alta: 'Importante', media: 'Normal', baja: 'Menor' } as const
@@ -50,9 +51,17 @@ function LensCard({ lens, typeName }: { lens: LensDefinition; typeName: Record<s
         <CardTitle className="flex flex-wrap items-center gap-2">
           <Badge variant="secondary">{AREA[lens.area]}</Badge> {lens.name}
           {isPlatformAdmin() && !editing && (
-            <Button size="sm" variant="outline" className="ml-auto" onClick={() => setDraft(structuredClone(lens))}>
-              Editar
-            </Button>
+            <span className="ml-auto flex items-center gap-1">
+              <Button size="sm" variant="outline" onClick={() => setDraft(structuredClone(lens))}>
+                Editar
+              </Button>
+              <DeleteButton
+                iconOnly
+                label="Eliminar lente"
+                path={`/v1/lenses/${lens.key}`}
+                question={`¿Eliminar la lente «${lens.name}»? Deja de ofrecerse en los expedientes; las lecturas ya hechas se conservan.`}
+              />
+            </span>
           )}
         </CardTitle>
         <CardDescription>

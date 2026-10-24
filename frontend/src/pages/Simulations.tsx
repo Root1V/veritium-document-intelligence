@@ -12,6 +12,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { errorDetail } from '@/lib/apiErrors'
 import { isAdmin } from '@/lib/auth'
+import { DeleteButton } from '@/components/DeleteButton'
 import { cn } from '@/lib/utils'
 import { VERDICT_LABEL, VERDICT_VARIANT } from '@/lib/verdict'
 import { useProcessProfiles, useSimulation, useSimulations, useStartSimulation, useStopSimulation } from '@/lib/queries'
@@ -170,7 +171,7 @@ function NewTest({ onStarted }: { onStarted: (id: string) => void }) {
   )
 }
 
-function Result({ id }: { id: string }) {
+function Result({ id, onDeleted }: { id: string; onDeleted: () => void }) {
   const { data: s } = useSimulation(id)
   const stop = useStopSimulation()
   const [showSame, setShowSame] = useState(false)
@@ -297,6 +298,11 @@ function Result({ id }: { id: string }) {
             </Button>
           </div>
         )}
+        {isAdmin() && s.status !== 'running' && s.status !== 'pending' && (
+          <div>
+            <DeleteButton path={`/v1/simulations/${s.id}`} label="Eliminar prueba" question="Se eliminará para siempre esta prueba y su resultado. Ningún expediente cambia." onDone={onDeleted} />
+          </div>
+        )}
       </CardContent>
     </Card>
   )
@@ -333,7 +339,7 @@ export function SimulationsPage() {
               </Button>
             ))}
           </div>
-          {shown && <Result id={shown} />}
+          {shown && <Result id={shown} onDeleted={() => setPicked(undefined)} />}
         </>
       )}
     </div>

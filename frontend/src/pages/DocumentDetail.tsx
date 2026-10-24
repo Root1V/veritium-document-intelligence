@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { Loader2 } from 'lucide-react'
 import { useDocument } from '@/lib/queries'
 import { flattenExtraction, splitExtractionPayload } from '@/lib/extraction'
@@ -13,8 +13,11 @@ import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import type { Extracted } from '@/types/api'
 import { PersonalDataBar } from '@/components/cases/PersonalDataBar'
+import { DeleteButton } from '@/components/DeleteButton'
+import { isAdmin } from '@/lib/auth'
 
 export function DocumentDetailPage() {
+  const navigate = useNavigate()
   const { documentId } = useParams<{ documentId: string }>()
   const { data: document, isLoading } = useDocument(documentId)
 
@@ -81,6 +84,15 @@ export function DocumentDetailPage() {
           <span className="text-xs text-muted-foreground">
             Confianza de clasificación: {(document.classification_confidence * 100).toFixed(0)}%
           </span>
+        )}
+        {isAdmin() && (
+          <DeleteButton
+            className="ml-auto"
+            path={`/documents/${document.id}`}
+            label="Eliminar documento"
+            question="Se eliminará para siempre este documento con su archivo y lo leído de él, y el expediente se volverá a evaluar sin él."
+            onDone={() => navigate(`/cases/${document.case_id}`)}
+          />
         )}
       </div>
       <PersonalDataBar caseId={document.case_id} visible={document.personal_data_visible} canReveal={document.can_reveal} />

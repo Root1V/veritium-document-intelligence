@@ -148,7 +148,7 @@ class CaseRun(TenantScoped, Base):
     id: Mapped[uuid.UUID] = _uuid_pk()
     case_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("cases.id", ondelete="CASCADE"), nullable=False)
     run_number: Mapped[int] = mapped_column(Integer, nullable=False)
-    trigger: Mapped[str] = mapped_column(String(32), nullable=False)  # submit | documents_added | reprocess | correction
+    trigger: Mapped[str] = mapped_column(String(32), nullable=False)  # submit | documents_added | reprocess | correction | document_removed
     # What a reprocess run redoes (domain/reprocess.py::ReprocessScope);
     # None for a run that processes the whole case.
     scope: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
@@ -779,7 +779,8 @@ class SimulationResult(TenantScoped, Base):
 class LensRecord(Base):
     """A lens an area uses to read cases (VRT-45): domain/lenses.py::
     LensDefinition. Editable by an admin; each result keeps the definition
-    it was produced with."""
+    it was produced with. Archived, never deleted (VRT-72): a starting lens
+    would be seeded again."""
 
     __tablename__ = "lenses"
 
@@ -788,6 +789,7 @@ class LensRecord(Base):
     definition: Mapped[dict] = mapped_column(JSONB, nullable=False)
     updated_by: Mapped[str | None] = mapped_column(String(256), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class LensResult(TenantScoped, Base):
@@ -1018,7 +1020,7 @@ class DataAccess(TenantScoped, Base):
     __table_args__ = (Index("ix_data_access_log_case", "case_id"),)
 
     id: Mapped[uuid.UUID] = _uuid_pk()
-    action: Mapped[str] = mapped_column(String(32), nullable=False)  # ver_datos | descargar_original | suprimir | vencer
+    action: Mapped[str] = mapped_column(String(32), nullable=False)  # ver_datos | descargar_original | suprimir | vencer | eliminar
     what: Mapped[str] = mapped_column(String(256), nullable=False)  # the resource, in words
     case_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     document_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)

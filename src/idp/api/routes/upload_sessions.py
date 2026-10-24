@@ -32,6 +32,7 @@ from idp.domain.quick_check import Check, verdict
 from idp.persistence import tenancy
 from idp.persistence.models import ProcessProfileVersion, UploadedFile, UploadSession, User
 from idp.persistence.repositories import CaseRepository, CaseRunRepository, DocumentRepository, DocumentTypeRepository
+from idp.pipeline.deletion import purge
 from idp.pipeline.orchestrator import load_semantic_catalog
 from idp.pipeline.quick_check import check_file
 from idp.validation.cel import CelEvaluationError, compile_expression, evaluate
@@ -261,14 +262,16 @@ async def remove_file(
     upload: UploadSession = Depends(_by_token),
     session: AsyncSession = Depends(get_db_session),
     settings: Settings = Depends(get_app_settings),
+    object_store: S3ObjectStore = Depends(get_object_store),
 ) -> SessionView:
+    """The file goes for good, not only from the list (VRT-72)."""
     if upload.status != "open":
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="los documentos ya se enviaron")
     row = next((f for f in upload.files if f.id == file_id), None)
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="file not found")
-    row.removed = True
-    await session.commit()
+    upload.files.remove(row)
+    await purge(session, object_store, {row.storage_key})
     return await _view(session, upload, settings)
 
 
