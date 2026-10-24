@@ -441,3 +441,6 @@ Método, mediciones y aprendizajes: [eficiencia-modelos-ia.md](eficiencia-modelo
 
 ## VRT-75 — Login y páginas de trabajo
 **Why:** el login ponía la contraseña al mismo nivel que la cuenta corporativa, y el expediente abría con una fila de enlaces técnicos en vez de su decisión. **Scope:** ingreso corporativo como acción principal (contraseña plegada); expediente con el veredicto en semáforo, por qué y qué hacer arriba, una acción visible y el resto en «⋯», lo técnico plegado; lista de expedientes con semáforo y nombres de negocio. Fuera: una abstracción de cabecera de página (las cabeceras ya siguen el mismo patrón).
+
+## VRT-76 — Enmascarado legible
+**Why:** el texto libre sin mapeo (el resumen de cada documento, una referencia) contaba como personal y sus palabras se tapaban en todo el expediente: «Solicitud de P.», «D. P. de S.». **Scope:** se tapan palabra por palabra solo los nombres de persona (atributo con comparación `person_name`, o un dato del proceso con forma de nombre); un campo sin mapeo se tapa entero donde se cita tal cual. Fuera: marcar campos descriptivos como no personales en el catálogo de tipos.

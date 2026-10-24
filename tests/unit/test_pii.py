@@ -65,3 +65,14 @@ def test_a_list_item_takes_its_class_from_the_mapping_of_any_index():
 def test_seeing_the_data_masks_nothing():
     data = {"fields": PAYSLIP}
     assert Masker.clear().json(data) == data
+
+
+def test_only_a_name_is_hidden_word_by_word_the_business_words_stay():
+    """VRT-76: a summary's words ("préstamo", "seguro") were hidden in every text of the case."""
+    payslip = {**PAYSLIP, "summary": {"value": "Boleta de pago del préstamo por convenio", "confidence": 1}}
+    masker = Masker.for_documents(seed_catalog(), [("payslip", payslip)], extra=["Ana María Quispe", "Préstamo por convenio 2026"])
+    text = masker.text("Falta: Solicitud de préstamo por convenio. Katerin Salas · Quispe, Ana")
+    assert "Solicitud de préstamo por convenio" in text, "the requirement's label reads as it is"
+    assert "Katerin" not in text and "Salas" not in text, "the employee's name, in any order"
+    assert "Quispe" not in text and "Ana" in text, "a name in the process data too; a word under 4 letters stays"
+    assert masker.text("Boleta de pago del préstamo por convenio") != "Boleta de pago del préstamo por convenio", "the summary itself, quoted whole, is masked"

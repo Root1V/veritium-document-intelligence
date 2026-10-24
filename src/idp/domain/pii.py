@@ -33,6 +33,8 @@ _UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
 # When a record was made (e.g. created_at), never a datum: a number of the case may be part of it.
 _TIMESTAMP = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})?")
 _RANK = {"none": 0, "personal": 1, "sensitive": 2}
+# What a name looks like when nothing says it is one: 2 to 4 words of letters.
+_NAME_LIKE = re.compile(r"[^\W\d_][^\W\d_'.-]*(?:[\s,]+[^\W\d_][^\W\d_'.-]*){1,3}")
 
 
 def mask_value(value: Any, pii_class: str) -> Any:
@@ -78,7 +80,7 @@ class Masker:
         found: dict[str, tuple[Any, str]] = {}  # text → (value, class)
         numbers: set[float] = set()
 
-        def keep(value: Any, pii_class: str) -> None:
+        def keep(value: Any, pii_class: str, name: bool | None = None) -> None:  # name None: decide by its look (process data)
             if pii_class == "none" or value is None or isinstance(value, bool):
                 return
             if isinstance(value, (int, float)):
@@ -89,21 +91,24 @@ class Masker:
                 return
             if isinstance(value, (list, dict)):
                 for v in value.values() if isinstance(value, dict) else value:
-                    keep(v, pii_class)
+                    keep(v, pii_class, name)
                 return
             text = str(value).strip()
             if len(text) < 3:
                 return
             if _RANK[pii_class] > _RANK[found.get(text, (None, "none"))[1]]:
                 found[text] = (text, pii_class)
-            if not any(ch.isdigit() for ch in text):  # a name also appears word by word, in any order
+            # A person's name also appears word by word, in any order. Only a
+            # name: the words of a summary or a title are the business's own
+            # ("préstamo", "seguro") and would be hidden everywhere (VRT-76).
+            if name or (name is None and _NAME_LIKE.fullmatch(text)):
                 for word in re.split(r"[\s,]+", text):
                     if len(word) >= 4:
                         found.setdefault(word, (word, pii_class))
 
         for document_type, payload in documents:
             for path, envelope in _fields(payload or {}):
-                keep(envelope.get("value") if isinstance(envelope, dict) and "value" in envelope else envelope, _class_of(catalog, document_type, path))
+                keep(envelope.get("value") if isinstance(envelope, dict) and "value" in envelope else envelope, *_class_of(catalog, document_type, path))
         for value in extra:
             keep(value, "personal")
         secrets = {text: mask_value(value, cls_) if cls_ != "sensitive" else HIDDEN for text, (value, cls_) in found.items()}
@@ -129,15 +134,17 @@ class Masker:
         return data
 
 
-def _class_of(catalog: SemanticCatalog | None, document_type: str | None, path: str) -> str:
+def _class_of(catalog: SemanticCatalog | None, document_type: str | None, path: str) -> tuple[str, bool | None]:
     """A field's class: its semantic attribute's, by the mapping of its document
-    type (any list index matches); unmapped, ``personal``."""
+    type (any list index matches); unmapped, ``personal``. And whether it is a
+    person's name: an unmapped field is masked whole, never word by word."""
     if catalog is not None:
         general = _INDEX.sub("[0]", path)
         for mapping in catalog.mappings:
             if mapping.document_type == document_type and general in (_INDEX.sub("[0]", p) for p in mapping.field_paths):
-                return catalog.attribute(mapping.attribute).pii_class
-    return "personal"
+                attribute = catalog.attribute(mapping.attribute)
+                return attribute.pii_class, attribute.comparison == "person_name"
+    return "personal", False
 
 
 def _fields(payload: dict | list, prefix: str = "") -> Iterable[tuple[str, Any]]:
