@@ -143,7 +143,7 @@ async def test_reindexing_asks_the_model_only_for_what_changed(live_settings, sc
             extraction.payload = {"net_pay": {"value": 120, "confidence": 1.0}}  # a correction
             await session.commit()
             await index_case(session, store, models, case)
-            assert models.embedded == ["net pay: 120"]
+            assert models.embedded == ["Boleta de pago\nnet pay: 120"], "only the corrected value, headed by its kind of document"
             assert await session.scalar(select(func.count()).select_from(SearchChunk).where(SearchChunk.case_id == case, SearchChunk.embedding.is_not(None))) == 3
 
 

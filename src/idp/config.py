@@ -171,8 +171,9 @@ class Settings(BaseSettings):
     # never through aeon-modelgw: an embedding model is pinned, not resolved
     # from a profile — vectors from another model do not compare. Without
     # either model (no grant, prometheus down), search goes on by words and
-    # spelling alone. The reranker is off until prometheus names the one for
-    # Spanish (VRT-PRM-007).
+    # spelling alone. The reranker ("qwen3-reranker") is off: measured on 8
+    # descriptive queries it lowered precision@5 from 23/40 to 12/40 and took
+    # 0.7-5 s a search; it also spends the tokens per minute that extraction shares.
     search_embedding_model: str | None = "qwen3-embedding"
     search_rerank_model: str | None = None
     # The worker (python -m idp.worker): Temporal of the aeon deployment, how

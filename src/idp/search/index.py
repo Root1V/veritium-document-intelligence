@@ -20,6 +20,7 @@ from idp.parsing.store import load_parsed
 from idp.persistence import tenancy
 from idp.persistence.db import get_session_factory
 from idp.persistence.models import Case, Document, SearchChunk
+from idp.persistence.repositories import DocumentTypeRepository
 from idp.search.chunks import Chunk, document_chunks
 from idp.search.models import SearchModels, search_models
 from idp.storage.object_store import ObjectStore, S3ObjectStore
@@ -33,6 +34,7 @@ async def index_case(session: AsyncSession, store: ObjectStore, models: SearchMo
     if case is None or case.anonymized_at is not None:
         return 0
     documents = (await session.scalars(select(Document).where(Document.case_id == case_id).options(selectinload(Document.extraction)))).all()
+    catalog = await DocumentTypeRepository(session).load_catalog()
     parsed_by_key: dict[str, ParsedDocument | None] = {}
     pieces: list[tuple[uuid.UUID, Chunk]] = []
     for document in documents:
@@ -42,7 +44,9 @@ async def index_case(session: AsyncSession, store: ObjectStore, models: SearchMo
             parsed_by_key[document.storage_key] = await asyncio.to_thread(load_parsed, store, document.storage_key)
         pages = (document.page_start, document.page_end) if document.page_start is not None and document.page_end is not None else None
         payload = document.extraction.payload if document.extraction is not None else None
-        pieces += [(document.id, chunk) for chunk in document_chunks(payload, parsed_by_key[document.storage_key], pages)]
+        current = catalog.current(document.document_type) if document.document_type else None
+        chunks = document_chunks(payload, parsed_by_key[document.storage_key], pages, kind_of_document=current[1].display_name if current else None)
+        pieces += [(document.id, chunk) for chunk in chunks]
 
     kept = {
         (row.document_id, row.content_hash): row.embedding
