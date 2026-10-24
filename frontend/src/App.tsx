@@ -33,6 +33,8 @@ import { SimulationsPage } from '@/pages/Simulations'
 import { LensesPage } from '@/pages/Lenses'
 import { PromptsPage } from '@/pages/Prompts'
 import { UploadSessionPage } from '@/pages/UploadSession'
+import { ReportsPage } from '@/pages/Reports'
+import { SettingsPage } from '@/pages/Settings'
 
 export default function App() {
   return (
@@ -271,6 +273,22 @@ export default function App() {
         element={
           <ProtectedRoute>
             <EvaluationSuitePage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/reportes"
+        element={
+          <ProtectedRoute>
+            <ReportsPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/configuracion"
+        element={
+          <ProtectedRoute>
+            <SettingsPage />
           </ProtectedRoute>
         }
       />

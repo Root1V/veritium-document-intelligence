@@ -110,7 +110,7 @@ export function UsersPage() {
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Usuarios</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Personas</h1>
           <p className="text-muted-foreground">
             Quiénes trabajan en {unit ?? 'esta unidad'} y con qué rol. Quienes ingresan con su cuenta corporativa reciben su unidad y su
             rol desde el proveedor de identidad.

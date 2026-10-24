@@ -237,7 +237,7 @@ export function TypeSuggestionsPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Sugerencias de tipo</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Tipos de documento nuevos</h1>
         <p className="text-muted-foreground">
           Cuando un documento cae en <code>generic</code>, el sistema puede proponer un tipo nuevo. Antes de decidir, se
           puede editar la propuesta (nombre, campos). Aceptar solo marca la propuesta como accionable — no registra el

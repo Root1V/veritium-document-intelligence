@@ -251,7 +251,7 @@ export function ProfileEditorPage() {
             </>
           )}
           <div className="flex flex-col gap-1">
-            <Label>Catálogo semántico</Label>
+            <Label>Catálogo de datos</Label>
             <Choice
               value={String(definition.semantic_catalog_version)}
               width="w-48"

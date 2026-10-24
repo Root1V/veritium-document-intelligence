@@ -41,7 +41,7 @@ export function UploadPage() {
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Subir documentos</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Nuevo expediente</h1>
         <p className="text-muted-foreground">
           Sube uno o más documentos de una solicitud. Se procesan automáticamente: segmentación, clasificación,
           extracción y validación.

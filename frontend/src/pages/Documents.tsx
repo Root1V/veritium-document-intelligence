@@ -5,13 +5,14 @@
 // or by what a document is about. Each result says where it matched —
 // never what it says.
 import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { ChevronLeft, ChevronRight, FileText, Loader2, Search } from 'lucide-react'
 import { useDocumentList, useDocumentTypeCatalog, useProcessProfiles } from '@/lib/queries'
 import type { SearchMatch } from '@/types/api'
 import { DeleteButton } from '@/components/DeleteButton'
+import { StatusBadge } from '@/components/StatusBadge'
+import { documentStatus, useTypeName } from '@/lib/labels'
 import { isAdmin } from '@/lib/auth'
-import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -19,18 +20,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 
 const SEARCH_DEBOUNCE_MS = 400
 
-const STATUS_OPTIONS = [
-  'uploaded',
-  'parsing',
-  'classifying',
-  'extracting',
-  'segmented',
-  'extracted',
-  'validating',
-  'needs_review',
-  'completed',
-  'failed',
-]
+// The states a person filters by; the ones in between last seconds.
+const STATUS_OPTIONS = ['needs_review', 'completed', 'failed']
 const ALL = '__all__'
 const PAGE_SIZE = 25
 
@@ -40,19 +31,21 @@ function matchLabel(match: SearchMatch): string {
   return match.page ? `En el texto, página ${match.page}` : 'En el texto'
 }
 
-const STATUS_VARIANT: Record<string, 'default' | 'secondary' | 'destructive' | 'outline'> = {
-  completed: 'secondary',
-  needs_review: 'destructive',
-  failed: 'destructive',
-}
-
 export function DocumentsPage() {
   const [status, setStatus] = useState(ALL)
   const [documentType, setDocumentType] = useState(ALL)
-  const [needsReview, setNeedsReview] = useState(ALL)
   const [profile, setProfile] = useState(ALL)
-  const [searchInput, setSearchInput] = useState('')
-  const [q, setQ] = useState('')
+  const [params] = useSearchParams()
+  const [searchInput, setSearchInput] = useState(params.get('q') ?? '')
+  const [q, setQ] = useState(params.get('q') ?? '')
+
+  // A search from the top bar arrives in the URL (VRT-73).
+  const fromBar = params.get('q')
+  const [seenFromBar, setSeenFromBar] = useState(fromBar)
+  if (fromBar !== seenFromBar) {
+    setSeenFromBar(fromBar)
+    if (fromBar !== null) setSearchInput(fromBar)
+  }
   const [offset, setOffset] = useState(0)
 
   // Debounced separately from the other filters (which apply immediately on
@@ -67,11 +60,11 @@ export function DocumentsPage() {
   }, [searchInput])
 
   const { data: catalog } = useDocumentTypeCatalog()
+  const typeName = useTypeName()
   const { data: profiles } = useProcessProfiles()
   const { data, isLoading, isFetching } = useDocumentList({
     status: status === ALL ? undefined : status,
     document_type: documentType === ALL ? undefined : documentType,
-    needs_review: needsReview === ALL ? undefined : needsReview === 'true',
     profile: profile === ALL ? undefined : profile,
     q: q || undefined,
     limit: PAGE_SIZE,
@@ -117,7 +110,7 @@ export function DocumentsPage() {
             <SelectItem value={ALL}>Todos los estados</SelectItem>
             {STATUS_OPTIONS.map((s) => (
               <SelectItem key={s} value={s}>
-                {s}
+                {documentStatus(s).label}
               </SelectItem>
             ))}
           </SelectContent>
@@ -129,10 +122,10 @@ export function DocumentsPage() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value={ALL}>Todos los tipos</SelectItem>
-            <SelectItem value="generic">generic</SelectItem>
+            <SelectItem value="generic">Otro documento</SelectItem>
             {catalog?.registered.map((type) => (
               <SelectItem key={type.name} value={type.name}>
-                {type.name}
+                {type.display_name}
               </SelectItem>
             ))}
           </SelectContent>
@@ -152,16 +145,6 @@ export function DocumentsPage() {
           </SelectContent>
         </Select>
 
-        <Select value={needsReview} onValueChange={resetAndSet(setNeedsReview)}>
-          <SelectTrigger className="w-52">
-            <SelectValue placeholder="Revisión" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={ALL}>Todos</SelectItem>
-            <SelectItem value="true">Requieren revisión</SelectItem>
-            <SelectItem value="false">No requieren revisión</SelectItem>
-          </SelectContent>
-        </Select>
       </div>
 
       {isLoading ? (
@@ -178,14 +161,13 @@ export function DocumentsPage() {
                   <TableHead>Tipo</TableHead>
                   <TableHead>Confianza</TableHead>
                   <TableHead>Estado</TableHead>
-                  <TableHead>Revisión</TableHead>
                   {isAdmin() && <TableHead className="w-10" />}
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {documents.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center text-sm text-muted-foreground">
+                    <TableCell colSpan={5} className="text-center text-sm text-muted-foreground">
                       Sin documentos que coincidan con los filtros.
                     </TableCell>
                   </TableRow>
@@ -200,13 +182,7 @@ export function DocumentsPage() {
                         {doc.match && <span className="mt-0.5 block pl-6 text-xs text-muted-foreground">{matchLabel(doc.match)}</span>}
                       </TableCell>
                       <TableCell>
-                        {doc.document_type ? (
-                          <Badge variant="outline" className="text-[10px]">
-                            {doc.document_type}
-                          </Badge>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">—</span>
-                        )}
+                        <span className="text-sm">{typeName(doc.document_type)}</span>
                       </TableCell>
                       <TableCell>
                         {doc.classification_confidence !== null ? (
@@ -216,11 +192,8 @@ export function DocumentsPage() {
                         )}
                       </TableCell>
                       <TableCell>
-                        <Badge variant={STATUS_VARIANT[doc.status] ?? 'secondary'} className="text-[10px]">
-                          {doc.status}
-                        </Badge>
+                        <StatusBadge status={doc.needs_review ? 'needs_review' : doc.status} />
                       </TableCell>
-                      <TableCell>{doc.needs_review && <Badge variant="destructive">Requiere revisión</Badge>}</TableCell>
                       {isAdmin() && (
                         <TableCell>
                           <DeleteButton

@@ -14,7 +14,7 @@ export function ProfilesPage() {
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Perfiles de proceso</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Procesos</h1>
           <p className="text-muted-foreground">
             Cada proceso de negocio que usa Veritium: qué documentos o evidencias exige, qué reglas aplica y con qué severidad,
             sobre qué versión del catálogo semántico. Una versión publicada no cambia; un cambio es una versión nueva.
@@ -23,7 +23,7 @@ export function ProfilesPage() {
         {isAdmin() && (
           <Button asChild>
             <Link to="/profiles/new">
-              <Plus className="size-4" /> Nuevo perfil
+              <Plus className="size-4" /> Nuevo proceso
             </Link>
           </Button>
         )}
@@ -35,9 +35,9 @@ export function ProfilesPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Perfil</TableHead>
+              <TableHead>Proceso</TableHead>
               <TableHead>Versión activa</TableHead>
-              <TableHead>Catálogo semántico</TableHead>
+              <TableHead>Catálogo de datos</TableHead>
               <TableHead>Versiones</TableHead>
               <TableHead />
             </TableRow>

@@ -169,7 +169,7 @@ export function LensesPage() {
   return (
     <div className="flex flex-col gap-6">
       <div className="max-w-3xl">
-        <h1 className="text-2xl font-semibold tracking-tight">Lentes de Riesgos y Legal</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Riesgos y Legal</h1>
         <p className="text-muted-foreground">
           Cómo leen los expedientes las áreas que deciden después: Riesgos recibe un resumen con lo que le importa, y Legal revisa cada documento contra
           lo que debe cumplir. Cada afirmación cita dónde lo dice el documento. Se usan desde la vista de cada expediente.

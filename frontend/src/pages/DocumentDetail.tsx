@@ -14,10 +14,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import type { Extracted } from '@/types/api'
 import { PersonalDataBar } from '@/components/cases/PersonalDataBar'
 import { DeleteButton } from '@/components/DeleteButton'
+import { StatusBadge } from '@/components/StatusBadge'
+import { useTypeName } from '@/lib/labels'
 import { isAdmin } from '@/lib/auth'
 
 export function DocumentDetailPage() {
   const navigate = useNavigate()
+  const typeName = useTypeName()
   const { documentId } = useParams<{ documentId: string }>()
   const { data: document, isLoading } = useDocument(documentId)
 
@@ -77,9 +80,8 @@ export function DocumentDetailPage() {
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="text-xl font-semibold tracking-tight">{document.original_filename}</h1>
-        {document.document_type && <Badge>{document.document_type}</Badge>}
-        <Badge variant="outline">{document.status}</Badge>
-        {document.needs_review && <Badge variant="destructive">Requiere revisión</Badge>}
+        <Badge variant="secondary">{typeName(document.document_type)}</Badge>
+        <StatusBadge status={document.needs_review ? 'needs_review' : document.status} />
         {document.classification_confidence !== null && (
           <span className="text-xs text-muted-foreground">
             Confianza de clasificación: {(document.classification_confidence * 100).toFixed(0)}%

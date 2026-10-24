@@ -16,7 +16,7 @@ export function DocumentTypesPage() {
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Plantillas</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Tipos de documento</h1>
           <p className="text-muted-foreground">
             Catálogo de tipos de documento que la plataforma reconoce y sus campos, con la versión publicada de cada uno.
             Un tipo nuevo se registra desde un documento de ejemplo; una versión nueva de un tipo existente, por ahora vía API

@@ -427,3 +427,17 @@ Método, mediciones y aprendizajes: [eficiencia-modelos-ia.md](eficiencia-modelo
 **Why:** los documentos financieros falsificados con IA crecieron ~4x (2025–2026); validar la coherencia no los detecta. **Scope:** forense del archivo (metadatos, fuentes, píxeles, estructura).
 ## VRT-62 — Auditoría inmutable y cumplimiento
 **Why:** el DS 115-2025-PCM clasifica la evaluación crediticia como de alto riesgo. **Scope:** auditoría con hash encadenado y requisitos de transparencia (confirmar el alcance con Legal).
+
+## VRT-73 — Navegación por tareas y lenguaje de negocio
+**Why:** 24 entradas planas en el menú, iguales para todo rol, y estados técnicos (`needs_review`, `payslip`) en pantalla: un operario no sabe por dónde empezar. **Scope:**
+- Menú por grupos y rol: Trabajo (Inicio, Expedientes, Revisar con contador, Asistente), Supervisión (Reportes, Auditoría), Administración (Configuración). Pestañas dentro de cada sección.
+- Barra superior: búsqueda (VRT-59), «Nuevo expediente», unidad y menú de la persona. Azul corporativo.
+- Configuración y Reportes como páginas índice con tarjetas que dicen para qué sirve cada cosa.
+- Estados y tipos de documento con nombres de negocio en todas las listas.
+- Fuera: el Inicio (VRT-74) y el login y las páginas de detalle (VRT-75).
+
+## VRT-74 — Inicio para decidir, por rol
+**Why:** el Inicio contaba documentos sin decir si eso estaba bien ni qué hacer. **Scope:** indicadores con comparación (recibidos, resueltos sin intervención, tiempo hasta decidir, pendientes y su antigüedad), «Requiere tu atención» con su acción, expedientes por día y decisión, motivos de devolución; el operador ve su trabajo del día. Endpoint de métricas.
+
+## VRT-75 — Login y páginas de trabajo
+**Why:** el login ponía la contraseña al mismo nivel que la cuenta corporativa, y cada página tenía su propio orden de botones. **Scope:** ingreso corporativo como acción principal; plantilla de página (título, una acción principal, el resto en «⋯»); expediente y revisión con veredicto y siguiente paso arriba, lo técnico plegado.

@@ -3,8 +3,9 @@ import { ClipboardCheck, Clock, FileText, Loader2, Sparkles, Upload, Compass } f
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts'
 import { useDocumentList, useReviewQueue, useTypeSuggestions } from '@/lib/queries'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
 import { canExecute, getUserName } from '@/lib/auth'
+import { StatusBadge } from '@/components/StatusBadge'
+import { useTypeName } from '@/lib/labels'
 
 const CHART_COLORS = ['#7c3aed', '#a78bfa', '#c4b5fd', '#f59e0b', '#10b981', '#3b82f6', '#ec4899', '#6b7280']
 
@@ -14,12 +15,6 @@ const ASSUMED_MINUTES_PER_DOCUMENT = Number(import.meta.env.VITE_ASSUMED_MINUTES
 function formatHours(totalMinutes: number): string {
   const hours = totalMinutes / 60
   return hours >= 10 ? `${hours.toFixed(0)} h` : `${hours.toFixed(1)} h`
-}
-
-const STATUS_VARIANT: Record<string, 'default' | 'secondary' | 'destructive' | 'outline'> = {
-  completed: 'secondary',
-  needs_review: 'destructive',
-  failed: 'destructive',
 }
 
 function StatCard({
@@ -52,6 +47,7 @@ function StatCard({
 }
 
 export function DashboardPage() {
+  const typeName = useTypeName()
   const { data: documentList, isLoading } = useDocumentList({ limit: 20 })
   const { data: needsReviewCount } = useDocumentList({ needs_review: true, limit: 1 })
   const { data: completedCount } = useDocumentList({ status: 'completed', limit: 1 })
@@ -67,7 +63,7 @@ export function DashboardPage() {
     if (!doc.document_type) continue
     typeCounts.set(doc.document_type, (typeCounts.get(doc.document_type) ?? 0) + 1)
   }
-  const chartData = [...typeCounts.entries()].map(([name, value]) => ({ name, value }))
+  const chartData = [...typeCounts.entries()].map(([key, value]) => ({ name: typeName(key), value }))
 
   return (
     <div className="flex flex-col gap-6">
@@ -127,14 +123,8 @@ export function DashboardPage() {
                     >
                       <FileText className="size-4 shrink-0 text-muted-foreground" />
                       <span className="flex-1 truncate">{doc.original_filename}</span>
-                      {doc.document_type && (
-                        <Badge variant="outline" className="text-[10px]">
-                          {doc.document_type}
-                        </Badge>
-                      )}
-                      <Badge variant={STATUS_VARIANT[doc.status] ?? 'secondary'} className="text-[10px]">
-                        {doc.status}
-                      </Badge>
+                      <span className="text-xs text-muted-foreground">{typeName(doc.document_type)}</span>
+                      <StatusBadge status={doc.needs_review ? 'needs_review' : doc.status} />
                     </Link>
                   </li>
                 ))}

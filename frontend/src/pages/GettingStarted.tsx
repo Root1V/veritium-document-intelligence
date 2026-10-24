@@ -24,13 +24,13 @@ const STEPS: { title: string; who: Who; body: string; links: { to: string; label
     title: 'Los documentos que recibes',
     who: 'plataforma',
     body: 'Revisa si los tipos de documento de tu proceso ya existen (boleta, documento de identidad, solicitud…). Si falta alguno, el equipo de plataforma lo crea a partir de un documento de ejemplo; sirve para todas las unidades.',
-    links: [{ to: '/document-types', label: 'Plantillas' }],
+    links: [{ to: '/document-types', label: 'Tipos de documento' }],
   },
   {
     title: 'Qué significa cada dato',
     who: 'plataforma',
     body: 'Cada campo de un documento se conecta a un atributo con significado de negocio — el DNI del titular, su ingreso neto — y se marca si es un dato personal o sensible. Así se comparan los documentos entre sí y se protege lo sensible.',
-    links: [{ to: '/semantic-catalog', label: 'Catálogo semántico' }],
+    links: [{ to: '/semantic-catalog', label: 'Catálogo de datos' }],
   },
   {
     title: 'Qué se valida',
@@ -42,14 +42,14 @@ const STEPS: { title: string; who: Who; body: string; links: { to: string; label
     title: 'Tu proceso',
     who: 'unidad',
     body: 'Crea el perfil de tu proceso: qué documentos o evidencias exige, qué reglas aplica, desde qué confianza un dato pasa a revisión humana y cuántos días se conservan los datos personales después de decidir.',
-    links: [{ to: '/profiles', label: 'Perfiles de proceso' }],
+    links: [{ to: '/profiles', label: 'Procesos' }],
   },
   {
     title: 'Pruébalo',
     who: 'operador',
     body: 'Crea un expediente de prueba con documentos reales y mira qué decide la plataforma y por qué. Antes de publicar una versión nueva del proceso, compara cómo habría decidido los expedientes anteriores.',
     links: [
-      { to: '/upload', label: 'Subir documentos' },
+      { to: '/upload', label: 'Nuevo expediente' },
       { to: '/simulations', label: 'Probar cambios' },
     ],
   },
@@ -57,7 +57,7 @@ const STEPS: { title: string; who: Who; body: string; links: { to: string; label
     title: 'Revisa y ajusta',
     who: 'operador',
     body: 'Corrige lo que la plataforma no leyó bien. Cada corrección queda auditada, con su motivo, y sirve para medir y mejorar la lectura.',
-    links: [{ to: '/review', label: 'Cola de revisión' }],
+    links: [{ to: '/review', label: 'Revisar' }],
   },
   {
     title: 'Conecta tus sistemas (opcional)',

@@ -213,7 +213,7 @@ export function ReviewQueuePage() {
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Cola de revisión</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Campos por revisar</h1>
           <p className="text-muted-foreground">Campos con baja confianza o con observaciones de validación.</p>
         </div>
         {stats && stats.investigated > 0 && (

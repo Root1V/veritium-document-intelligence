@@ -217,7 +217,7 @@ export function SemanticCatalogPage() {
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Catálogo semántico</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Catálogo de datos</h1>
           <p className="text-muted-foreground">
             Qué significan los datos, más allá del documento que los trae: entidades, atributos, roles y qué campo de cada tipo
             documental expresa cada atributo. Cada perfil de proceso fija una versión del catálogo: una versión nueva aplica a

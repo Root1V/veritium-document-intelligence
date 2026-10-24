@@ -19,6 +19,7 @@ import { Input } from '@/components/ui/input'
 import { errorDetail } from '@/lib/apiErrors'
 import { canExecute, isAISpecialist, isAdmin } from '@/lib/auth'
 import { DeleteButton } from '@/components/DeleteButton'
+import { StatusBadge } from '@/components/StatusBadge'
 import { DELETE_CASE } from '@/pages/Cases'
 import {
   downloadCaseResult,
@@ -422,10 +423,7 @@ export function CaseDetailPage() {
                   >
                     <span className="font-medium">{d.document_type ? (typeName[d.document_type] ?? d.document_type) : 'Sin clasificar'}</span>
                     <span className="text-xs text-muted-foreground">{d.filename}</span>
-                    <Badge variant="outline" className="text-[10px]">
-                      {d.status}
-                    </Badge>
-                    {d.needs_review && <Badge variant="destructive" className="text-[10px]">revisión</Badge>}
+                    <StatusBadge status={d.needs_review ? 'needs_review' : d.status} />
                   </button>
                   <span className="ml-auto flex items-center gap-2">
                     {!d.parent_document_id && !segmented.has(d.id) && (

@@ -63,7 +63,7 @@ export function ValidationPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Validación</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Observaciones de validación</h1>
         <p className="text-muted-foreground">
           Observaciones de validación de todos los documentos{isError ? '' : ` (${total} en total)`} — solo se listan las reglas que no
           pasaron; una regla que pasa no queda registrada.

@@ -114,3 +114,11 @@ Estados: `done` · `todo` · `blocked` (espera a otro equipo) · `superseded` (a
 | VRT-62 | Auditoría inmutable y cumplimiento | todo | Hash encadenado y requisitos del DS 115-2025-PCM. |
 | VRT-71 | Administración de plataforma y unidad en blanco | done | Lo compartido lo cambia el equipo de plataforma; unidades vacías; primeros pasos. |
 | VRT-72 | Borrado físico y lógico | done | «Eliminar» en cada pantalla: lo que nadie usó se borra con sus archivos; lo usado se archiva; limpieza técnica a 30 días. |
+
+## F8 — Experiencia de uso
+
+| ID | Feature | Estado | Descripción |
+|---|---|---|---|
+| VRT-73 | Navegación por tareas y lenguaje de negocio | todo | Menú agrupado por rol, barra superior con búsqueda, configuración y reportes en páginas índice, estados en español. |
+| VRT-74 | Inicio para decidir, por rol | todo | Indicadores con su comparación, lo que requiere atención y gráficos con métricas reales. |
+| VRT-75 | Login y páginas de trabajo | todo | Ingreso corporativo primero; plantilla común de página; expediente y revisión con lo técnico plegado. |
