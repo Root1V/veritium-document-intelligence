@@ -1,5 +1,6 @@
 """GET /review (pending queue), GET /review/reasons (the correction reason
-codes) and POST /review/{id} (submit a correction — writes the full audit
+codes), POST /review/{id}/dismiss (the observation needs no correction,
+with the reviewer's reason; VRT-72) and POST /review/{id} (submit a correction — writes the full audit
 trail: original value/confidence, reviewer identity, corrected value, the
 coded reason and its justification (VRT-39), timestamp, model/prompt version).
 A correction is written into the extraction and, when the value changed,
@@ -86,6 +87,8 @@ class ReviewCorrectionRequest(BaseModel):
     def _justified(self) -> ReviewCorrectionRequest:
         if "•" in str(self.corrected_value):  # a masked value (VRT-58) would overwrite the real one
             raise ValueError("el valor está oculto: pide ver los datos del expediente para corregirlo")
+        if self.reason_code == "dismissed":
+            raise ValueError("para descartar una observación usa POST /review/{id}/dismiss")
         reason = REASONS_BY_CODE[self.reason_code]
         if reason.requires_justification and len((self.justification or "").strip()) < 5:
             raise ValueError(f"el motivo '{reason.label}' requiere un sustento")
@@ -204,6 +207,33 @@ def _leaf(payload: dict | None, field_path: str) -> dict:
 @router.get("/reasons", response_model=list[CorrectionReason])
 async def correction_reasons() -> list[CorrectionReason]:
     return CORRECTION_REASONS
+
+
+class DismissRequest(BaseModel):
+    justification: str = Field(min_length=5, max_length=500, description="Por qué no necesita corrección; queda en la auditoría.")
+
+
+@router.post("/{review_item_id}/dismiss", response_model=ReviewCorrectionResponse, dependencies=[Depends(require_role("operador", "admin"))])
+async def dismiss_review_item(
+    review_item_id: uuid.UUID, body: DismissRequest, session: AsyncSession = Depends(get_db_session), current_user: User = Depends(get_current_user)
+) -> ReviewCorrectionResponse:
+    """The value stays as it is and the item leaves the queue; nothing is
+    re-evaluated. Needs no personal data visible: nothing is rewritten."""
+    repo = ReviewRepository(session)
+    item = await repo.get(review_item_id)
+    if item is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="review item not found")
+    if item.status != "pending":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="la observación ya se resolvió")
+    await repo.resolve(review_item_id, reviewer_identity=current_user.name, corrected_value=item.current_value, reason_code="dismissed",
+                       justification=body.justification.strip(), status="dismissed")
+    document_repo = DocumentRepository(session)
+    document = await document_repo.get(item.document_id)
+    if not await repo.has_pending_for_document(document.id):
+        await document_repo.set_status(document.id, "completed")
+    await refresh_verdict(session, document.case_id)
+    await session.commit()
+    return ReviewCorrectionResponse(review_item_id=review_item_id, status="dismissed")
 
 
 @router.post("/{review_item_id}", response_model=ReviewCorrectionResponse, dependencies=[Depends(require_role("operador", "admin"))])

@@ -18,6 +18,7 @@ ReasonCode = Literal[
     "illegible_document",
     "business_override",
     "confirmed_correct",
+    "dismissed",
 ]
 
 
@@ -41,4 +42,8 @@ CORRECTION_REASONS: list[CorrectionReason] = [
     ),
     CorrectionReason(code="confirmed_correct", label="El valor era correcto", description="Se confirma el valor extraído sin cambiarlo."),
 ]
-REASONS_BY_CODE = {r.code: r for r in CORRECTION_REASONS}
+# Not a correction: the reviewer said the observation needs none (VRT-72).
+# Recorded like one, but the item ends "dismissed", so it never counts as a
+# confirmed value in calibration or golden sets.
+DISMISSED = CorrectionReason(code="dismissed", label="Descartada", description="La observación no necesita corrección.", requires_justification=True)
+REASONS_BY_CODE = {r.code: r for r in [*CORRECTION_REASONS, DISMISSED]}

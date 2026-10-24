@@ -30,6 +30,8 @@ HIDDEN = "•••"
 _VALUE_KEYS = {"value", "values", "expected", "actual", "current_value", "original_value", "corrected_value", "suggested_value", "distinct_values"}
 _INDEX = re.compile(r"\[\d+\]")
 _UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", re.IGNORECASE)
+# When a record was made (e.g. created_at), never a datum: a number of the case may be part of it.
+_TIMESTAMP = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})?")
 _RANK = {"none": 0, "personal": 1, "sensitive": 2}
 
 
@@ -121,7 +123,7 @@ class Masker:
         if isinstance(data, list):
             return [self.json(v, _key=_key) for v in data]
         if isinstance(data, str):
-            return data if _UUID.fullmatch(data) else self.text(data)  # an id is never a datum
+            return data if _UUID.fullmatch(data) or _TIMESTAMP.fullmatch(data) else self.text(data)  # an id or a timestamp is never a datum
         if isinstance(data, (int, float)) and not isinstance(data, bool) and _key in _VALUE_KEYS and round(float(data), 2) in self._numbers:
             return HIDDEN
         return data

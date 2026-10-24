@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
-import { useCorrectionReasons, useDismissInvestigation, useInvestigationStats, useReviewQueue, useSubmitCorrection } from '@/lib/queries'
+import { useCorrectionReasons, useDismissInvestigation, useDismissReviewItem, useInvestigationStats, useReviewQueue, useSubmitCorrection } from '@/lib/queries'
 import { errorDetail } from '@/lib/apiErrors'
 import { canExecute } from '@/lib/auth'
 import { Card, CardContent } from '@/components/ui/card'
@@ -21,6 +21,7 @@ const REASON_LABEL: Record<string, string> = {
 
 function ReviewRow({ item }: { item: ReviewItem }) {
   const submitCorrection = useSubmitCorrection()
+  const dismissItem = useDismissReviewItem()
   const { data: reasons } = useCorrectionReasons()
   const [correcting, setCorrecting] = useState(false)
   const [value, setValue] = useState(String(item.current_value.value ?? ''))
@@ -114,7 +115,7 @@ function ReviewRow({ item }: { item: ReviewItem }) {
                   variant="ghost"
                   onClick={() => dismiss.mutate(item.suggestion!.investigation_id, { onError: (e) => toast.error(errorDetail(e)) })}
                 >
-                  Descartar
+                  Descartar sugerencia
                 </Button>
               </div>
             )}
@@ -129,15 +130,34 @@ function ReviewRow({ item }: { item: ReviewItem }) {
         {!correcting ? (
           <div className="flex items-center justify-between gap-3">
             <span className="text-sm text-muted-foreground">Valor actual: {String(item.current_value.value ?? '—')}</span>
-            {canCorrect &&
-              (item.personal_data_visible ? (
-                <Button size="sm" variant="outline" onClick={() => setCorrecting(true)}>
-                  Corregir
+            {canCorrect && (
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={dismissItem.isPending}
+                  onClick={() => {
+                    const justification = prompt('¿Por qué esta observación no necesita corrección? (queda en la auditoría)')?.trim()
+                    if (!justification) return
+                    if (justification.length < 5) return void toast.error('Indica el motivo con un poco más de detalle.')
+                    dismissItem.mutate(
+                      { reviewItemId: item.id, justification },
+                      { onSuccess: () => toast.success('Observación descartada.'), onError: (e) => toast.error(errorDetail(e)) },
+                    )
+                  }}
+                >
+                  Descartar observación
                 </Button>
-              ) : (
-                // A masked value cannot be corrected: see it first (VRT-58).
-                <PersonalDataBar caseId={item.case_id} visible={false} canReveal={item.can_reveal} compact />
-              ))}
+                {item.personal_data_visible ? (
+                  <Button size="sm" variant="outline" onClick={() => setCorrecting(true)}>
+                    Corregir
+                  </Button>
+                ) : (
+                  // A masked value cannot be corrected: see it first (VRT-58).
+                  <PersonalDataBar caseId={item.case_id} visible={false} canReveal={item.can_reveal} compact />
+                )}
+              </div>
+            )}
           </div>
         ) : (
           <div className="flex flex-col gap-2">

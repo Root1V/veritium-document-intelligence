@@ -261,6 +261,16 @@ export function useReviewQueue() {
   })
 }
 
+/** The observation needs no correction (VRT-72): the value stays, the item leaves the queue. */
+export function useDismissReviewItem() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ reviewItemId, justification }: { reviewItemId: string; justification: string }) =>
+      (await apiClient.post<ReviewCorrectionResponse>(`/review/${reviewItemId}/dismiss`, { justification })).data,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['review-queue'] }),
+  })
+}
+
 export function useSubmitCorrection() {
   const queryClient = useQueryClient()
   return useMutation({

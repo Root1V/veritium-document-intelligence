@@ -33,6 +33,8 @@ from idp.persistence.models import (
     EvalSuite,
     LensRecord,
     OutboxEvent,
+    AuditLogEntry,
+    ReviewItem,
     ProcessProfile,
     ProcessProfileVersion,
     Tenant,
@@ -303,3 +305,27 @@ async def test_a_suite_a_suggestion_and_a_calibration_draft_are_deleted(live_set
             assert await session.get(EvalSuite, suite_id) is None and await session.get(DocumentTypeSuggestion, pending) is None
             assert _gone(store, own) and not _gone(store, doc.storage_key), "the case's document still uses its file"
             assert [c.version for c in (await session.scalars(select(CalibrationVersion))).all()] == [1]
+
+
+@pytest.mark.asyncio
+async def test_an_observation_is_dismissed_without_seeing_the_data(live_settings, scratch_unit):
+    factory, store = get_session_factory(live_settings), S3ObjectStore(live_settings)
+    with tenancy.acting_for(scratch_unit):
+        async with factory() as session:
+            _, (doc,) = await _case(session, store, scratch_unit, (await _profile(session)).id)
+            doc.status = "needs_review"
+            item = ReviewItem(document_id=doc.id, field_path="employee_code", current_value={"value": "42285866"}, confidence=1.0, reason="validation_issue")
+            session.add(item)
+            await session.commit()
+            item_id, doc_id = item.id, doc.id
+    async with _client(live_settings, scratch_unit) as (client, _, operador):
+        assert (await client.post(f"/review/{item_id}/dismiss", headers=operador, json={"justification": "x"})).status_code == 422, "it needs a reason"
+        done = await client.post(f"/review/{item_id}/dismiss", headers=operador, json={"justification": "El maestro de empleados está desactualizado"})
+        assert done.status_code == 200 and done.json()["status"] == "dismissed"
+        assert (await client.post(f"/review/{item_id}/dismiss", headers=operador, json={"justification": "otra vez"})).status_code == 409
+        assert item_id not in {i["id"] for i in (await client.get("/review", headers=operador)).json()}
+    with tenancy.acting_for(scratch_unit):
+        async with factory() as session:
+            entry = await session.scalar(select(AuditLogEntry).where(AuditLogEntry.review_item_id == item_id))
+            assert entry.reason_code == "dismissed" and entry.corrected_value == {"value": "42285866"}, "the value stays as it was"
+            assert (await session.get(Document, doc_id)).status == "completed"

@@ -49,6 +49,12 @@ def test_a_case_response_is_masked_wherever_it_quotes_a_datum():
     assert result["case_id"] == "42285866-0000-0000-0000-000000000000", "only whole words: an id is not a DNI"
 
 
+def test_when_a_record_was_made_is_never_masked():
+    masker = Masker.for_documents(seed_catalog(), [("payslip", {"net_pay": {"value": 2026, "confidence": 1}})])
+    stamp = "2026-10-24T11:06:12.345678Z"
+    assert masker.json({"created_at": stamp, "message": "neto 2026"}) == {"created_at": stamp, "message": f"neto {HIDDEN}"}
+
+
 def test_a_list_item_takes_its_class_from_the_mapping_of_any_index():
     card = {"persons": [{"foreigner_id_number": _env("001234567"), "nationality": _env("VENEZOLANA")},
                         {"foreigner_id_number": _env("009876543"), "nationality": _env("COLOMBIANA")}]}

@@ -573,6 +573,7 @@ class ReviewRepository:
         justification: str | None = None,
         model_version: str | None = None,
         prompt_version: str | None = None,
+        status: str = "resolved",
     ) -> AuditLogEntry:
         item = await self._session.get(ReviewItem, review_item_id)
         if item is None:
@@ -588,7 +589,7 @@ class ReviewRepository:
             model_version=model_version,
             prompt_version=prompt_version,
         )
-        item.status = "resolved"
+        item.status = status
         self._session.add(entry)
         await self._session.flush()
         return entry

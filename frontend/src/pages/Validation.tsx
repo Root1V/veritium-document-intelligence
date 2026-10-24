@@ -41,7 +41,7 @@ export function ValidationPage() {
   const [offset, setOffset] = useState(0)
 
   const { data: catalog } = useDocumentTypeCatalog()
-  const { data, isLoading, isFetching } = useValidationLog({
+  const { data, isLoading, isFetching, isError } = useValidationLog({
     category: category === ALL ? undefined : category,
     severity: severity === ALL ? undefined : severity,
     document_type: documentType === ALL ? undefined : documentType,
@@ -65,7 +65,7 @@ export function ValidationPage() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Validación</h1>
         <p className="text-muted-foreground">
-          Observaciones de validación de todos los documentos ({total} en total) — solo se listan las reglas que no
+          Observaciones de validación de todos los documentos{isError ? '' : ` (${total} en total)`} — solo se listan las reglas que no
           pasaron; una regla que pasa no queda registrada.
         </p>
       </div>
@@ -119,6 +119,8 @@ export function ValidationPage() {
         <div className="flex h-48 items-center justify-center">
           <Loader2 className="size-6 animate-spin text-muted-foreground" />
         </div>
+      ) : isError ? (
+        <p className="text-sm text-destructive">No se pudieron cargar las observaciones. Vuelve a intentarlo en un momento.</p>
       ) : !data || data.issues.length === 0 ? (
         <p className="text-sm text-muted-foreground">Sin observaciones que coincidan con los filtros.</p>
       ) : (
