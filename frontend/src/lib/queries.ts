@@ -111,8 +111,10 @@ export interface DocumentListFilters {
   status?: string
   document_type?: string
   needs_review?: boolean
-  /** Matches against the filename AND the extracted field values (see
-   * DocumentRepository._filtered) — one box searches both. */
+  /** A process, by its key. */
+  profile?: string
+  /** Hybrid search (VRT-59): by words, spelling and meaning, over the
+   * extracted values, the text read from each page and the file name. */
   q?: string
   limit?: number
   offset?: number

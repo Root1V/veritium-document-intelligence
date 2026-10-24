@@ -1,13 +1,14 @@
 // The dedicated document browser — the dashboard's "recent documents" list
 // caps at a handful of rows and has no filter controls; this page is the
-// real way to work the full corpus (already 100+ documents) by status,
-// type, or needs_review. No new backend work: GET /documents already
-// supports these filters, this page is the first UI that actually uses
-// them combined.
+// real way to work the full corpus by status, type, process or
+// needs_review, and to search it (VRT-59): by a DNI or a name even misread,
+// or by what a document is about. Each result says where it matched —
+// never what it says.
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ChevronLeft, ChevronRight, FileText, Loader2, Search } from 'lucide-react'
-import { useDocumentList, useDocumentTypeCatalog } from '@/lib/queries'
+import { useDocumentList, useDocumentTypeCatalog, useProcessProfiles } from '@/lib/queries'
+import type { SearchMatch } from '@/types/api'
 import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Button } from '@/components/ui/button'
@@ -31,6 +32,12 @@ const STATUS_OPTIONS = [
 const ALL = '__all__'
 const PAGE_SIZE = 25
 
+function matchLabel(match: SearchMatch): string {
+  if (match.where === 'valores') return 'En los datos extraídos'
+  if (match.where === 'archivo') return 'En el nombre del archivo'
+  return match.page ? `En el texto, página ${match.page}` : 'En el texto'
+}
+
 const STATUS_VARIANT: Record<string, 'default' | 'secondary' | 'destructive' | 'outline'> = {
   completed: 'secondary',
   needs_review: 'destructive',
@@ -41,6 +48,7 @@ export function DocumentsPage() {
   const [status, setStatus] = useState(ALL)
   const [documentType, setDocumentType] = useState(ALL)
   const [needsReview, setNeedsReview] = useState(ALL)
+  const [profile, setProfile] = useState(ALL)
   const [searchInput, setSearchInput] = useState('')
   const [q, setQ] = useState('')
   const [offset, setOffset] = useState(0)
@@ -57,10 +65,12 @@ export function DocumentsPage() {
   }, [searchInput])
 
   const { data: catalog } = useDocumentTypeCatalog()
+  const { data: profiles } = useProcessProfiles()
   const { data, isLoading, isFetching } = useDocumentList({
     status: status === ALL ? undefined : status,
     document_type: documentType === ALL ? undefined : documentType,
     needs_review: needsReview === ALL ? undefined : needsReview === 'true',
+    profile: profile === ALL ? undefined : profile,
     q: q || undefined,
     limit: PAGE_SIZE,
     offset,
@@ -87,10 +97,10 @@ export function DocumentsPage() {
       </div>
 
       <div className="flex flex-wrap gap-3">
-        <div className="relative w-72">
+        <div className="relative w-96">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
-            placeholder="Buscar por nombre de archivo o contenido extraído..."
+            placeholder="Buscar por DNI, nombre o de qué trata el documento..."
             className="pl-8"
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
@@ -121,6 +131,20 @@ export function DocumentsPage() {
             {catalog?.registered.map((type) => (
               <SelectItem key={type.name} value={type.name}>
                 {type.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <Select value={profile} onValueChange={resetAndSet(setProfile)}>
+          <SelectTrigger className="w-52">
+            <SelectValue placeholder="Proceso" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL}>Todos los procesos</SelectItem>
+            {profiles?.map((p) => (
+              <SelectItem key={p.key} value={p.key}>
+                {p.name}
               </SelectItem>
             ))}
           </SelectContent>
@@ -170,6 +194,7 @@ export function DocumentsPage() {
                           <FileText className="size-4 shrink-0 text-muted-foreground" />
                           <span className="truncate">{doc.original_filename}</span>
                         </Link>
+                        {doc.match && <span className="mt-0.5 block pl-6 text-xs text-muted-foreground">{matchLabel(doc.match)}</span>}
                       </TableCell>
                       <TableCell>
                         {doc.document_type ? (

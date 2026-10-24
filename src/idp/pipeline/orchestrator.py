@@ -63,6 +63,7 @@ from idp.persistence.repositories import (
 )
 from idp.parsing.normalize import ParsedDocument, slice_by_pages
 from idp.parsing.store import save_parsed
+from idp.search.index import index_case_after_run
 from idp.pipeline.case_evaluation import apply_binding, profile_definition, refresh_conditions, refresh_verdict, rules_for_profile
 from idp.pipeline.provenance import build_provenance
 from idp.webhooks.events import emit_run_finished
@@ -718,6 +719,7 @@ async def evaluate_case(settings: Settings, case_id: uuid.UUID, run_id: uuid.UUI
         emit_run_finished(session, case, run)
         await session.commit()
         verdict = run.verdict
+    await index_case_after_run(settings, case_id)  # searchable as of this run (VRT-59); never fails it
     # Shadow candidates of the profile decide the case too (VRT-44); they
     # never change the real decision, and their failure never fails the run.
     from idp.pipeline.simulation import run_shadows  # imports this module

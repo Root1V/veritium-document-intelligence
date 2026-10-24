@@ -34,6 +34,14 @@ export interface DocumentSummary {
   parent_document_id: string | null
   page_start: number | null
   page_end: number | null
+  /** Only in search results (VRT-59): where it matched, never what it says. */
+  match?: SearchMatch | null
+}
+
+export interface SearchMatch {
+  where: 'valores' | 'texto' | 'archivo'
+  /** 1-based page of the file, for a match in its text. */
+  page: number | null
 }
 
 export interface BatchStatusResponse {

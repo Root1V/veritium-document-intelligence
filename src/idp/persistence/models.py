@@ -14,11 +14,16 @@ import uuid
 from typing import Any
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func, text
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from pgvector.sqlalchemy import HALFVEC
+from sqlalchemy import Boolean, Computed, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func, text
+from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 from idp.persistence.tenancy import TenantScoped
+
+# What the search's embedding model returns (qwen3-embedding 0.6B); another
+# size is another column and a re-index (VRT-59).
+EMBEDDING_DIMENSIONS = 1024
 
 
 class Base(DeclarativeBase):
@@ -246,6 +251,33 @@ class ValidationIssue(TenantScoped, Base):
     superseded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     document: Mapped["Document | None"] = relationship(back_populates="validation_issues")
+
+
+class SearchChunk(TenantScoped, Base):
+    """A searchable piece of a document (VRT-59): its extracted values, or a
+    window of the text read from one of its pages. Searched by words
+    (Spanish, accents ignored), by similar spelling (OCR errors in names and
+    numbers) and by meaning (its embedding, when the model answered). The
+    content is personal data: it goes with the case's (pipeline/retention.py)."""
+
+    __tablename__ = "search_chunks"
+    __table_args__ = (
+        Index("ix_search_chunks_tsv", "tsv", postgresql_using="gin"),
+        Index("ix_search_chunks_trgm", "content", postgresql_using="gin", postgresql_ops={"content": "gin_trgm_ops"}),
+        Index("ix_search_chunks_embedding", "embedding", postgresql_using="hnsw", postgresql_ops={"embedding": "halfvec_cosine_ops"}),
+    )
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    case_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("cases.id", ondelete="CASCADE"), nullable=False, index=True)
+    document_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("documents.id", ondelete="CASCADE"), nullable=False, index=True)
+    kind: Mapped[str] = mapped_column(String(8), nullable=False)  # valores | texto
+    page: Mapped[int | None] = mapped_column(Integer, nullable=True)  # of the file, for a text window
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    tsv: Mapped[Any] = mapped_column(TSVECTOR, Computed("to_tsvector('es_sin_tildes'::regconfig, content)", persisted=True))
+    # Vectors from different models do not compare: each records its own, and a search uses only its model's.
+    embedding: Mapped[Any | None] = mapped_column(HALFVEC(EMBEDDING_DIMENSIONS), nullable=True)
+    embedding_model: Mapped[str | None] = mapped_column(String(128), nullable=True)
 
 
 class ReviewItem(TenantScoped, Base):

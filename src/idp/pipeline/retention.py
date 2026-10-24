@@ -3,10 +3,11 @@ person it is about ("suprimido", by an admin) or when its process's
 retention term runs out ("vencido", by the job below).
 
 The case is anonymized, not deleted. What goes: the original files and the
-OCR read from them, every value extracted or corrected, the texts that quote
-them (findings, reasons, diagnoses, lens readings, errors), the process
-data, and what other features copied from the case (type suggestions, golden
-sets, A2A tasks, upload sessions). What stays: the case, its process, dates,
+OCR read from them, every value extracted or corrected, what search indexed
+of both (VRT-59), the texts that quote them (findings, reasons, diagnoses,
+lens readings, errors), the process data, and what other features copied
+from the case (type suggestions, golden sets, A2A tasks, upload sessions).
+What stays: the case, its process, dates,
 status, verdict and the kinds of its reasons — so metrics and the record
 that it existed and was removed survive — plus the log of who saw it.
 """
@@ -40,6 +41,7 @@ from idp.persistence.models import (
     LensResult,
     ProcessProfileVersion,
     ReviewItem,
+    SearchChunk,
     SimulationResult,
     UploadSession,
     ValidationIssue,
@@ -80,6 +82,7 @@ async def anonymize_case(
         with contextlib.suppress(Exception):  # already gone, or never written
             await asyncio.to_thread(store.delete, key)
 
+    await session.execute(delete(SearchChunk).where(SearchChunk.case_id == case.id))  # their values, text and the embeddings of both
     if doc_ids:
         await session.execute(delete(Extraction).where(Extraction.document_id.in_(doc_ids)))
         review_ids = select(ReviewItem.id).where(ReviewItem.document_id.in_(doc_ids))

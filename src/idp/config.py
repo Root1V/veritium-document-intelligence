@@ -165,6 +165,16 @@ class Settings(BaseSettings):
     aeon_modelgw_url: str = "http://127.0.0.1:9412"
     governed_profiles: dict[str, str] = {"reasoning": "veritium-reasoning", "vision": "veritium-vision"}
     aeon_service_agent_ref: str = "veritium-service@1.0.0"
+
+    # --- Hybrid search (VRT-59, ADR-0009) ---
+    # Embeddings and reranking go straight to prometheus (through axonium),
+    # never through aeon-modelgw: an embedding model is pinned, not resolved
+    # from a profile — vectors from another model do not compare. Without
+    # either model (no grant, prometheus down), search goes on by words and
+    # spelling alone. The reranker is off until prometheus names the one for
+    # Spanish (VRT-PRM-007).
+    search_embedding_model: str | None = "qwen3-embedding"
+    search_rerank_model: str | None = None
     # The worker (python -m idp.worker): Temporal of the aeon deployment, how
     # many steps each lane's queue runs at once, and how often it checks aeon
     # for runs that failed before reaching evaluation.

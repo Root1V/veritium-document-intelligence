@@ -26,6 +26,7 @@ dependencies = [
     "opentelemetry-api>=1.44.0",
     "opentelemetry-sdk>=1.44.0",
     "passlib[bcrypt]>=1.7.4",
+    "pgvector>=0.5.1",
     "pillow>=12.3.0",
     "pydantic>=2.13.4",
     "pydantic-settings>=2.15.0",

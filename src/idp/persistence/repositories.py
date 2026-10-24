@@ -8,8 +8,7 @@ import uuid
 from typing import Any
 from datetime import UTC, datetime
 
-from sqlalchemy import Text, delete, func, or_, select, text, update
-from sqlalchemy import cast as sa_cast
+from sqlalchemy import delete, func, or_, select, text, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -23,6 +22,7 @@ from idp.domain.process_profile_seed import AD_HOC_KEY, SEED_PROFILES
 from idp.domain.semantic import SemanticCatalog
 from idp.domain.semantic_seed import seed_catalog
 from idp.persistence import tenancy
+from idp.search.query import Filters, filtered
 from idp.persistence.models import (
     ApiClient,
     AuditLogEntry,
@@ -356,55 +356,20 @@ class DocumentRepository:
         result = await self._session.execute(stmt)
         return list(result.scalars().all())
 
-    @staticmethod
-    def _filtered(stmt, *, status: str | None, document_type: str | None, needs_review: bool | None, q: str | None):
-        if status is not None:
-            stmt = stmt.where(Document.status == status)
-        if document_type is not None:
-            stmt = stmt.where(Document.document_type == document_type)
-        if needs_review is not None:
-            stmt = stmt.where(Document.needs_review == needs_review)
-        if q:
-            # Extraction is 1:1 with Document (unique FK) so this outer join
-            # never duplicates rows. Casting the whole JSONB payload to text
-            # and substring-matching is crude (no relevance ranking, no
-            # index) but correct across all 12+ document type schemas
-            # without needing per-type field lists — fine at this corpus
-            # size; revisit with a tsvector/GIN index only if it's ever
-            # actually slow.
-            like = f"%{q}%"
-            stmt = stmt.outerjoin(Extraction, Extraction.document_id == Document.id).where(
-                or_(Document.original_filename.ilike(like), sa_cast(Extraction.payload, Text).ilike(like))
-            )
-        return stmt
-
-    async def list(
-        self,
-        *,
-        status: str | None = None,
-        document_type: str | None = None,
-        needs_review: bool | None = None,
-        q: str | None = None,
-        limit: int = 50,
-        offset: int = 0,
-    ) -> list[Document]:
-        stmt = select(Document).order_by(Document.created_at.desc()).limit(limit).offset(offset)
-        stmt = self._filtered(stmt, status=status, document_type=document_type, needs_review=needs_review, q=q)
+    async def list(self, filters: Filters = Filters(), *, limit: int = 50, offset: int = 0) -> list[Document]:
+        stmt = filtered(select(Document).order_by(Document.created_at.desc()).limit(limit).offset(offset), filters)
         result = await self._session.execute(stmt)
         return list(result.scalars().all())
 
-    async def count(
-        self,
-        *,
-        status: str | None = None,
-        document_type: str | None = None,
-        needs_review: bool | None = None,
-        q: str | None = None,
-    ) -> int:
-        stmt = select(func.count()).select_from(Document)
-        stmt = self._filtered(stmt, status=status, document_type=document_type, needs_review=needs_review, q=q)
+    async def count(self, filters: Filters = Filters()) -> int:
+        stmt = filtered(select(func.count()).select_from(Document), filters)
         result = await self._session.execute(stmt)
         return result.scalar_one()
+
+    async def get_many(self, ids: list[uuid.UUID]) -> list[Document]:
+        """In the order given."""
+        found = {d.id: d for d in (await self._session.scalars(select(Document).where(Document.id.in_(ids)))).all()}
+        return [found[i] for i in ids if i in found]
 
     async def set_classification(self, document_id: uuid.UUID, *, document_type: str, confidence: float, reasoning: str, needs_review: bool) -> None:
         doc = await self._session.get(Document, document_id)

@@ -17,6 +17,7 @@ from sqlalchemy import select
 from idp.api.routes import api_clients, assistant, audit, auth, batches, bulk_jobs, data_access, events, investigations, tools, calibration, cases, document_types, documents, evaluation, lenses, profiles, prompts, simulations, upload_sessions, review, semantic_catalog, tenants, type_suggestions, users, validation, validation_rules, webhooks
 from idp.config import get_settings
 from idp.llm.port import inference_lifespan
+from idp.search.models import search_models_lifespan
 from idp.llm.prompts import current as current_prompts
 from idp.llm.prompts import set_published
 from idp.observability.otel import setup_telemetry
@@ -59,8 +60,8 @@ def create_app() -> FastAPI:
         keeper = asyncio.create_task(retention.run(settings, stop))  # anonymizes cases whose retention term ran out (VRT-58)
         # The event bus, when configured: outbox out, commands in (VRT-49).
         events = asyncio.create_task(bus.run(settings, stop)) if settings.event_bus_brokers else None
-        # The MCP server (VRT-51) and the in-process executor / rule drafting, which call models.
-        async with mcp.session_manager.run(), inference_lifespan(settings):
+        # The MCP server (VRT-51) and the in-process executor / rule drafting, which call models; search, its own (VRT-59).
+        async with mcp.session_manager.run(), inference_lifespan(settings), search_models_lifespan(settings):
             yield
         await a2a.handler.aclose()
         stop.set()

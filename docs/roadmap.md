@@ -408,7 +408,12 @@ Método, mediciones y aprendizajes: [eficiencia-modelos-ia.md](eficiencia-modelo
 - Telemetría y logs sin datos (excepciones y logs saneados antes de salir); en producción no arranca con un gateway de modelos externo ni con la captura de prompts encendida.
 - Fuera: enmascarar lo que va al modelo (es interno y necesita leer el dato), cifrado de columnas, y que el colector de argus reconozca identificadores peruanos (pedido aparte).
 ## VRT-59 — Búsqueda híbrida
-**Why:** el `ILIKE` de VRT-11 no escala. **Scope:** BM25 + vectorial en Postgres con halfvec, filtrado por tenant y proceso.
+**Why:** el `ILIKE` de VRT-11 no escala, no ordena por relevancia, no tolera un DNI mal leído por el OCR ni encuentra un documento por lo que trata. **Scope:**
+- **Qué se indexa:** por documento, los valores extraídos (ya corregidos) y el texto leído de cada página en ventanas solapadas. Cada corrida re-indexa su expediente al terminar, sin hacerla fallar nunca; `scripts/reindex_search.py` indexa lo anterior.
+- **Cuatro entradas fusionadas por rango (RRF):** palabras (texto completo en español, sin tildes), escritura parecida (trigramas, tolera un dígito errado), significado (`halfvec` de `qwen3-embedding`) y nombre de archivo. Opcionalmente las reordena un reranker. Embeddings y rerank van directo a prometheus ([ADR-0009](adr/0009-embeddings-y-rerank-directos-a-prometheus.md)); sin ellos se busca por palabras y escritura.
+- **Filtros:** unidad (por tenancy) y proceso, combinables con estado, tipo y revisión.
+- **Datos personales:** el resultado dice dónde coincidió (datos, página, archivo), nunca qué dice. Buscar sigue reservado a quien puede ver datos, y queda registrado. La anonimización borra los fragmentos y sus vectores.
+- **Fuera:** BM25 real (ParadeDB, AGPL) y búsqueda de expedientes como tool del asistente o de MCP.
 ## VRT-60 — Conectores RENIEC / SUNAT / SBS
 **Why:** validar contra fuentes oficiales; desbloquea lo que VRT-15 no pudo. **Scope:** conectores como tools del catálogo. Absorbe VRT-15.
 ## VRT-61 — Antifraude forense

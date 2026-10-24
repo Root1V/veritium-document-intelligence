@@ -14,11 +14,14 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from idp.api.deps import get_current_user, get_db_session, get_object_store, get_principal
+from idp.api.deps import get_app_settings, get_current_user, get_db_session, get_object_store, get_principal
 from idp.api.disclosure import CaseMaskers, Disclosure, can_reveal, get_disclosure, record, window_open
 from idp.auth.authenticate import Principal
-from idp.api.schemas import DocumentSummary
+from idp.api.schemas import DocumentSummary, SearchMatch
+from idp.config import Settings
 from idp.persistence.repositories import CaseRepository, DocumentRepository
+from idp.search.models import search_models
+from idp.search.query import Filters, Hit, search
 from idp.storage.object_store import S3ObjectStore
 
 router = APIRouter(prefix="/documents", tags=["documents"], dependencies=[Depends(get_current_user)])
@@ -57,24 +60,39 @@ class DocumentListResponse(BaseModel):
     documents: list[DocumentSummary]
 
 
+def _match(hit: Hit) -> SearchMatch:
+    return SearchMatch(where=hit.kind, page=hit.page + 1 if hit.page is not None else None)
+
+
 @router.get("", response_model=DocumentListResponse)
 async def list_documents(
     status_: Annotated[str | None, Query(alias="status")] = None,
     document_type: str | None = None,
     needs_review: bool | None = None,
+    profile: str | None = None,
     q: str | None = None,
     limit: int = 50,
     offset: int = 0,
     session: AsyncSession = Depends(get_db_session),
     principal: Principal = Depends(get_principal),
+    settings: Settings = Depends(get_app_settings),
 ) -> DocumentListResponse:
-    if q:  # finding a case by a DNI or a name is seeing personal data
+    """The documents, newest first; with ``q``, the ones that match it, best
+    first (VRT-59), each saying where it matched — never what it says."""
+    filters = Filters(status=status_, document_type=document_type, needs_review=needs_review, profile=profile)
+    repo = DocumentRepository(session)
+    matches: dict[uuid.UUID, Hit] = {}
+    if q and q.strip():  # finding a case by a DNI or a name is seeing personal data
         if not can_reveal(principal.role):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="tu rol no permite buscar por datos personales")
         await record(session, principal, action="buscar", what="búsqueda de documentos por un dato")  # the term is not kept: it is the datum
-    repo = DocumentRepository(session)
-    documents = await repo.list(status=status_, document_type=document_type, needs_review=needs_review, q=q, limit=limit, offset=offset)
-    total = await repo.count(status=status_, document_type=document_type, needs_review=needs_review, q=q)
+        hits = await search(session, search_models(settings), q, filters)
+        matches = {h.document_id: h for h in hits}
+        documents = await repo.get_many([h.document_id for h in hits[offset : offset + limit]])
+        total = len(hits)
+    else:
+        documents = await repo.list(filters, limit=limit, offset=offset)
+        total = await repo.count(filters)
     maskers = CaseMaskers(session, principal)
     return DocumentListResponse(
         total=total,
@@ -90,6 +108,7 @@ async def list_documents(
                 parent_document_id=doc.parent_document_id,
                 page_start=doc.page_start,
                 page_end=doc.page_end,
+                match=_match(matches[doc.id]) if doc.id in matches else None,
             )
             for doc in documents
         ],

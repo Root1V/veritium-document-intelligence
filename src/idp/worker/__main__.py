@@ -22,6 +22,7 @@ from temporalio.worker import Worker
 from idp.config import Settings, get_settings
 from idp.execution.aeon import LANE_QUEUES, run_status
 from idp.llm.port import inference_lifespan
+from idp.search.models import search_models_lifespan
 from idp.llm.prompts import current as current_prompts
 from idp.llm.prompts import fingerprint, set_published
 from idp.observability.otel import setup_telemetry
@@ -102,6 +103,7 @@ async def main() -> None:
 
     async with contextlib.AsyncExitStack() as stack:
         await stack.enter_async_context(inference_lifespan(settings))
+        await stack.enter_async_context(search_models_lifespan(settings))  # each run indexes its case (VRT-59)
         for lane, concurrency in settings.worker_lane_concurrency.items():
             await stack.enter_async_context(
                 Worker(client, task_queue=LANE_QUEUES[lane], activities=activities, max_concurrent_activities=concurrency)
