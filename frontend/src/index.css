@@ -73,13 +73,14 @@
     --chart-4: oklch(0.371 0 0);
     --chart-5: oklch(0.269 0 0);
     --radius: 0.625rem;
-    --sidebar: oklch(0.985 0 0);
-    --sidebar-foreground: oklch(0.145 0 0);
-    --sidebar-primary: oklch(0.488 0.217 264.376);
+    /* Dark navy sidebar in both themes; the active item takes the primary blue (VRT-73). */
+    --sidebar: oklch(0.225 0.045 265);
+    --sidebar-foreground: oklch(0.93 0.012 255);
+    --sidebar-primary: oklch(0.546 0.215 262.881);
     --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.932 0.032 255.585);
-    --sidebar-accent-foreground: oklch(0.424 0.199 265.638);
-    --sidebar-border: oklch(0.922 0 0);
+    --sidebar-accent: oklch(0.3 0.05 265);
+    --sidebar-accent-foreground: oklch(0.985 0 0);
+    --sidebar-border: oklch(0.3 0.05 265);
     --sidebar-ring: oklch(0.488 0.217 264.376);
 }
 
@@ -107,12 +108,12 @@
     --chart-3: oklch(0.439 0 0);
     --chart-4: oklch(0.371 0 0);
     --chart-5: oklch(0.269 0 0);
-    --sidebar: oklch(0.205 0 0);
-    --sidebar-foreground: oklch(0.985 0 0);
-    --sidebar-primary: oklch(0.623 0.214 259.815);
+    --sidebar: oklch(0.18 0.035 265);
+    --sidebar-foreground: oklch(0.93 0.012 255);
+    --sidebar-primary: oklch(0.546 0.215 262.881);
     --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.282 0.091 267.935);
-    --sidebar-accent-foreground: oklch(0.882 0.059 254.128);
+    --sidebar-accent: oklch(0.26 0.045 265);
+    --sidebar-accent-foreground: oklch(0.985 0 0);
     --sidebar-border: oklch(1 0 0 / 10%);
     --sidebar-ring: oklch(0.623 0.214 259.815);
 }
