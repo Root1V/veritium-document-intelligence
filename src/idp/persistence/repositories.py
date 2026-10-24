@@ -555,7 +555,7 @@ class ReviewRepository:
                 document.selectinload(Document.extraction),
                 document.selectinload(Document.active_validation_issues),
             )
-            .order_by(ReviewItem.created_at.desc())
+            .order_by(ReviewItem.created_at)  # the one waiting longest first (VRT-77)
         )
         result = await self._session.execute(stmt)
         return list(result.scalars().all())

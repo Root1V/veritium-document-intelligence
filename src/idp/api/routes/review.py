@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import re
 import uuid
+from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
@@ -65,6 +66,7 @@ class ReviewItemResponse(BaseModel):
     filename: str
     case_id: uuid.UUID
     case_ref: str | None
+    created_at: datetime  # since when it waits (VRT-77)
     page: int | None
     source_text: str | None
     # The finding that sent a validation_issue item here.
@@ -183,6 +185,7 @@ def _describe(item: ReviewItem, type_catalog: DocumentTypeCatalog, semantic: Sem
         filename=document.original_filename,
         case_id=document.case_id,
         case_ref=document.case.external_ref,
+        created_at=item.created_at,
         page=leaf.get("page"),
         source_text=leaf.get("source_text"),
         finding=finding if item.reason == "validation_issue" else None,

@@ -444,3 +444,6 @@ Método, mediciones y aprendizajes: [eficiencia-modelos-ia.md](eficiencia-modelo
 
 ## VRT-76 — Enmascarado legible
 **Why:** el texto libre sin mapeo (el resumen de cada documento, una referencia) contaba como personal y sus palabras se tapaban en todo el expediente: «Solicitud de P.», «D. P. de S.». **Scope:** se tapan palabra por palabra solo los nombres de persona (atributo con comparación `person_name`, o un dato del proceso con forma de nombre); un campo sin mapeo se tapa entero donde se cita tal cual. Fuera: marcar campos descriptivos como no personales en el catálogo de tipos.
+
+## VRT-77 — Revisar como cola de trabajo
+**Why:** «Revisar» era una lista plana del más nuevo al más viejo: quien revisa saltaba de expediente en expediente y lo que más esperaba quedaba al fondo. **Scope:** campos agrupados por expediente, el que más espera primero (la cola expone `created_at`); filtros por motivo con su conteo; resumen de cuántos y desde cuándo; «todo al día» cuando no hay nada; la tasa del investigador pasa al pie.

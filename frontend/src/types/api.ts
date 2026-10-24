@@ -106,6 +106,7 @@ export interface ReviewItem {
   filename: string
   case_id: string
   case_ref: string | null
+  created_at: string
   page: number | null
   source_text: string | null
   finding: string | null

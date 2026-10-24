@@ -123,3 +123,4 @@ Estados: `done` · `todo` · `blocked` (espera a otro equipo) · `superseded` (a
 | VRT-74 | Inicio para decidir, por rol | done | Indicadores con su comparación, lo que requiere atención y gráficos con métricas reales. |
 | VRT-75 | Login y páginas de trabajo | done | Ingreso corporativo primero; expediente con su decisión en semáforo arriba y lo técnico plegado. |
 | VRT-76 | Enmascarado legible | done | Los nombres se tapan palabra por palabra; las palabras del negocio («préstamo», «seguro») ya no. |
+| VRT-77 | Revisar como cola de trabajo | todo | Campos agrupados por expediente, el que más espera primero, con filtros rápidos y «todo al día». |
