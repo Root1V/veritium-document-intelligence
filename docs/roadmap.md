@@ -496,3 +496,6 @@ Método, mediciones y aprendizajes: [eficiencia-modelos-ia.md](eficiencia-modelo
 ## VRT-93 — Instrucciones al modelo en palabras
 **Why:** catorce tarjetas iguales en fila, cada una con su texto, borrador e historial plegados, hacían difícil ver cuál tenía un borrador esperando o cuál usó otra versión un expediente. **Scope:** lista por etapa (leer, comparar, configurar, conversar) con el estado de cada una en semáforo y la elegida al lado: cifras, texto con las partes que completa la plataforma marcadas, borrador con qué cambia, con qué se probó y publicar, e historial con volver a una versión. Proponer un cambio en un diálogo que verifica en vivo que no falte ninguna parte. Abierta desde un expediente, empieza por la instrucción que usó otra versión. Sin cambios de API.
 
+## VRT-95 — Herramientas para agentes en palabras
+**Why:** una tabla de 23 filas con descripciones escritas para agentes (parámetros entre comillas, nombres técnicos) no dejaba ver qué puede hacer un sistema conectado ni qué usa cada agente por dentro. **Scope:** dos fichas que filtran (para otros sistemas / internas), búsqueda y «solo las que usan IA»; bloques por uso con una tarjeta por herramienta: frase de negocio, usa IA o no, consulta o cambia algo, costo en semáforo y quién la usa; el texto para el agente, el nombre y si se puede repetir, plegados. Sin cambios de API.
+

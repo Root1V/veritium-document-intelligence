@@ -1,38 +1,21 @@
-// The tool catalog (VRT-53): every tool Veritium's agents use or expose,
-// defined once. Internal tools stay inside the extraction agent; exposed
-// ones are what other agents and systems can call over MCP.
-import { useState } from 'react'
-import { Download, Loader2 } from 'lucide-react'
+// The tool catalog (VRT-53, VRT-95): every tool Veritium's agents use or
+// expose, defined once. Exposed ones are what other agents and systems can
+// call over MCP, grouped by what they are for; internal ones stay inside the
+// agent that uses them. The technical name and descriptor stay folded.
+import { useState, type ReactNode } from 'react'
+import { Bot, Download, Eye, FileSearch, FolderInput, Loader2, PencilLine, Plug, Scale, Search, Sparkles, type LucideIcon } from 'lucide-react'
 import { toast } from 'sonner'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Input } from '@/components/ui/input'
 import { errorDetail } from '@/lib/apiErrors'
 import { apiClient } from '@/lib/apiClient'
 import { useToolCatalog } from '@/lib/queries'
+import { COST, GROUPS, ROLE, SUMMARY, groupOf, type ToolGroup } from '@/lib/tools'
 import { cn } from '@/lib/utils'
 import type { ToolSpec } from '@/types/api'
 
-const COST: Record<ToolSpec['cost'], { label: string; dot: string }> = {
-  ninguno: { label: 'Sin costo', dot: 'bg-emerald-500' },
-  lectura: { label: 'Consulta', dot: 'bg-emerald-500' },
-  modelo: { label: 'Una llamada al modelo', dot: 'bg-amber-500' },
-  procesamiento: { label: 'Procesa un expediente', dot: 'bg-red-500' },
-}
-const ROLE: Record<string, string> = {
-  visor: 'Visor',
-  operador: 'Operador',
-  admin: 'Admin',
-  integracion: 'Integración',
-  especialista_ia: 'Especialista IA',
-  'agente-extraccion': 'Agente de extracción',
-}
-const FILTERS = [
-  { key: 'all', label: 'Todas' },
-  { key: 'mcp', label: 'Para otros sistemas' },
-  { key: 'internal', label: 'Internas' },
-] as const
+const GROUP_ICON: Record<ToolGroup, LucideIcon> = { cases: FolderInput, consult: FileSearch, areas: Scale, extraction: Bot, investigation: Search, other: Bot }
+type Filter = 'all' | ToolSpec['exposure']
 
 async function downloadDescriptors() {
   try {
@@ -47,86 +30,177 @@ async function downloadDescriptors() {
   }
 }
 
+// Descriptions name parameters between backticks, as other agents read them.
+function Described({ text }: { text: string }) {
+  return (
+    <p className="whitespace-normal">
+      {text.split('`').map((part, i) => (i % 2 ? <code key={i} className="rounded bg-muted px-1 text-xs text-foreground">{part}</code> : part))}
+    </p>
+  )
+}
+
+function Chip({ icon: Icon, children, tone }: { icon?: LucideIcon; children: ReactNode; tone?: 'ai' }) {
+  return (
+    <span className={cn('inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium', tone === 'ai' ? 'bg-violet-500/10 text-violet-700 dark:text-violet-300' : 'bg-muted text-muted-foreground')}>
+      {Icon && <Icon className="size-3" />} {children}
+    </span>
+  )
+}
+
+function ToolCard({ tool }: { tool: ToolSpec }) {
+  return (
+    <div className="flex flex-col gap-3 rounded-xl border bg-card p-4">
+      <div className="flex flex-col gap-1">
+        <span className="font-semibold">{tool.title}</span>
+        <p className="text-sm text-muted-foreground">{SUMMARY[tool.name] ?? tool.description}</p>
+      </div>
+      <div className="flex flex-wrap items-center gap-1.5">
+        {tool.kind === 'model' ? (
+          <Chip icon={Sparkles} tone="ai">
+            Usa IA
+          </Chip>
+        ) : (
+          <Chip>Sin IA</Chip>
+        )}
+        {tool.read_only ? <Chip icon={Eye}>Solo consulta</Chip> : <Chip icon={PencilLine}>Crea o cambia algo</Chip>}
+        <span className="inline-flex items-center gap-1.5 px-1 text-xs text-muted-foreground">
+          <span className={cn('size-2 shrink-0 rounded-full', COST[tool.cost].dot)} /> {COST[tool.cost].label}
+        </span>
+      </div>
+      <div className="mt-auto flex flex-col gap-2 border-t pt-3 text-xs text-muted-foreground">
+        <span>
+          <span className="font-medium text-foreground">Quién la usa:</span> {tool.roles.map((r) => ROLE[r] ?? r).join(', ')}
+        </span>
+        <details className="group">
+          <summary className="cursor-pointer select-none hover:text-foreground">Detalle técnico</summary>
+          <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
+            <dt>Para el agente</dt>
+            <dd>
+              <Described text={tool.description} />
+            </dd>
+            <dt>Nombre</dt>
+            <dd>
+              <code className="text-foreground">{tool.name}</code>
+            </dd>
+            <dt>Disponible</dt>
+            <dd>{tool.exposure === 'mcp' ? 'Por MCP, para otros sistemas' : 'Solo dentro de Veritium'}</dd>
+            <dt>Repetirla</dt>
+            <dd>{tool.idempotent ? 'No duplica nada' : 'Cada llamada cuenta'}</dd>
+          </dl>
+        </details>
+      </div>
+    </div>
+  )
+}
+
 export function ToolCatalogPage() {
-  const { data: tools, isLoading } = useToolCatalog()
-  const [filter, setFilter] = useState<(typeof FILTERS)[number]['key']>('all')
-  const shown = (tools ?? []).filter((t) => filter === 'all' || t.exposure === filter)
+  const { data: tools, isLoading, isError } = useToolCatalog()
+  const [filter, setFilter] = useState<Filter>('all')
+  const [onlyAi, setOnlyAi] = useState(false)
+  const [query, setQuery] = useState('')
+  const all = tools ?? []
+  const q = query.trim().toLocaleLowerCase('es')
+  const shown = all.filter(
+    (t) =>
+      (filter === 'all' || t.exposure === filter) &&
+      (!onlyAi || t.kind === 'model') &&
+      (!q || `${t.title} ${SUMMARY[t.name] ?? ''} ${t.description} ${t.name}`.toLocaleLowerCase('es').includes(q)),
+  )
+  const count = (exposure: ToolSpec['exposure']) => all.filter((t) => t.exposure === exposure).length
+
+  const SIDES: { key: ToolSpec['exposure']; icon: LucideIcon; name: string; hint: string }[] = [
+    { key: 'mcp', icon: Plug, name: 'Para otros sistemas', hint: 'Operaciones de negocio que otro agente o sistema puede pedir. Siempre pasan por el proceso y su decisión.' },
+    { key: 'internal', icon: Bot, name: 'Internas', hint: 'Pasos de los agentes de Veritium. Nadie de fuera puede llamarlos ni saltarse la decisión.' },
+  ]
 
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
+        <div className="max-w-3xl">
           <h1 className="text-2xl font-semibold tracking-tight">Herramientas para agentes</h1>
-          <p className="text-muted-foreground">
-            Las herramientas que usan los agentes de Veritium y las que ofrece a otros sistemas. Cada una se define una sola vez: qué hace, si usa un
-            modelo, cuánto cuesta y quién la puede usar.
-          </p>
+          <p className="text-muted-foreground">Lo que pueden hacer los agentes de Veritium y los sistemas que se conectan a él: qué hace cada herramienta, si usa IA y quién la puede usar.</p>
         </div>
         <Button variant="outline" onClick={downloadDescriptors} title="Descriptores MCP, para conectar otro agente o sistema">
           <Download className="size-4" /> Ficha técnica
         </Button>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Criterio</CardTitle>
-          <CardDescription>
-            Se ofrece a otros sistemas (por MCP) solo lo que otro agente o sistema necesita como operación de negocio. Los pasos internos (clasificar, extraer, leer
-            regiones de un documento) quedan dentro, para que nadie se salte el perfil del proceso ni el veredicto.
-          </CardDescription>
-        </CardHeader>
-      </Card>
+      <div className="grid gap-3 md:grid-cols-2">
+        {SIDES.map((s) => {
+          const active = filter === s.key
+          return (
+            <button
+              key={s.key}
+              type="button"
+              onClick={() => setFilter(active ? 'all' : s.key)}
+              className={cn('flex items-start gap-3 rounded-xl border bg-card p-4 text-left transition hover:border-primary/40', active && 'border-primary ring-1 ring-primary')}
+            >
+              <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                <s.icon className="size-5" />
+              </span>
+              <span className="flex flex-col gap-0.5">
+                <span className="flex items-baseline gap-2">
+                  <span className="font-semibold">{s.name}</span>
+                  {tools && <span className="text-sm text-muted-foreground">{count(s.key)}</span>}
+                </span>
+                <span className="text-sm text-muted-foreground">{s.hint}</span>
+              </span>
+            </button>
+          )
+        })}
+      </div>
 
-      <div className="flex gap-2">
-        {FILTERS.map((f) => (
-          <Button key={f.key} size="sm" variant={filter === f.key ? 'default' : 'outline'} onClick={() => setFilter(f.key)}>
-            {f.label}
-            {tools && <span className="ml-1 text-xs opacity-70">{(tools ?? []).filter((t) => f.key === 'all' || t.exposure === f.key).length}</span>}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative w-full sm:w-72">
+          <Search className="absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar una herramienta" className="pl-8" />
+        </div>
+        <Button size="sm" variant={onlyAi ? 'default' : 'outline'} onClick={() => setOnlyAi(!onlyAi)}>
+          <Sparkles className="size-3.5" /> Solo las que usan IA
+        </Button>
+        {(filter !== 'all' || onlyAi || q) && (
+          <Button size="sm" variant="ghost" onClick={() => (setFilter('all'), setOnlyAi(false), setQuery(''))}>
+            Ver todas
           </Button>
-        ))}
+        )}
       </div>
 
       {isLoading ? (
         <Loader2 className="size-5 animate-spin text-muted-foreground" />
+      ) : isError ? (
+        <p className="text-sm text-muted-foreground">No se pudieron cargar las herramientas: el servidor de Veritium no responde.</p>
+      ) : !shown.length ? (
+        <p className="text-sm text-muted-foreground">Ninguna herramienta coincide con la búsqueda.</p>
       ) : (
-        <Card>
-          <CardContent className="pt-6">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Herramienta</TableHead>
-                  <TableHead>Ficha</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {shown.map((t) => (
-                  <TableRow key={t.name} className="align-top">
-                    <TableCell className="whitespace-normal">
-                      <div className="font-medium">{t.title}</div>
-                      <code className="text-xs text-muted-foreground">{t.name}</code>
-                      <p className="mt-1 max-w-2xl text-xs text-muted-foreground">{t.description}</p>
-                    </TableCell>
-                    <TableCell className="w-64 whitespace-normal">
-                      <div className="flex flex-col items-start gap-1.5 text-sm">
-                        <Badge variant={t.exposure === 'mcp' ? 'secondary' : 'outline'}>
-                          {t.exposure === 'mcp' ? 'Para otros sistemas' : 'Interna'}
-                        </Badge>
-                        <span>
-                          {t.kind === 'model' ? 'Usa un modelo' : 'Sin modelo'} · {t.read_only ? 'solo lee' : 'crea o cambia algo'}
-                        </span>
-                        <span className="flex items-center gap-1.5">
-                          <span className={cn('size-2 shrink-0 rounded-full', COST[t.cost].dot)} />
-                          {COST[t.cost].label}
-                        </span>
-                        <span className="text-xs text-muted-foreground">{t.roles.map((r) => ROLE[r] ?? r).join(', ')}</span>
-                      </div>
-                    </TableCell>
-                  </TableRow>
+        GROUPS.map((g) => {
+          const list = shown.filter((t) => groupOf(t) === g.key)
+          if (!list.length) return null
+          const Icon = GROUP_ICON[g.key]
+          return (
+            <section key={g.key} className="rounded-2xl border bg-muted/40">
+              <div className="flex flex-wrap items-center gap-3 rounded-t-2xl border-b bg-background px-4 py-3 sm:px-5">
+                <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+                  <Icon className="size-5" />
+                </span>
+                <div className="flex min-w-0 flex-1 flex-col">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h2 className="text-xl font-semibold tracking-tight">{g.name}</h2>
+                    <span className="rounded-full bg-background px-2 py-0.5 text-xs font-medium text-muted-foreground ring-1 ring-border">
+                      {list.length === 1 ? '1 herramienta' : `${list.length} herramientas`}
+                    </span>
+                    <span className="text-xs text-muted-foreground">· {g.exposure === 'mcp' ? 'para otros sistemas' : 'interna'}</span>
+                  </div>
+                  {g.hint && <p className="text-sm text-muted-foreground">{g.hint}</p>}
+                </div>
+              </div>
+              <div className="grid gap-4 p-4 sm:p-5 lg:grid-cols-2 2xl:grid-cols-3">
+                {list.map((t) => (
+                  <ToolCard key={t.name} tool={t} />
                 ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
+              </div>
+            </section>
+          )
+        })
       )}
     </div>
   )

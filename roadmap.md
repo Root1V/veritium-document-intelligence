@@ -140,3 +140,4 @@ Estados: `done` · `todo` · `blocked` (espera a otro equipo) · `superseded` (a
 | VRT-91 | Riesgos y Legal en palabras | done | Un bloque por área, lecturas en tarjetas con su importancia en colores, y crear o editar en un diálogo. |
 | VRT-92 | Probar cambios en palabras | done | Pruebas en una lista con su resultado en semáforo; cada una con cifras, hoy contra con el cambio, y nueva prueba en tres preguntas. |
 | VRT-93 | Instrucciones al modelo en palabras | todo | Lista por etapa con su estado, detalle en pestañas (texto, borrador, historial) y cambio propuesto en un diálogo que verifica lo obligatorio. |
+| VRT-95 | Herramientas para agentes en palabras | todo | Bloques por uso (abrir expedientes, consultar, Riesgos y Legal, cada agente), una frase de negocio por herramienta y lo técnico plegado. |
