@@ -3,11 +3,21 @@
 import { type FormEvent, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
-import { Building2, ChevronDown, LogOut, Plus, Search } from 'lucide-react'
+import { Building2, ChevronDown, LogOut, Monitor, Moon, Plus, Search, Sun } from 'lucide-react'
+import { useTheme } from 'next-themes'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { canExecute, getUnit, getUnits, getUserName, getUserRole, setSession, signOut } from '@/lib/auth'
 import { useSwitchUnit } from '@/lib/queries'
 
@@ -62,7 +72,14 @@ function UnitPicker() {
   )
 }
 
+const THEMES = [
+  { value: 'light', label: 'Claro', icon: Sun },
+  { value: 'dark', label: 'Oscuro', icon: Moon },
+  { value: 'system', label: 'Como el sistema', icon: Monitor },
+]
+
 function UserMenu() {
+  const { theme, setTheme } = useTheme()
   const name = getUserName() ?? 'Usuario'
   const role = getUserRole()
   const initials = name
@@ -83,6 +100,15 @@ function UserMenu() {
           <span>{name}</span>
           {role && <span className="text-xs font-normal text-muted-foreground">{ROLE_LABEL[role] ?? role}</span>}
         </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">Apariencia</DropdownMenuLabel>
+        <DropdownMenuRadioGroup value={theme ?? 'system'} onValueChange={setTheme}>
+          {THEMES.map(({ value, label, icon: Icon }) => (
+            <DropdownMenuRadioItem key={value} value={value} onSelect={(e) => e.preventDefault()}>
+              <Icon className="size-4" /> {label}
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
         <DropdownMenuSeparator />
         <DropdownMenuItem onSelect={signOut}>
           <LogOut className="size-4" /> Cerrar sesión
