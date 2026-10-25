@@ -185,14 +185,14 @@ def _hardcoded_rules(settings: Settings) -> list[ValidationRule]:
 
 
 HARDCODED_RULE_DESCRIPTIONS: dict[str, str] = {
-    "self.payslip_arithmetic_consistency": "Verifica que el neto de la boleta de pago sea igual al bruto menos los descuentos totales (con una pequeña tolerancia).",
-    "request_input.expected_employee_code_matches": "Compara el codigo de empleado extraido de la boleta contra el codigo esperado ingresado al subir la solicitud.",
-    "batch.duplicate_identifier": "Detecta si el mismo identificador (codigo de empleado o numero de poliza) aparece duplicado entre documentos del mismo tipo dentro de la misma solicitud.",
-    "batch.employee_name_matches_insured_name": "Compara el nombre del empleado en la boleta contra el nombre del asegurado en la declaracion de seguro de la misma solicitud (tolera variaciones de formato; escala a un LLM en casos ambiguos).",
-    "reference_data.employee_code_exists": "Verifica que el codigo de empleado extraido exista en la tabla interna de empleados de referencia.",
-    "reference_data.employee_name_matches_reference": "Cuando no hay codigo de empleado, busca el nombre extraido contra la tabla de empleados de referencia por similitud (tolera variaciones; escala a un LLM en casos ambiguos).",
-    "semantic.attribute_consistency": "Compara entre documentos del expediente cada atributo del catalogo semantico que comparten (DNI, nombre, ingresos, empleador, montos), segun el tipo de comparacion del atributo.",
-    "external_system.insurance_policy_verified": "Verifica el numero de poliza contra un sistema externo de la aseguradora — hoy es un stub sin integracion real, ver /document-types u otra documentacion sobre 'sistema externo'.",
+    "self.payslip_arithmetic_consistency": "El neto de la boleta de pago es igual al bruto menos los descuentos (con una pequeña tolerancia).",
+    "request_input.expected_employee_code_matches": "El código de empleado de la boleta es el que se indicó al enviar la solicitud.",
+    "batch.duplicate_identifier": "Un mismo código de empleado o número de póliza no aparece repetido en documentos del mismo tipo de la solicitud.",
+    "batch.employee_name_matches_insured_name": "El nombre del empleado en la boleta es el del asegurado en la declaración de seguro (acepta diferencias de formato; en casos dudosos lo decide el modelo).",
+    "reference_data.employee_code_exists": "El código de empleado de la boleta existe en el maestro de empleados.",
+    "reference_data.employee_name_matches_reference": "Sin código de empleado, el nombre de la boleta se encuentra en el maestro de empleados (acepta diferencias; en casos dudosos lo decide el modelo).",
+    "semantic.attribute_consistency": "Los datos que comparten los documentos del expediente coinciden entre sí: DNI, nombre, ingresos, empleador, montos.",
+    "external_system.insurance_policy_verified": "El número de póliza existe en el sistema de la aseguradora (aún sin conexión real: siempre pasa).",
 }
 
 

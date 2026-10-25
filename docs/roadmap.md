@@ -450,3 +450,6 @@ Método, mediciones y aprendizajes: [eficiencia-modelos-ia.md](eficiencia-modelo
 
 ## VRT-78 — Documentos con su expediente
 **Why:** la lista de documentos no decía de qué expediente era cada uno ni cuándo llegó, y mostraba la confianza de clasificación, un dato técnico. **Scope:** columnas Documento, Tipo, Expediente (enlace), Estado y Llegó; la lista expone `case_ref` y `created_at`.
+
+## VRT-79 — Reglas en una sola lista
+**Why:** la página apilaba el formulario de regla nueva siempre abierto y dos tablas, con códigos (`self.payslip_…`, CEL) y jerga («LLM», «stub») en primer plano. **Scope:** una tabla de reglas en vigor (del sistema y creadas aquí) que dice primero qué verifica, con tipo, origen y estado; «Nueva regla» en la cabecera; borradores por revisar arriba; descripciones de las reglas del sistema en lenguaje de negocio.

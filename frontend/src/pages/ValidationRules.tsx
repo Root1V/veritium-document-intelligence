@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Loader2, Pencil, Sparkles, Wand2 } from 'lucide-react'
+import { Loader2, Pencil, Plus, Sparkles, Wand2 } from 'lucide-react'
 import { isAxiosError } from 'axios'
 import { toast } from 'sonner'
 import {
@@ -16,6 +16,7 @@ import {
 } from '@/lib/queries'
 import { isPlatformAdmin } from '@/lib/auth'
 import { DeleteButton } from '@/components/DeleteButton'
+import { ToneBadge } from '@/components/StatusBadge'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -32,7 +33,13 @@ const CATEGORY_OPTIONS: { value: RuleCelCategory; label: string }[] = [
   { value: 'request_input', label: 'Datos de entrada' },
   { value: 'reference_data', label: 'Existe en datos de referencia' },
 ]
-const CATEGORY_LABEL: Record<string, string> = Object.fromEntries(CATEGORY_OPTIONS.map((c) => [c.value, c.label]))
+const CATEGORY_LABEL: Record<string, string> = {
+  ...Object.fromEntries(CATEGORY_OPTIONS.map((c) => [c.value, c.label])),
+  cross_document: 'Entre documentos',
+  external_system: 'Sistema externo',
+  conditional: 'Condicional',
+  semantic: 'Entre documentos',
+}
 const SEVERITY_OPTIONS = ['info', 'warning', 'error'] as const
 
 function errorDetail(error: unknown, fallback: string): string {
@@ -499,56 +506,15 @@ function RuleDraftCard({ rule }: { rule: ValidationRule }) {
   )
 }
 
-function ActiveRulesList() {
-  const { data: rules } = useValidationRules({ kind: 'cel', status_filter: 'active' })
-  const resolve = useResolveValidationRule()
+const SEVERITY_LABEL: Record<string, string> = { info: 'Informativa', warning: 'Advertencia', error: 'Error' }
 
-  if (!rules || rules.length === 0) return null
-
-  return (
-    <div className="overflow-x-auto rounded-lg border">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Regla</TableHead>
-            <TableHead>Sobre</TableHead>
-            <TableHead>Condición</TableHead>
-            <TableHead>Severidad</TableHead>
-            <TableHead />
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {rules.map((rule) => (
-            <TableRow key={rule.id}>
-              <TableCell className="font-mono text-xs">{rule.rule_id}</TableCell>
-              <TableCell className="text-xs">{rule.document_type ?? (rule.attribute ? `atributo ${rule.attribute}` : '—')}</TableCell>
-              <TableCell className="max-w-xs truncate font-mono text-xs">{rule.condition_cel}</TableCell>
-              <TableCell>
-                <Badge variant="outline" className="text-[10px]">
-                  {rule.severity}
-                </Badge>
-              </TableCell>
-              <TableCell>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={resolve.isPending && resolve.variables?.id === rule.id}
-                  onClick={() => resolve.mutate({ id: rule.id, decision: 'disable' }, { onSuccess: () => toast.success('Regla desactivada.') })}
-                >
-                  Desactivar
-                </Button>
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </div>
-  )
-}
-
-function ToggleList() {
+/** Every rule in force — the platform's and the ones written here — said by what it checks (VRT-79). */
+function RulesTable() {
+  const { data: custom } = useValidationRules({ kind: 'cel', status_filter: 'active' })
   const { data: toggles, isLoading } = useToggleRules()
+  const resolve = useResolveValidationRule()
   const setToggle = useSetRuleToggle()
+  const canChange = isPlatformAdmin()
 
   if (isLoading) {
     return (
@@ -557,49 +523,70 @@ function ToggleList() {
       </div>
     )
   }
+  const rows = [
+    ...(custom ?? []).map((r) => ({
+      key: r.id,
+      what: r.description_nl || r.message_fail || r.rule_id,
+      code: r.rule_id,
+      origin: 'Creada aquí',
+      category: r.category,
+      severity: r.severity,
+      active: true,
+      technical: r.condition_cel,
+      toggle: () => resolve.mutate({ id: r.id, decision: 'disable' }, { onSuccess: () => toast.success('Regla desactivada.') }),
+      pending: resolve.isPending && resolve.variables?.id === r.id,
+    })),
+    ...(toggles ?? []).map((t) => ({
+      key: t.rule_id,
+      what: t.description || t.rule_id,
+      code: t.rule_id,
+      origin: 'Del sistema',
+      category: t.category,
+      severity: null,
+      active: t.status === 'active',
+      technical: null,
+      toggle: () =>
+        setToggle.mutate({ ruleId: t.rule_id, action: t.status === 'active' ? 'disable' : 'enable' }, { onSuccess: () => toast.success('Actualizado.') }),
+      pending: setToggle.isPending && setToggle.variables?.ruleId === t.rule_id,
+    })),
+  ]
 
   return (
     <div className="overflow-x-auto rounded-lg border">
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>Regla</TableHead>
-            <TableHead>Categoría</TableHead>
+            <TableHead>Qué verifica</TableHead>
+            <TableHead>Tipo</TableHead>
+            <TableHead>Origen</TableHead>
             <TableHead>Estado</TableHead>
-            <TableHead />
-            <TableHead>Descripción</TableHead>
+            {canChange && <TableHead className="w-28" />}
           </TableRow>
         </TableHeader>
         <TableBody>
-          {(toggles ?? []).map((toggle) => (
-            <TableRow key={toggle.rule_id}>
-              <TableCell className="font-mono text-xs">{toggle.rule_id}</TableCell>
-              <TableCell>
-                <Badge variant="outline" className="text-[10px]">
-                  {CATEGORY_LABEL[toggle.category] ?? toggle.category}
-                </Badge>
+          {rows.map((r) => (
+            <TableRow key={r.key}>
+              <TableCell className="max-w-xl whitespace-normal">
+                <span className="text-sm">{r.what}</span>
+                <span className="mt-0.5 block font-mono text-[11px] text-muted-foreground" title={r.technical ?? undefined}>
+                  {r.code}
+                </span>
               </TableCell>
-              <TableCell>
-                <Badge variant={toggle.status === 'active' ? 'secondary' : 'destructive'} className="text-[10px]">
-                  {toggle.status === 'active' ? 'Activa' : 'Desactivada'}
-                </Badge>
+              <TableCell className="text-sm text-muted-foreground">
+                {CATEGORY_LABEL[r.category] ?? r.category}
+                {r.severity && <span className="block text-xs">{SEVERITY_LABEL[r.severity] ?? r.severity}</span>}
               </TableCell>
+              <TableCell className="text-sm text-muted-foreground">{r.origin}</TableCell>
               <TableCell>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={setToggle.isPending && setToggle.variables?.ruleId === toggle.rule_id}
-                  onClick={() =>
-                    setToggle.mutate(
-                      { ruleId: toggle.rule_id, action: toggle.status === 'active' ? 'disable' : 'enable' },
-                      { onSuccess: () => toast.success('Actualizado.') },
-                    )
-                  }
-                >
-                  {toggle.status === 'active' ? 'Desactivar' : 'Activar'}
-                </Button>
+                <ToneBadge tone={r.active ? 'ok' : 'neutral'} label={r.active ? 'Activa' : 'Desactivada'} />
               </TableCell>
-              <TableCell className="max-w-sm text-xs text-muted-foreground">{toggle.description}</TableCell>
+              {canChange && (
+                <TableCell>
+                  <Button size="sm" variant="outline" disabled={r.pending} onClick={r.toggle}>
+                    {r.active ? 'Desactivar' : 'Activar'}
+                  </Button>
+                </TableCell>
+              )}
             </TableRow>
           ))}
         </TableBody>
@@ -611,42 +598,42 @@ function ToggleList() {
 export function ValidationRulesPage() {
   const canResolve = isPlatformAdmin() // the rule library runs in every unit (VRT-71)
   const { data: drafts, isLoading } = useValidationRules({ kind: 'cel', status_filter: 'draft' })
+  const [creating, setCreating] = useState(false)
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Reglas de validación</h1>
-        <p className="text-muted-foreground">
-          Crea reglas nuevas (en lenguaje natural o CEL directo), revisa borradores antes de activarlos, y
-          activa/desactiva reglas existentes.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Reglas de validación</h1>
+          <p className="text-muted-foreground">Las comprobaciones que se hacen a cada documento y expediente. Una regla nueva se describe en palabras y se prueba antes de activarla.</p>
+        </div>
+        {canResolve && (
+          <Button variant={creating ? 'outline' : 'default'} onClick={() => setCreating((c) => !c)}>
+            {creating ? 'Cerrar' : <><Plus className="size-4" /> Nueva regla</>}
+          </Button>
+        )}
       </div>
       <SharedConfigNote show={!isPlatformAdmin()} />
 
-      {canResolve && <NewRuleForm />}
+      {canResolve && creating && <NewRuleForm />}
 
       {isLoading ? (
         <div className="flex h-24 items-center justify-center">
           <Loader2 className="size-5 animate-spin text-muted-foreground" />
         </div>
       ) : drafts && drafts.length > 0 ? (
-        <div className="flex flex-col gap-4">
-          <h2 className="text-lg font-semibold tracking-tight">Borradores pendientes de revisión</h2>
+        <section className="flex flex-col gap-4">
+          <h2 className="text-lg font-semibold tracking-tight">Borradores por revisar ({drafts.length})</h2>
           {drafts.map((rule) => (
             <RuleDraftCard key={rule.id} rule={rule} />
           ))}
-        </div>
+        </section>
       ) : null}
 
-      <div className="flex flex-col gap-3">
-        <h2 className="text-lg font-semibold tracking-tight">Reglas nuevas activas</h2>
-        <ActiveRulesList />
-      </div>
-
-      <div className="flex flex-col gap-3">
-        <h2 className="text-lg font-semibold tracking-tight">Reglas del sistema</h2>
-        <ToggleList />
-      </div>
+      <section className="flex flex-col gap-3">
+        <h2 className="text-lg font-semibold tracking-tight">Reglas</h2>
+        <RulesTable />
+      </section>
     </div>
   )
 }
