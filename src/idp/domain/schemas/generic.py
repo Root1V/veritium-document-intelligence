@@ -12,7 +12,7 @@ from idp.domain.envelope import Extracted
 
 
 class GenericField(BaseModel):
-    key: str
+    key: str = Field(description="Nombre del dato en español, como lo leeria una persona (p. ej. 'Monto solicitado').")
     value: Extracted[str]
 
 

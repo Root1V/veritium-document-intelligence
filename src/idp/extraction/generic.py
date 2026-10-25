@@ -18,7 +18,13 @@ from idp.parsing.normalize import ParsedDocument
 _SYSTEM_PROMPT = prompt("extract_generic", """Eres un asistente de extraccion de datos. El documento no pudo clasificarse en un \
 tipo conocido. Extrae los pares clave-valor mas relevantes que encuentres (nombres, montos, fechas, \
 identificadores) y un resumen breve. Cada campo debe incluir su nivel de confianza (0-1) y el texto \
-exacto de origen.""")
+exacto de origen.
+
+La clave de cada campo la lee una persona, no un programa: escribela en español, como se nombraria ese \
+dato en el documento (p. ej. "Monto solicitado", "DNI del cónyuge", "Fecha de emisión"). Nunca en ingles \
+ni en snake_case. Si el documento trae datos de varias personas, distinguelas por su papel o por orden \
+("DNI del titular", "Nombres — persona 2"), nunca por su nombre: la clave no debe contener datos de nadie. \
+El resumen tambien va en español.""")
 
 
 class GenericExtractor:

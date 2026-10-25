@@ -459,3 +459,6 @@ Método, mediciones y aprendizajes: [eficiencia-modelos-ia.md](eficiencia-modelo
 
 ## VRT-81 — Catálogo de datos y tipos de documento en palabras
 **Why:** el catálogo mostraba claves (`persona.dni`, `payslip`), tipos y comparaciones en inglés (`string`, `person_name`), «PII» y CEL; Tipos de documento remitía a la API. **Scope:** al leer, cada dato por su nombre (la clave, tenue), tipos, comparaciones y dato personal en español, el formato como «Se valida»; mapeos con el nombre del tipo, del dato y de a quién pertenece; pestañas y descripciones en lenguaje de negocio. Al editar se siguen viendo los valores guardados.
+
+## VRT-82 — Datos de documentos sin tipo, nombrados en español
+**Why:** en un documento sin tipo registrado el modelo inventaba los nombres de los datos en inglés (`loan_amount_requested`, «Borrower Name»), y en Revisar o en el detalle se leían así; al corregirlo, el modelo empezó a distinguir personas por su apellido, lo que pondría datos personales en un rótulo que no se enmascara. **Scope:** la instrucción `extract_generic` y la descripción de la clave piden el nombre en español, con varias personas distinguidas por papel u orden. Los documentos ya leídos conservan sus nombres hasta volver a procesarlos.
