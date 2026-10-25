@@ -134,9 +134,10 @@ class EntityMatchVerdict(BaseModel):
     reasoning: str
 
 
-_JUDGE_SYSTEM_PROMPT = prompt("entity_judge", """Eres un juez que determina si dos valores extraidos de documentos distintos \
-se refieren a la misma entidad (persona, empresa o direccion). Considera abreviaturas, nombres \
-compuestos, apodos y variaciones de formato. Responde con tu veredicto y una breve justificacion.""")
+_JUDGE_SYSTEM_PROMPT = prompt("entity_judge", """You are a judge who determines whether two values extracted from different documents refer to \
+the same entity (person, company or address). Consider abbreviations, compound names, nicknames and format \
+variations; the values are Spanish names and addresses. Answer with your verdict and a brief justification in \
+Spanish.""")
 
 
 def escalate_to_llm_judge(settings: Settings, *, kind: EntityKind, value_a: str, value_b: str, outcome: MatchOutcome) -> EntityMatchVerdict:
@@ -144,11 +145,11 @@ def escalate_to_llm_judge(settings: Settings, *, kind: EntityKind, value_a: str,
     structured-output infrastructure as everything else in ``idp.llm``,
     the same escalation pattern already used by category (e)."""
     prompt = (
-        f"Tipo de entidad: {kind.value}\n"
-        f"Valor A: {value_a!r}\nValor B: {value_b!r}\n"
-        f"Normalizados: {outcome.normalized_a!r} vs {outcome.normalized_b!r}\n"
-        f"Score algoritmico ({outcome.metric}): {outcome.score:.2f} (banda ambigua)\n"
-        "¿Se refieren a la misma entidad?"
+        f"Entity kind: {kind.value}\n"
+        f"Value A: {value_a!r}\nValue B: {value_b!r}\n"
+        f"Normalized: {outcome.normalized_a!r} vs {outcome.normalized_b!r}\n"
+        f"Algorithmic score ({outcome.metric}): {outcome.score:.2f} (ambiguous band)\n"
+        "Do they refer to the same entity?"
     )
     return structured(
         purpose="entity_judge",

@@ -31,50 +31,47 @@ from idp.parsing.normalize import ParsedDocument
 
 
 class DocumentSegment(BaseModel):
-    start_page: int = Field(description="Primera pagina (0-indexed) de este documento logico.")
-    end_page: int = Field(description="Ultima pagina (0-indexed, inclusive) de este documento logico.")
-    reasoning: str = Field(description="Por que estas paginas forman un documento logico distinto de las demas.")
+    start_page: int = Field(description="First page (0-indexed) of this logical document.")
+    end_page: int = Field(description="Last page (0-indexed, inclusive) of this logical document.")
+    reasoning: str = Field(description="In Spanish: why these pages form a logical document distinct from the others.")
 
 
 class _SegmentationResult(BaseModel):
     segments: list[DocumentSegment]
 
 
-_SYSTEM_PROMPT = prompt("segment", """Eres un agente que detecta los limites entre documentos logicos distintos dentro \
-de un unico archivo PDF fisico subido por un cliente. Un archivo fisico puede contener MAS DE UN \
-documento logico concatenado — p. ej. un correo electronico de portada, seguido de un cronograma de \
-pagos, seguido de terminos y condiciones contractuales, seguido de un estado de cuenta: cada uno un \
-documento funcional distinto para la empresa, aunque vengan juntos en el mismo PDF.
+_SYSTEM_PROMPT = prompt("segment", """You are an agent that detects the boundaries between distinct logical documents inside a single \
+physical PDF file uploaded by a client. A physical file can contain MORE THAN ONE concatenated logical document — \
+e.g. a cover email, followed by a payment schedule, followed by contractual terms and conditions, followed by an \
+account statement: each one a functionally distinct document for the business, even though they come together in \
+the same PDF.
 
-SESGO POR DEFECTO: ante la duda, NO separes. Dividir de mas rompe un documento que debia leerse como \
-un todo (p. ej. una solicitud con secciones A, B, C... M, donde la seccion de firmas o de fiador en \
-una pagina posterior pertenece al mismo formulario que las secciones anteriores, aunque el tema de \
-esa pagina — firmas, garantias, un aviso legal — parezca distinto a primera vista). Senales que NO \
-justifican por si solas una separacion: cambio de tema/seccion dentro de un mismo formulario, \
-encabezado o pie de pagina repetido, numeracion de pagina, o texto en blanco al final de una pagina.
+DEFAULT BIAS: when in doubt, do NOT split. Over-splitting breaks a document that had to be read as a whole (e.g. an \
+application with sections A, B, C... M, where the signatures or guarantor section on a later page belongs to the \
+same form as the earlier sections, even if the topic of that page — signatures, guarantees, a legal notice — looks \
+different at first sight). Signals that do NOT justify a split by themselves: a change of topic/section within the \
+same form, a repeated header or footer, page numbering, or blank text at the end of a page.
 
-Senales que SI justifican una separacion en documentos logicos distintos: cambio de institucion o \
-remitente (p. ej. un correo interno de un banco seguido de un documento emitido por una entidad \
-financiera distinta), un titulo de documento completamente diferente (p. ej. pasa de un formulario de \
-solicitud a un cronograma de pagos, o de un cronograma a un estado de cuenta), o un tipo de contenido \
-fundamentalmente distinto (correo electronico vs formulario vs tabla vs estado de cuenta).
+Signals that DO justify a split into distinct logical documents: a change of institution or sender (e.g. an \
+internal email of a bank followed by a document issued by a different financial institution), a completely \
+different document title (e.g. it goes from an application form to a payment schedule, or from a schedule to an \
+account statement), or a fundamentally different kind of content (email vs form vs table vs account statement).
 
-Un documento logico puede abarcar VARIAS paginas si su contenido continua naturalmente de una pagina \
-a la siguiente (p. ej. un formulario de varias paginas con secciones marcadas A, B, C..., o una tabla \
-larga) — NO separes paginas que son continuacion del mismo documento solo porque cambian de seccion o \
-de tema.
+A logical document can span SEVERAL pages if its content naturally continues from one page to the next (e.g. a \
+multi-page form with sections marked A, B, C..., or a long table) — do NOT split pages that continue the same \
+document just because they change section or topic.
 
-Se te da un resumen del texto de cada pagina. Identifica los rangos [start_page, end_page] (0-indexed, \
-inclusive) de cada documento logico distinto, en orden de aparicion. Los rangos deben cubrir el \
-documento completo, sin huecos ni superposiciones. Si tienes dudas sobre si dos paginas son el mismo \
-documento, trata ambas como parte de UN solo segmento.""")
+You are given an excerpt of the text of each page (the documents are in Spanish). Identify the ranges \
+[start_page, end_page] (0-indexed, inclusive) of each distinct logical document, in order of appearance. The ranges \
+must cover the whole document, without gaps or overlaps. If you are unsure whether two pages are the same document, \
+treat both as part of ONE single segment. Write each reasoning in Spanish.""")
 
 
 def _page_excerpts(parsed: ParsedDocument, max_chars_per_page: int = 6000) -> str:
     lines = []
     for page in range(parsed.page_count):
         page_text = " | ".join(b.text for b in parsed.blocks if b.page == page and b.text.strip())
-        lines.append(f"--- Pagina {page} ---\n{page_text[:max_chars_per_page]}")
+        lines.append(f"--- Page {page} ---\n{page_text[:max_chars_per_page]}")
     return "\n\n".join(lines)
 
 

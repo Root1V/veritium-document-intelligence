@@ -29,10 +29,10 @@ MAX_PAGES_CHECKED = 3
 
 _QUICK_TYPE = prompt(
     "quick_type",
-    """Mira esta primera pagina de un documento que alguien acaba de subir. Responde SOLO con la clave de su tipo, \
-una de estas (clave: descripcion):
+    """Look at this first page of a document someone has just uploaded. Answer ONLY with the key of its \
+type, one of these (key: description):
 {types}
-o 'otro' si no es ninguno. Una sola palabra, sin explicacion.""",
+or 'otro' if it is none of them. A single word, no explanation.""",
     filled=("types",),
 )
 

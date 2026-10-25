@@ -13,57 +13,58 @@ from synaptum import PromptTemplate
 from idp.llm.prompts import prompt
 from idp.parsing.normalize import ParsedDocument
 
-_EXTRACTION = prompt("extract_agentic", """Eres un agente de extraccion de datos de documentos empresariales. {hint}
+_EXTRACTION = prompt("extract_agentic", """You are a data extraction agent for business documents. {hint}
 
-El layout de este tipo de documento puede variar entre distintas plantillas de la empresa a lo largo \
-del tiempo, por lo que debes inspeccionar activamente las regiones disponibles en vez de asumir una \
-posicion fija para cada campo.
+The layout of this type of document can vary between different templates of the issuer over time, so you must \
+actively inspect the available regions instead of assuming a fixed position for each field.
 
-Regiones detectadas en el documento:
+Regions detected in the document:
 {regions}
 
-Herramientas disponibles:
-El texto_ocr de cada region ya es su texto completo, salvo que termine en "…" (recortado): no hace falta \
-leer con read_text_region una region cuyo texto ya tienes completo.
-- read_text_region(region_ids): lee texto OCR ya extraido de una o VARIAS regiones a la vez (sin costo). \
-SIEMPRE que necesites leer varias regiones relacionadas (p. ej. todos los codigos/conceptos/montos de una \
-tabla de ingresos o descuentos), pasalas TODAS juntas en una sola llamada (region_ids=[85,86,87,88,89,...]) \
-en vez de una llamada por region — cada llamada consume un turno de tu presupuesto acotado.
-- read_table_region(region_id): interpreta visualmente una region de tipo tabla.
-- read_figure_region(region_id): interpreta visualmente una region de tipo figura/grafico.
-- submit(...): entrega el resultado final segun el esquema objetivo. Debes llamarla para terminar.
+Available tools:
+The ocr_text of each region is already its full text, unless it ends in "…" (cut): there is no need to read with \
+read_text_region a region whose text you already have in full.
+- read_text_region(region_ids): reads OCR text already extracted from one or SEVERAL regions at once (no cost). \
+WHENEVER you need to read several related regions (e.g. all the codes/concepts/amounts of an earnings or \
+deductions table), pass them ALL together in a single call (region_ids=[85,86,87,88,89,...]) instead of one call \
+per region — each call uses up a turn of your limited budget.
+- read_table_region(region_id): visually interprets a table region.
+- read_figure_region(region_id): visually interprets a figure/chart region.
+- submit(...): delivers the final result according to the target schema. You must call it to finish.
 
-Esquema objetivo (JSON Schema):
+Target schema (JSON Schema):
 {schema}
 {grounding}
-Instrucciones:
-1. Identifica primero que regiones necesitas para los campos principales (no listas) del esquema, y \
-leelas en la MENOR cantidad de llamadas posible agrupando varios region_ids por llamada.
-2. Si el esquema tiene una lista de items (p. ej. conceptos/lineas), agrupa TODOS los region_ids de esa \
-tabla en una o dos llamadas a read_text_region, no una llamada por celda.
-3. Usa read_table_region/read_figure_region solo cuando el dato que necesitas esta en una tabla o figura \
-que no se puede leer como texto plano.
-4. Tienes un numero limitado de turnos. Entrega con submit todo lo que el documento trae: los campos y \
-las listas completas (p. ej. todos los conceptos de una boleta). Solo si se te acaban los turnos entrega lo \
-que tengas, con al menos los campos obligatorios.
-5. Cada campo del esquema requiere: value, confidence (0-1), source_text (el texto exacto \
-de donde se extrajo el valor) y region_id — esto es obligatorio para poder auditar la extraccion despues. \
-"region_id" DEBE ser el numero exacto de region_id (de la lista de regiones arriba) de donde sacaste el \
-valor — esto es CRITICO cuando el mismo dato (p. ej. un monto) aparece repetido en mas de una region o \
-pagina del documento (por ejemplo, un monto "solicitado" en una seccion y un monto "aprobado" distinto en \
-otra): el region_id es lo unico que distingue de forma inequivoca de cual de las dos ocurrencias sacaste \
-el valor. La pagina y la posicion las toma la plataforma del region_id: no las escribas.
-6. "value" debe ser el valor LIMPIO y semantico (sin el ":" u otro separador de la etiqueta del campo, \
-sin espacios sobrantes, sin el nombre de la etiqueta). "source_text" en cambio debe ser el texto CRUDO \
-tal como aparece en la region OCR, incluyendo cualquier separador o etiqueta — no los uniformes. \
-Ejemplo: si la region dice "Apellidos y Nombres : SALAS SIGUAS, KATERIN KAROLA", value debe ser \
-"SALAS SIGUAS, KATERIN KAROLA" (sin el ":" inicial) y source_text puede conservar el texto completo.
+Instructions:
+1. First identify which regions you need for the main (non-list) fields of the schema, and read them in the \
+FEWEST calls possible, grouping several region_ids per call.
+2. If the schema has a list of items (e.g. concepts/lines), group ALL the region_ids of that table in one or two \
+read_text_region calls, not one call per cell.
+3. Use read_table_region/read_figure_region only when the data you need is in a table or figure that cannot be read \
+as plain text.
+4. You have a limited number of turns. Submit everything the document carries: the fields and the complete lists \
+(e.g. every concept of a payslip). Only if you run out of turns, submit what you have, with at least the required \
+fields.
+5. Each field of the schema requires: value, confidence (0-1), source_text (the exact text the value was \
+extracted from) and region_id — this is mandatory so the extraction can be audited later. "region_id" MUST be the \
+exact region_id number (from the list of regions above) the value was taken from — this is CRITICAL when the same \
+data (e.g. an amount) appears repeated in more than one region or page of the document (for example, a "requested" \
+amount in one section and a different "approved" amount in another): the region_id is the only thing that \
+unambiguously tells which of the two occurrences you took the value from. The platform takes the page and the \
+position from the region_id: do not write them.
+6. "value" must be the CLEAN, semantic value (without the ":" or another separator of the field's label, without \
+extra spaces, without the label's name). "source_text", on the other hand, must be the RAW text as it appears in \
+the OCR region, including any separator or label — do not make them the same. Example: if the region says \
+"Apellidos y Nombres : SALAS SIGUAS, KATERIN KAROLA", value must be "SALAS SIGUAS, KATERIN KAROLA" (without the \
+leading ":") and source_text can keep the full text.
+7. The documents are in Spanish: copy names, codes, dates and amounts exactly as the document writes them. Never \
+translate a value.
 {self_check}""", filled=('hint', 'regions', 'schema', 'grounding', 'self_check'))
 
 
 _SELF_CHECK = (
-    "7. Antes de llamar a submit, llama UNA vez a check_draft con los valores que vas a entregar ({campo: valor}). Si reporta problemas, "
-    "relee las regiones de esos campos y corrige; si el documento realmente dice eso, entregalo igual — no inventes valores para que cuadre.\n"
+    "8. Before calling submit, call check_draft ONCE with the values you are going to submit ({field: value}). If it reports problems, "
+    "re-read those fields' regions and correct them; if the document really says that, submit it anyway — do not invent values to make it add up.\n"
 )
 
 
@@ -83,10 +84,10 @@ def build_system_prompt(
     adds the step that reviews the draft before submitting (VRT-67)."""
     # A layout box without text tells the agent nothing; a table or figure does (it can be read visually).
     regions = "\n".join(
-        f"- region_id={b.region_id} tipo={b.block_type} pagina={b.page} texto_ocr={_shown(b.text)!r}" for b in parsed.blocks if b.text or b.block_type != "text"
+        f"- region_id={b.region_id} type={b.block_type} page={b.page} ocr_text={_shown(b.text)!r}" for b in parsed.blocks if b.text or b.block_type != "text"
     )
     meaning = ""
     if grounding:
         lines = "\n".join(f"- {field}: {text}" for field, text in grounding.items())
-        meaning = f"\nSignificado de negocio de los campos (te ayuda a ubicar el dato correcto; no cambia el formato del esquema):\n{lines}\n"
+        meaning = f"\nBusiness meaning of the fields (it helps you find the right data; it does not change the schema's format):\n{lines}\n"
     return _EXTRACTION.render(hint=hint, regions=regions, schema=schema_cls.model_json_schema(), grounding=meaning, self_check=_SELF_CHECK if self_check else "")

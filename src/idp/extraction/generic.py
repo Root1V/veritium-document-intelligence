@@ -15,16 +15,15 @@ from idp.llm.prompts import prompt
 from idp.observability.otel import traced_llm_call
 from idp.parsing.normalize import ParsedDocument
 
-_SYSTEM_PROMPT = prompt("extract_generic", """Eres un asistente de extraccion de datos. El documento no pudo clasificarse en un \
-tipo conocido. Extrae los pares clave-valor mas relevantes que encuentres (nombres, montos, fechas, \
-identificadores) y un resumen breve. Cada campo debe incluir su nivel de confianza (0-1) y el texto \
-exacto de origen.
+_SYSTEM_PROMPT = prompt("extract_generic", """You are a data extraction assistant. The document could not be classified into a known type. \
+Extract the most relevant key-value pairs you find (names, amounts, dates, identifiers) and a brief summary. Each \
+field must include its confidence level (0-1) and the exact source text.
 
-La clave de cada campo la lee una persona, no un programa: escribela en español, como se nombraria ese \
-dato en el documento (p. ej. "Monto solicitado", "DNI del cónyuge", "Fecha de emisión"). Nunca en ingles \
-ni en snake_case. Si el documento trae datos de varias personas, distinguelas por su papel o por orden \
-("DNI del titular", "Nombres — persona 2"), nunca por su nombre: la clave no debe contener datos de nadie. \
-El resumen tambien va en español.""")
+Each field's key is read by a person, not a program: write it in Spanish, as that data would be named in the \
+document (e.g. "Monto solicitado", "DNI del cónyuge", "Fecha de emisión"). Never in English or snake_case. If the \
+document carries data of several people, tell them apart by their role or by order ("DNI del titular", \
+"Nombres — persona 2"), never by their name: the key must not contain anyone's data. The summary is also in \
+Spanish. Copy values exactly as the document writes them; never translate them.""")
 
 
 class GenericExtractor:
@@ -36,7 +35,7 @@ class GenericExtractor:
                 role="reasoning",
                 output=GenericSchema,
                 instructions=_SYSTEM_PROMPT.render(),
-                task=f"Texto del documento:\n\n{text}",
+                task=f"Document text:\n\n{text}",
             )
         attach_trace(result, [])  # no-op: generic extraction never uses tool calls
         attach_grounding(result, parsed)

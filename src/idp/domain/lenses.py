@@ -57,21 +57,21 @@ class LensDefinition(BaseModel):
 
 
 class CitedPoint(BaseModel):
-    text: str = Field(description="Una afirmación breve, en español simple.")
-    refs: list[str] = Field(default_factory=list, description="Referencias [dN:R] donde se apoya.")
+    text: str = Field(description="A brief statement, in plain Spanish.")
+    refs: list[str] = Field(default_factory=list, description="References [dN:R] it rests on.")
 
 
 class LensSummaryAnswer(BaseModel):
-    headline: str = Field(description="Una o dos frases con lo esencial para el área.")
-    points: list[CitedPoint] = Field(description="De 3 a 8 puntos clave.")
-    attention: list[CitedPoint] = Field(default_factory=list, description="Alertas o datos faltantes.")
+    headline: str = Field(description="One or two sentences in Spanish with what matters most to the area.")
+    points: list[CitedPoint] = Field(description="3 to 8 key points.")
+    attention: list[CitedPoint] = Field(default_factory=list, description="Alerts or missing data.")
 
 
 class ClauseAnswer(BaseModel):
     item_key: str
     status: ClauseStatus
-    explanation: str = Field(description="Por qué, en una o dos frases simples.")
-    quote: str | None = Field(default=None, description="La cita textual más corta del documento que lo muestra.")
+    explanation: str = Field(description="Why, in one or two simple sentences in Spanish.")
+    quote: str | None = Field(default=None, description="The shortest verbatim quote of the document that shows it.")
     refs: list[str] = Field(default_factory=list)
 
 
@@ -141,11 +141,11 @@ def render_facts(view: ConsolidatedView | None, catalog: SemanticCatalog | None,
         return "", {}
     attribute_names = {a.key: a.name for a in catalog.attributes} if catalog else {}
     role_names = {r.key: r.name for r in catalog.roles} if catalog else {}
-    lines, index = ["=== Datos ya extraídos del expediente ==="], {}
+    lines, index = ["=== Data already extracted from the case ==="], {}
     for n, a in enumerate(view.attributes, start=1):
         label = f"{role_names.get(a.role, a.role)} · {attribute_names.get(a.attribute, a.attribute)}"
         if a.status == "conflict":
-            value = " / ".join(f"{s.value} ({names.get(s.document_id, s.document_type)})" for s in a.sources) + " — NO COINCIDEN"
+            value = " / ".join(f"{s.value} ({names.get(s.document_id, s.document_type)})" for s in a.sources) + " — DO NOT MATCH"
         else:
             value = f"{a.value} ({', '.join(dict.fromkeys(names.get(s.document_id, s.document_type) for s in a.sources))})"
         ref = f"f{n}"

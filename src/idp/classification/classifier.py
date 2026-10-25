@@ -19,12 +19,12 @@ from idp.parsing.normalize import ParsedDocument
 
 GENERIC_DESCRIPTION = "cualquier otro documento que no encaje claramente en los tipos anteriores"
 
-_SYSTEM_PROMPT = prompt("classify", """Eres un clasificador de documentos empresariales. Dado el texto \
-extraido de un documento, determina su tipo. Los tipos validos son:
+_SYSTEM_PROMPT = prompt("classify", """You are a business document classifier. Given the text extracted \
+from a document, determine its type. The valid types are:
 {types}
 
-Si el documento no encaja claramente en ninguno de los tipos especificos, clasifica como generic.
-Responde con el tipo, tu confianza (0-1) y una breve justificacion.""", filled=('types',))
+If the document does not clearly fit any of the specific types, classify it as generic.
+Answer with the type, your confidence (0-1) and a brief justification written in Spanish.""", filled=('types',))
 
 
 class ClassificationResult(BaseModel):

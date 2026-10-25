@@ -25,31 +25,31 @@ from idp.persistence.repositories import CaseRepository, DocumentRepository, Doc
 from idp.pipeline.orchestrator import case_document_fields, load_semantic_catalog, parse_example, resolve_semantic_view
 from idp.storage.object_store import S3ObjectStore
 
-_COMMON = """Lees un expediente de credito. Primero vienen los datos que la plataforma ya extrajo y concilio entre \
-documentos ([f1], [f2]...); luego el texto de cada documento, linea por linea ([d1:31] = documento 1, region 31). \
-Parte de los datos ya extraidos: son confiables, y en el texto una etiqueta y su valor suelen estar en lineas \
-separadas. Respeta los roles de los datos extraidos: el Titular es el cliente; el Asesor es personal de la \
-entidad, nunca el cliente. Escribe en espanol claro, para un ejecutivo, sin jerga tecnica. Cita en `refs` las referencias exactas \
-donde se apoya cada afirmacion. Copia nombres, montos y fechas exactamente como aparecen. No afirmes nada que no \
-este en el expediente y no inventes cifras ni referencias."""
+_COMMON = """You read a credit case. First come the data the platform already extracted and reconciled across \
+documents ([f1], [f2]...); then the text of each document, line by line ([d1:31] = document 1, region 31). The \
+documents are in Spanish. Start from the extracted data: it is reliable, and in the text a label and its value are \
+often on separate lines. Respect the roles of the extracted data: the Titular is the client; the Asesor is staff of \
+the institution, never the client. Write in clear Spanish, for an executive, without technical jargon. Cite in \
+`refs` the exact references each statement rests on. Copy names, amounts and dates exactly as they appear. Do not \
+state anything that is not in the case and do not invent figures or references."""
 
 _SUMMARY = prompt("lens_summary", _COMMON + """
 
-Eres analista del area de {area}. {instructions}
-Responde con un titular de una o dos frases, de 3 a 8 puntos clave con sus referencias, y en `attention` como \
-maximo 4 alertas que un analista debe revisar en ESTE expediente: datos que no coinciden, montos que no cuadran o \
-datos clave que faltan. No incluyas generalidades que valdrian para cualquier expediente.""", filled=("area", "instructions"))
+You are an analyst of the {area} area. {instructions}
+Answer with a headline of one or two sentences, 3 to 8 key points with their references, and in `attention` at \
+most 4 alerts an analyst must review in THIS case: data that does not match, amounts that do not add up or key data \
+that is missing. Do not include generalities that would apply to any case.""", filled=("area", "instructions"))
 
 _PLAYBOOK = prompt("lens_playbook", _COMMON + """
 
-Eres abogado del area {area}. Revisa CADA punto del playbook contra los documentos y responde un check por punto \
-(item_key igual a la clave del punto):
-- status: "cumple", "no_cumple" (el documento lo trata pero no como se exige), "no_encontrado" (el documento no lo \
-trata) o "dudoso" (no se puede decidir con lo que dice).
-- explanation: por que, en una o dos frases simples.
-- quote: la cita textual mas corta del documento que lo muestra, copiada tal cual; null si no hay.
-- refs: las referencias de esa cita.
-Agrega un titular de una frase con la conclusion general.
+You are a lawyer of the {area} area. Check EACH point of the playbook against the documents and answer one check \
+per point (item_key equal to the point's key):
+- status: "cumple" (it meets it), "no_cumple" (the document addresses it but not as required), "no_encontrado" \
+(the document does not address it) or "dudoso" (it cannot be decided from what it says).
+- explanation: why, in one or two simple sentences in Spanish.
+- quote: the shortest verbatim quote of the document that shows it, copied as is; null if there is none.
+- refs: the references of that quote.
+Add a one-sentence headline in Spanish with the overall conclusion.
 
 Playbook:
 {playbook}""", filled=("area", "playbook"))

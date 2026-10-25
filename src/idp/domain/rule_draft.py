@@ -28,43 +28,43 @@ class RuleTestInput(BaseModel):
 
 
 class RuleTestCase(BaseModel):
-    name: str = Field(description="Qué situación prueba, en español.")
+    name: str = Field(description="What situation it tests, in Spanish.")
     input: RuleTestInput
-    expect: Literal["pass", "fail"] = Field(description="'pass' si la condición debe cumplirse con este input; 'fail' si no.")
+    expect: Literal["pass", "fail"] = Field(description="'pass' if the condition must hold with this input; 'fail' if not.")
 
 
 class RuleDraft(BaseModel):
     outcome: Literal["ok", "ambiguous"] = Field(
         description=(
-            "'ambiguous' si la descripción no alcanza para escribir una condición sin inventar algo (un umbral, una "
-            "definición, qué documento): entonces no escribas CEL y pon las preguntas. 'ok' si se puede."
+            "'ambiguous' if the description is not enough to write a condition without inventing something (a threshold, a "
+            "definition, which document): then write no CEL and give the questions. 'ok' if it can be done."
         )
     )
-    questions: list[str] = Field(default_factory=list, description="Solo si outcome es 'ambiguous': lo que falta saber, en preguntas concretas.")
+    questions: list[str] = Field(default_factory=list, description="Only if outcome is 'ambiguous': what is missing, as concrete questions in Spanish.")
     condition_cel: str | None = Field(
         default=None,
         description=(
-            "Expresion CEL que evalua la condicion. Variables: value (el valor del atributo, si la regla es sobre un "
-            "atributo), doc.<campo>, case.<rol>.<entidad>.<atributo>, request.<campo>, y si la categoria es "
-            "'reference_data' tambien reference_data.employee_code_exists."
+            "CEL expression that evaluates the condition. Variables: value (the attribute's value, if the rule is about an "
+            "attribute), doc.<field>, case.<role>.<entity>.<attribute>, request.<field>, and if the category is "
+            "'reference_data' also reference_data.employee_code_exists."
         ),
     )
     applies_when_cel: str | None = Field(
         default=None,
         description=(
-            "Expresion CEL opcional adicional (nunca reference_data.) que debe cumplirse "
-            "para que la regla aplique. None si no aplica."
+            "Optional additional CEL expression (never reference_data.) that must hold "
+            "for the rule to apply. None if it does not apply."
         ),
     )
-    severity: RuleSeverity = Field(default="warning", description="Severidad cuando la condicion NO se cumple.")
-    message_pass: str = Field(default="", description="Mensaje en español cuando la condicion se cumple.")
-    message_fail: str = Field(default="", description="Mensaje en español cuando la condicion NO se cumple.")
+    severity: RuleSeverity = Field(default="warning", description="Severity when the condition does NOT hold.")
+    message_pass: str = Field(default="", description="Message in Spanish when the condition holds.")
+    message_fail: str = Field(default="", description="Message in Spanish when the condition does NOT hold.")
     rationale: str = Field(
-        description="Explicacion breve de la logica de la expresion CEL generada, para que un humano la pueda revisar."
+        description="Brief explanation in Spanish of the logic of the generated CEL expression, so a person can review it."
     )
     test_cases: list[RuleTestCase] = Field(
         default_factory=list,
-        description="Si outcome es 'ok': al menos un caso que cumple (expect 'pass') y uno que no (expect 'fail'), con valores realistas.",
+        description="If outcome is 'ok': at least one case that holds (expect 'pass') and one that does not (expect 'fail'), with realistic values.",
     )
 
     @model_validator(mode="after")

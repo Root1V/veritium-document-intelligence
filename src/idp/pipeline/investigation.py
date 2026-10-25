@@ -66,45 +66,47 @@ ACTION_LABEL = {
 
 
 class Cited(BaseModel):
-    document: str = Field(description="Referencia del documento: d1, d2…")
-    page: int | None = Field(default=None, description="Página, desde 1.")
-    text: str = Field(description="El texto del documento que lo muestra, copiado tal cual.")
+    document: str = Field(description="Document reference: d1, d2…")
+    page: int | None = Field(default=None, description="Page, from 1.")
+    text: str = Field(description="The document text that shows it, copied as is.")
 
 
 class InvestigationAnswer(BaseModel):
-    diagnosis: str = Field(description="Qué pasa, en 1 a 3 oraciones claras para un revisor no técnico.")
+    diagnosis: str = Field(description="What is going on, in 1 to 3 clear sentences in Spanish for a non-technical reviewer.")
     cause: Cause
     action: Action
-    document: str | None = Field(default=None, description="Si action es corregir_dato o confirmar_dato: el documento (d1, d2…).")
-    field: str | None = Field(default=None, description="Si action es corregir_dato o confirmar_dato: el campo extraído de ese documento.")
-    value: str | None = Field(default=None, description="Si action es corregir_dato: el valor correcto según el documento.")
+    document: str | None = Field(default=None, description="If action is corregir_dato or confirmar_dato: the document (d1, d2…).")
+    field: str | None = Field(default=None, description="If action is corregir_dato or confirmar_dato: the extracted field of that document.")
+    value: str | None = Field(default=None, description="If action is corregir_dato: the correct value according to the document.")
     confidence: float = Field(ge=0.0, le=1.0)
-    evidence: list[Cited] = Field(default_factory=list, description="Lo que lo demuestra, con el texto copiado del documento.")
+    evidence: list[Cited] = Field(default_factory=list, description="What proves it, with the text copied from the document.")
 
 
-_INSTRUCTIONS = prompt("investigate_finding", """Eres un analista que investiga un hallazgo de validacion en un expediente de credito, \
-para dejarle al revisor humano un diagnostico listo. No decides el expediente ni corriges nada: propones, con evidencia.
+_INSTRUCTIONS = prompt("investigate_finding", """You are an analyst who investigates a validation finding in a credit case, to leave the \
+human reviewer a ready diagnosis. You do not decide the case or correct anything: you propose, with evidence.
 
-Hallazgo:
+Finding:
 {finding}
 
-Documentos del expediente (usa su referencia d1, d2… en las herramientas y en la respuesta):
+Documents of the case (use their reference d1, d2… in the tools and in the answer):
 {documents}
 
-Datos extraidos del documento del hallazgo:
+Data extracted from the finding's document:
 {fields}
 
-Como investigar:
-1. Mira la evidencia del dato en cada documento (get_evidence) y lee o busca en los documentos (read_document, search_document) \
-para confirmar que dice realmente cada uno.
-2. Si sospechas un error de lectura (digitos o letras parecidas), mira la region (read_region_image).
-3. Para nombres usa compare_names; para codigos de empleado, find_employee.
-4. Distingue: un error de lectura o un dato tomado de otro lugar (se corrige), documentos que son de otra persona (hay que pedir \
-el correcto), una diferencia real entre documentos o un dato que no esta en el maestro (lo decide una persona).
-5. Sugiere corregir_dato solo si el documento muestra claramente el valor correcto, y entonces indica document, field (un campo de \
-los datos extraidos) y value. Nunca inventes un valor.
-6. Cita en evidence el texto exacto del documento. Si no puedes concluir, usa cause no_determinado y action revisar_manualmente.
-Responde en español, en lenguaje de negocio.""", filled=("finding", "documents", "fields"))
+How to investigate:
+1. Look at the evidence of the data in each document (get_evidence) and read or search the documents (read_document, \
+search_document) to confirm what each one really says.
+2. If you suspect a reading error (similar digits or letters), look at the region (read_region_image).
+3. For names use compare_names; for employee codes, find_employee.
+4. Tell apart: a reading error or data taken from another place (it is corrected), documents that belong to another \
+person (the right one must be requested), a real difference between documents or data that is not in the master \
+file (a person decides).
+5. Suggest corregir_dato only if the document clearly shows the correct value, and then give document, field (a \
+field of the extracted data) and value. Never invent a value; copy it exactly as the document writes it.
+6. Cite in evidence the exact text of the document. If you cannot conclude, use cause no_determinado and action \
+revisar_manualmente.
+The documents are in Spanish. Answer in Spanish, in business language.""", filled=("finding", "documents", "fields"))
 
 
 def _ref(i: int) -> str:

@@ -26,27 +26,26 @@ from idp.llm.port import model_for, structured
 from idp.llm.prompts import prompt
 from idp.observability.otel import traced_llm_call
 
-_SYSTEM_PROMPT = prompt("suggest_document_type", """Eres un agente que decide si un documento sin clasificar deberia convertirse en un \
-tipo de documento propio de la plataforma, en vez de seguir cayendo en el extractor generico.
+_SYSTEM_PROMPT = prompt("suggest_document_type", """You are an agent that decides whether an unclassified document should become a document type of its \
+own on the platform, instead of keep falling into the generic extractor.
 
-Tipos ya conocidos por la plataforma (NO propongas un tipo redundante con alguno de estos):
+Types already known to the platform (do NOT propose a type redundant with any of these):
 {known_types}
 
-Se te da el resultado de una extraccion generica (campos clave-valor + resumen) de UN documento. \
-Decide:
+You are given the result of a generic extraction (key-value fields + summary) of ONE document. Decide:
 
-1. is_promotable: True SOLO si el contenido tiene una forma de negocio estable y repetible — es \
-decir, si empresas/instituciones distintas probablemente envien este mismo tipo de documento con un \
-conjunto de campos similar (aunque el layout fisico varie). False si el documento es demasiado unico, \
-ruidoso, o parece un caso aislado que no vale la pena estandarizar.
+1. is_promotable: True ONLY if the content has a stable, repeatable business form — that is, if different \
+companies/institutions would likely send this same kind of document with a similar set of fields (even if the \
+physical layout varies). False if the document is too unique, noisy, or looks like an isolated case not worth \
+standardizing.
 
-2. Si is_promotable es True: propon un nombre de tipo en snake_case ingles (siguiendo la convencion de \
-los tipos ya conocidos arriba), un nombre legible en español, una justificacion breve de por que \
-amerita un tipo propio y en que se distingue de los tipos ya conocidos, y una lista de campos \
-propuestos (nombre en snake_case ingles, tipo, descripcion EXPLICITA en español de que representa y \
-de donde se extrae, y si es consistentemente requerido u opcional).
+2. If is_promotable is True: propose a type name in English snake_case (following the convention of the known \
+types above), a readable name in Spanish, a brief justification in Spanish of why it deserves its own type and how \
+it differs from the known types, and a list of proposed fields (name in English snake_case, type, an EXPLICIT \
+description in Spanish of what it represents and where it is extracted from, and whether it is consistently \
+required or optional).
 
-3. Si is_promotable es False: deja rationale explicando por que, y fields vacio.""", filled=('known_types',))
+3. If is_promotable is False: write the rationale in Spanish explaining why, and leave fields empty.""", filled=('known_types',))
 
 
 def suggest_document_type(settings: Settings, generic_result: GenericSchema, catalog: DocumentTypeCatalog) -> DocumentTypeProposal:
@@ -59,5 +58,5 @@ def suggest_document_type(settings: Settings, generic_result: GenericSchema, cat
             role="reasoning",
             output=DocumentTypeProposal,
             instructions=_SYSTEM_PROMPT.render(known_types=known_types),
-            task=f"Resumen: {summary}\n\nCampos extraidos:\n{fields_summary}",
+            task=f"Summary: {summary}\n\nExtracted fields:\n{fields_summary}",
         )

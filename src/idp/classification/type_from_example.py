@@ -27,38 +27,38 @@ LeafType = Literal["str", "int", "float", "bool", "enum"]
 
 
 class DraftLeaf(BaseModel):
-    name: str = Field(description="snake_case en ingles.")
-    label: str = Field(description="Como lo nombraria una persona, en español y corto, p. ej. 'DNI del socio'.")
+    name: str = Field(description="English snake_case.")
+    label: str = Field(description="How a person would name it, in Spanish and short, e.g. 'DNI del socio'.")
     type: LeafType
-    required: bool = Field(description="True solo si este tipo de documento siempre lo trae.")
-    description: str = Field(description="En español, explicita: que representa y donde aparece en el documento. Es lo unico que vera el agente de extraccion.")
-    enum_values: list[str] | None = Field(default=None, description="Solo si type es 'enum': los valores posibles.")
+    required: bool = Field(description="True only if this type of document always carries it.")
+    description: str = Field(description="In Spanish, explicit: what it represents and where it appears in the document. It is all the extraction agent will see.")
+    enum_values: list[str] | None = Field(default=None, description="Only if type is 'enum': the possible values.")
 
 
 class DraftField(DraftLeaf):
     type: Literal["str", "int", "float", "bool", "enum", "list"]  # type: ignore[assignment]
-    item_name: str | None = Field(default=None, description="Solo si type es 'list': nombre CamelCase de cada elemento (p. ej. 'ConsumptionLine').")
-    items: list[DraftLeaf] | None = Field(default=None, description="Solo si type es 'list': los campos de cada elemento.")
+    item_name: str | None = Field(default=None, description="Only if type is 'list': CamelCase name of each item (e.g. 'ConsumptionLine').")
+    items: list[DraftLeaf] | None = Field(default=None, description="Only if type is 'list': the fields of each item.")
 
 
 class DraftMapping(BaseModel):
-    field_path: str = Field(description="Campo del nuevo tipo: 'campo' o 'lista[0].campo'.")
-    attribute: str = Field(description="Clave de un atributo del catalogo semantico (lista dada).")
-    role: str = Field(description="Clave de un rol del catalogo semantico (lista dada).")
+    field_path: str = Field(description="Field of the new type: 'field' or 'list[0].field'.")
+    attribute: str = Field(description="Key of an attribute of the semantic catalog (list given).")
+    role: str = Field(description="Key of a role of the semantic catalog (list given).")
 
 
 class TypeDraft(BaseModel):
     similar_existing_type: str | None = Field(
-        default=None, description="Si el documento es en realidad un tipo ya existente (lista dada), su clave; si no, null."
+        default=None, description="If the document is actually an existing type (list given), its key; otherwise null."
     )
-    key: str = Field(description="snake_case en ingles, p. ej. 'electricity_bill'.")
-    display_name: str = Field(description="Nombre legible en español, p. ej. 'Recibo de luz'.")
-    description: str = Field(description="Que es este documento y como distinguirlo de los tipos parecidos; lo lee el clasificador.")
-    extraction_hint: str = Field(description="Pistas breves para el agente de extraccion: donde suelen estar los datos, ambigüedades a evitar.")
-    schema_title: str = Field(description="CamelCase terminado en 'Schema', p. ej. 'ElectricityBillSchema'.")
+    key: str = Field(description="English snake_case, e.g. 'electricity_bill'.")
+    display_name: str = Field(description="Readable name in Spanish, e.g. 'Recibo de luz'.")
+    description: str = Field(description="In Spanish: what this document is and how to tell it from similar types; the classifier reads it.")
+    extraction_hint: str = Field(description="In Spanish: brief hints for the extraction agent: where the data usually is, ambiguities to avoid.")
+    schema_title: str = Field(description="CamelCase ending in 'Schema', e.g. 'ElectricityBillSchema'.")
     fields: list[DraftField]
-    mappings: list[DraftMapping] = Field(default_factory=list, description="Solo campos que significan exactamente un atributo del catalogo.")
-    rationale: str = Field(description="Por que estos campos, y en que se distingue de los tipos existentes.")
+    mappings: list[DraftMapping] = Field(default_factory=list, description="Only fields that mean exactly one attribute of the catalog.")
+    rationale: str = Field(description="In Spanish: why these fields, and how it differs from the existing types.")
 
     @model_validator(mode="after")
     def _a_valid_definition(self) -> TypeDraft:
@@ -76,26 +76,27 @@ class TypeDraft(BaseModel):
         )
 
 
-_SYSTEM_PROMPT = prompt("propose_type_from_example", """Eres un analista que define tipos de documento para una plataforma de validacion \
-documental. Recibes el texto (OCR) de UN documento de ejemplo y diseñas su tipo: un esquema de campos \
-que sirva para cualquier documento de esa misma clase, aunque cambie el formato.
+_SYSTEM_PROMPT = prompt("propose_type_from_example", """You are an analyst who defines document types for a document validation platform. You \
+receive the text (OCR) of ONE example document and design its type: a field schema that works for any document of \
+that same class, even if its layout changes.
 
-Reglas del esquema:
-- Campos en snake_case ingles; type entre str, int, float, bool, enum o list.
-- Cada campo lleva label: su nombre en español, corto, como lo leeria una persona (p. ej. 'DNI del socio', 'Fecha de emision').
-- Fechas, codigos, documentos de identidad y montos con formato van como str; montos numericos como float.
-- Una lista (type 'list') es para tablas o items repetidos; sus elementos tienen campos simples (sin listas dentro).
-- required=True solo si el campo esta siempre presente en esta clase de documento.
-- Incluye un campo opcional 'summary' (str): resumen breve del documento.
-- Cada descripcion debe decir que es el campo y donde aparece: el agente de extraccion solo ve eso.
-- No inventes campos que este tipo de documento no trae.
+Schema rules:
+- Field names in English snake_case; type is one of str, int, float, bool, enum or list.
+- Every field has a label: its name in Spanish, short, as a person would read it (e.g. 'DNI del socio', 'Fecha de emisión').
+- Dates, codes, identity document numbers and formatted amounts are str; numeric amounts are float.
+- A list (type 'list') is for tables or repeated items; its items have simple fields (no nested lists).
+- required=True only if the field is always present in this class of document.
+- Include an optional 'summary' field (str): a brief summary of the document.
+- Each description, in Spanish, must say what the field is and where it appears: the extraction agent only sees that.
+- Do not invent fields this type of document does not carry.
+- display_name, description, extraction_hint and rationale are written in Spanish: people read them.
 
-Tipos ya existentes (si el ejemplo es uno de estos, indicalo en similar_existing_type y aun asi propon el esquema):
+Existing types (if the example is one of these, say so in similar_existing_type and still propose the schema):
 {types}
 
-Catalogo semantico — mapea un campo SOLO si significa exactamente uno de estos atributos, con el rol que \
-corresponde (p. ej. el DNI del titular del recibo -> persona.dni con rol titular):
-Atributos:
+Semantic catalog — map a field ONLY if it means exactly one of these attributes, with the matching role \
+(e.g. the DNI of the bill holder -> persona.dni with role titular):
+Attributes:
 {attributes}
 Roles:
 {roles}""", filled=('types', 'attributes', 'roles'))
@@ -107,9 +108,9 @@ def propose_type_from_example(
     types = "\n".join(f"- {k}: {type_catalog.current(k)[1].description}" for k in type_catalog.keys())  # type: ignore[index]
     attributes = "\n".join(f"- {a.key} ({a.data_type}): {a.definition}" for a in semantic.attributes)
     roles = "\n".join(f"- {r.key}: {r.definition}" for r in semantic.roles)
-    task = f"Texto del documento de ejemplo:\n\n{parsed.full_text[:8000]}"
+    task = f"Text of the example document:\n\n{parsed.full_text[:8000]}"
     if name_hint:
-        task = f"El usuario lo llama: {name_hint}\n\n{task}"
+        task = f"The user calls it: {name_hint}\n\n{task}"
     with traced_llm_call(role="reasoning", model=model_for("reasoning")):
         return structured(
             purpose="propose_type_from_example",

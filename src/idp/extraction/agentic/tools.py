@@ -24,8 +24,8 @@ from idp.extraction.self_check import DraftChecker
 from idp.parsing.normalize import ParsedDocument
 from idp.tools.catalog import spec
 
-_TABLE_PROMPT = prompt("read_table_region", "Describe el contenido de esta tabla de forma estructurada: encabezados, filas y valores relevantes.")
-_FIGURE_PROMPT = prompt("read_figure_region", "Describe el contenido de esta figura/grafico: tipo, ejes o etiquetas, y los datos o tendencias relevantes.")
+_TABLE_PROMPT = prompt("read_table_region", "Describe the content of this table in a structured way: headers, rows and relevant values. Copy text and numbers exactly as they appear; never translate them.")
+_FIGURE_PROMPT = prompt("read_figure_region", "Describe the content of this figure/chart: its kind, axes or labels, and the relevant data or trends. Copy labels and numbers exactly as they appear; never translate them.")
 
 
 def _crop_region_b64(parsed: ParsedDocument, region_id: int) -> str | None:

@@ -102,7 +102,7 @@ def test_the_extracted_data_comes_first_with_its_evidence() -> None:
     facts, index = render_facts(view, seed_catalog(), {payslip: "Boleta de pago (boleta.png)"})
     assert "[f1] Titular · Ingreso neto mensual: 4304.14 (Boleta de pago (boleta.png))" in facts
     context, full_index, _ = render_context([LETTER_DOC], facts, index)
-    assert context.startswith("=== Datos ya extraídos del expediente ===")
+    assert context.startswith("=== Data already extracted from the case ===")
     assert full_index["f1"].document_id == payslip and full_index["f1"].bbox == [0.5, 0.5, 0.6, 0.6]
 
 

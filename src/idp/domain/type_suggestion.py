@@ -18,28 +18,28 @@ SuggestedFieldType = Literal["str", "int", "float", "bool", "list"]
 
 
 class SuggestedField(BaseModel):
-    name: str = Field(description="Nombre de campo en snake_case ingles, siguiendo la convencion de los esquemas existentes.")
+    name: str = Field(description="Field name in English snake_case, following the convention of the existing schemas.")
     field_type: SuggestedFieldType
     description: str = Field(
         description=(
-            "Descripcion en español de que representa el campo y de donde se extrae — debe ser explicita: "
-            "en este proyecto los campos sin descripcion clara se omiten sistematicamente en la extraccion."
+            "Description in Spanish of what the field represents and where it is extracted from — it must be explicit: "
+            "fields without a clear description are systematically missed by the extraction."
         )
     )
-    required: bool = Field(description="Si el campo esta presente de forma consistente (True) o solo a veces (False).")
+    required: bool = Field(description="Whether the field is consistently present (True) or only sometimes (False).")
 
 
 class DocumentTypeProposal(BaseModel):
     is_promotable: bool = Field(
         description=(
-            "True solo si el contenido tiene una forma de negocio estable y repetible que amerite un tipo "
-            "propio. False si el documento es demasiado unico, ruidoso, o su contenido no tiene una "
-            "estructura clara que valga la pena estandarizar."
+            "True only if the content has a stable, repeatable business form that deserves its own type. "
+            "False if the document is too unique, noisy, or its content has no clear structure worth "
+            "standardizing."
         )
     )
     suggested_type_name: str | None = Field(
-        default=None, description="snake_case en ingles, siguiendo la convencion de los DocumentType existentes (p. ej. 'debt_capacity_calculation')."
+        default=None, description="English snake_case, following the convention of the existing document types (e.g. 'debt_capacity_calculation')."
     )
-    suggested_display_name: str | None = Field(default=None, description="Nombre legible en español (p. ej. 'Calculadora de Capacidad de Endeudamiento').")
-    rationale: str = Field(description="Por que este documento amerita (o no) un tipo propio, y en que se distingue de los tipos ya conocidos por la plataforma.")
-    fields: list[SuggestedField] = Field(default_factory=list, description="Campos propuestos para el esquema del nuevo tipo — vacio si is_promotable es False.")
+    suggested_display_name: str | None = Field(default=None, description="Readable name in Spanish (e.g. 'Calculadora de Capacidad de Endeudamiento').")
+    rationale: str = Field(description="In Spanish: why this document deserves (or not) its own type, and how it differs from the types the platform already knows.")
+    fields: list[SuggestedField] = Field(default_factory=list, description="Proposed fields for the new type's schema — empty if is_promotable is False.")
