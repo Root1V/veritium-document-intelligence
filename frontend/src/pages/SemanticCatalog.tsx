@@ -4,7 +4,7 @@
 // team edits by clicking: changes gather in a draft, saved in place and
 // published from the bar at the bottom.
 import { useEffect, useState } from 'react'
-import { AlertTriangle, ArrowRight, FileText, Loader2, Pencil, Plus, Search, ShieldCheck } from 'lucide-react'
+import { AlertTriangle, ArrowRight, Building2, FileText, Landmark, Layers, Loader2, Pencil, Plus, Search, ShieldCheck, User, Wallet, type LucideIcon } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -31,6 +31,9 @@ import { cn } from '@/lib/utils'
 import type { SemanticAttribute, SemanticCatalog, SemanticEntity, SemanticRole } from '@/types/api'
 
 const PREVIEW = 3
+
+// Each group of data with its own mark, so a group reads as one block.
+const GROUP_ICON: Record<string, LucideIcon> = { persona: User, empleador: Building2, ingreso: Wallet, credito: Landmark }
 
 type Editing =
   | { kind: 'datum'; attribute: SemanticAttribute | null; entity: string }
@@ -240,7 +243,7 @@ export function SemanticCatalogPage() {
           <TabsTrigger value="versions">Versiones</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="data" className="mt-4 flex flex-col gap-8">
+        <TabsContent value="data" className="mt-4 flex flex-col gap-6">
           <div className="flex flex-wrap items-center gap-3">
             <div className="relative w-full max-w-sm">
               <Search className="absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -271,18 +274,30 @@ export function SemanticCatalogPage() {
               const data = catalog.attributes.filter((a) => a.key.startsWith(`${entity.key}.`) && matches(a))
               if (words.length && !data.length) return null
               return (
-                <section key={entity.key} className="flex flex-col gap-3">
-                  <div className="flex flex-wrap items-baseline gap-x-2">
-                    <h2 className="text-lg font-semibold">{entity.name}</h2>
-                    <span className="text-sm text-muted-foreground">{data.length === 1 ? '1 dato' : `${data.length} datos`}</span>
-                    {admin && (
-                      <Button variant="ghost" size="icon" className="size-7 self-center text-muted-foreground" onClick={() => open({ kind: 'entity', item: entity })} aria-label={`Editar ${entity.name}`}>
-                        <Pencil className="size-3.5" />
-                      </Button>
-                    )}
-                    <p className="w-full text-sm text-muted-foreground">{entity.definition}</p>
+                <section key={entity.key} className="rounded-2xl border bg-muted/40">
+                  <div className="sticky top-14 z-10 flex items-center gap-3 rounded-t-2xl border-b bg-background/95 px-4 py-3 backdrop-blur sm:px-5">
+                    <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+                      {(() => {
+                        const Icon = GROUP_ICON[entity.key] ?? Layers
+                        return <Icon className="size-5" />
+                      })()}
+                    </span>
+                    <div className="flex min-w-0 flex-1 flex-col">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h2 className="text-xl font-semibold tracking-tight">{entity.name}</h2>
+                        <span className="rounded-full bg-background px-2 py-0.5 text-xs font-medium text-muted-foreground ring-1 ring-border">
+                          {data.length === 1 ? '1 dato' : `${data.length} datos`}
+                        </span>
+                        {admin && (
+                          <Button variant="ghost" size="icon" className="size-7 text-muted-foreground" onClick={() => open({ kind: 'entity', item: entity })} aria-label={`Editar ${entity.name}`}>
+                            <Pencil className="size-3.5" />
+                          </Button>
+                        )}
+                      </div>
+                      <p className="text-sm text-muted-foreground">{entity.definition}</p>
+                    </div>
                   </div>
-                  <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
+                  <div className="grid gap-4 p-4 sm:p-5 md:grid-cols-2 2xl:grid-cols-3">
                     {data.map((a) => (
                       <DatumCard
                         key={a.key}
