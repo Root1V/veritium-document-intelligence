@@ -126,3 +126,4 @@ Estados: `done` · `todo` · `blocked` (espera a otro equipo) · `superseded` (a
 | VRT-77 | Revisar como cola de trabajo | done | Campos agrupados por expediente, el que más espera primero, con filtros rápidos y «todo al día». |
 | VRT-78 | Documentos con su expediente | done | Cada documento con su expediente y cuándo llegó; sin la confianza técnica. |
 | VRT-79 | Reglas en una sola lista | done | Cada regla dice qué verifica en palabras; «Nueva regla» se abre al pedirla; el código técnico, tenue. |
+| VRT-80 | Editor de procesos en tres pasos | todo | Datos del proceso, qué documentos exige y qué comprueba, con nombres de negocio y lo técnico plegado. |

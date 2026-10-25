@@ -201,7 +201,7 @@ async def profile_library(
     ]
     rules += [
         LibraryRule(
-            rule_id=f, kind="format", description=f"Formato de {a.name}: {a.format_cel}", attribute=a.key,
+            rule_id=f, kind="format", description=f"{a.name} tiene un formato válido", attribute=a.key,
             applies_to=doc_types_of.get(a.key, []), used_by=using(lambda d, r=f: r in d.bound_rule_ids()),
         )
         for a in catalog.attributes

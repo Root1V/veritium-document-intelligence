@@ -453,3 +453,6 @@ Método, mediciones y aprendizajes: [eficiencia-modelos-ia.md](eficiencia-modelo
 
 ## VRT-79 — Reglas en una sola lista
 **Why:** la página apilaba el formulario de regla nueva siempre abierto y dos tablas, con códigos (`self.payslip_…`, CEL) y jerga («LLM», «stub») en primer plano. **Scope:** una tabla de reglas en vigor (del sistema y creadas aquí) que dice primero qué verifica, con tipo, origen y estado; «Nueva regla» en la cabecera; borradores por revisar arriba; descripciones de las reglas del sistema en lenguaje de negocio.
+
+## VRT-80 — Editor de procesos en tres pasos
+**Why:** armar un proceso pedía claves, condiciones CEL, atributos (`ingreso.neto_mensual`), ids de reglas y severidades en inglés. **Scope:** tres pasos (datos del proceso, qué documentos exige, qué comprueba); el identificador del proceso y de cada requisito se genera del nombre; datos, tipos y reglas por su nombre; la condición CEL y el identificador, en «Opciones avanzadas»; barra fija para guardar y publicar.

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { Lightbulb, Loader2, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
@@ -13,6 +13,18 @@ import { useProcessProfiles, useProfileLibrary, useProfileVersion, usePublishPro
 import type { ChecklistItem, ProcessProfileDefinition, ProfileLibrary, RuleBinding } from '@/types/api'
 
 const usedBy = (profiles: string[]) => (profiles.length ? ` · usado en ${profiles.join(', ')}` : '')
+const SEVERITY_LABEL: Record<RuleBinding['severity'], string> = { info: 'Informativa', warning: 'Advertencia', error: 'Error' }
+
+/** An identifier from what a person wrote: "Boleta de pago" → "boleta_de_pago" (VRT-80). */
+function slug(text: string, sep = '_'): string {
+  return text
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, sep)
+    .replace(new RegExp(`^\\${sep}+|\\${sep}+$`, 'g'), '')
+    .slice(0, 60)
+}
 
 function Choice({ value, options, onChange, placeholder, width = 'w-56' }: {
   value: string
@@ -46,22 +58,26 @@ function ChecklistRow({ item, library, onChange, onRemove }: {
   const byType = item.document_type != null
   const attribute = item.requires_attributes[0] ?? ''
   const providers = library.attributes.find((a) => a.key === attribute)?.providers.filter((p) => p.role === item.role) ?? []
+  const typeName = (key: string) => library.document_types.find((t) => t.key === key)?.display_name ?? key
+  const setLabel = (label: string) => onChange({ ...item, label, key: !item.key || item.key === slug(item.label) ? slug(label) : item.key })
   return (
-    <div className="flex flex-col gap-2 rounded-lg border p-3">
+    <div className="flex flex-col gap-3 rounded-lg border p-3">
       <div className="flex flex-wrap items-center gap-2">
-        <Input value={item.key} onChange={(e) => onChange({ ...item, key: e.target.value })} placeholder="clave" className="h-8 w-40 font-mono text-xs" />
-        <Input value={item.label} onChange={(e) => onChange({ ...item, label: e.target.value })} placeholder="Texto para personas" className="h-8 min-w-48 flex-1 text-xs" />
+        <Input value={item.label} onChange={(e) => setLabel(e.target.value)} placeholder="Qué se pide, p. ej. Boleta de pago del titular" className="h-9 min-w-64 flex-1" />
         <Choice
           value={byType ? 'type' : 'attribute'}
-          width="w-44"
+          width="w-52"
           options={[
-            { value: 'type', label: 'Por tipo de documento' },
-            { value: 'attribute', label: 'Por evidencia (atributo)' },
+            { value: 'type', label: 'Un tipo de documento' },
+            { value: 'attribute', label: 'Un dato, venga de donde venga' },
           ]}
           onChange={(v) =>
             onChange(v === 'type' ? { ...item, document_type: '', requires_attributes: [], accepted_document_types: null } : { ...item, document_type: null, requires_attributes: [''] })
           }
         />
+        <label className="flex items-center gap-1.5 text-xs">
+          <input type="checkbox" checked={item.required} onChange={(e) => onChange({ ...item, required: e.target.checked })} /> Obligatorio
+        </label>
         <Button variant="ghost" size="icon" onClick={onRemove} aria-label="Quitar requisito">
           <Trash2 className="size-4" />
         </Button>
@@ -70,7 +86,7 @@ function ChecklistRow({ item, library, onChange, onRemove }: {
         {byType ? (
           <Choice
             value={item.document_type ?? ''}
-            placeholder="Tipo de documento"
+            placeholder="Elige el tipo de documento"
             width="w-80"
             options={library.document_types.map((t) => ({ value: t.key, label: `${t.display_name}${usedBy(t.used_by)}` }))}
             onChange={(v) => onChange({ ...item, document_type: v })}
@@ -79,31 +95,35 @@ function ChecklistRow({ item, library, onChange, onRemove }: {
           <>
             <Choice
               value={attribute}
-              placeholder="Atributo"
+              placeholder="Elige el dato"
               width="w-72"
-              options={library.attributes.filter((a) => a.providers.length).map((a) => ({ value: a.key, label: `${a.key}${usedBy(a.used_by)}` }))}
+              options={library.attributes.filter((a) => a.providers.length).map((a) => ({ value: a.key, label: `${a.name}${usedBy(a.used_by)}` }))}
               onChange={(v) => onChange({ ...item, requires_attributes: [v] })}
             />
+            <span className="text-xs text-muted-foreground">de</span>
             <Choice value={item.role} width="w-36" options={library.roles.map((r) => ({ value: r.key, label: r.name }))} onChange={(v) => onChange({ ...item, role: v })} />
             {attribute && (
               <span className="text-xs text-muted-foreground">
-                {providers.length ? `lo satisface: ${providers.map((p) => p.document_type).join(', ')}` : 'ningún tipo lo aporta con ese rol'}
+                {providers.length ? `Lo cumple: ${providers.map((p) => typeName(p.document_type)).join(', ')}` : 'Ningún tipo de documento lo trae con ese rol.'}
               </span>
             )}
           </>
         )}
       </div>
-      <div className="flex flex-wrap items-center gap-3 text-xs">
-        <label className="flex items-center gap-1.5">
-          <input type="checkbox" checked={item.required} onChange={(e) => onChange({ ...item, required: e.target.checked })} /> Obligatorio
-        </label>
-        <Input
-          value={item.required_when_cel ?? ''}
-          onChange={(e) => onChange({ ...item, required_when_cel: e.target.value || null })}
-          placeholder="Solo si (CEL sobre request/case), p. ej. request.nacionalidad != 'PE'"
-          className="h-8 min-w-64 flex-1 font-mono text-xs"
-        />
-      </div>
+      <details className="text-xs">
+        <summary className="w-fit cursor-pointer select-none text-muted-foreground hover:text-foreground">
+          Opciones avanzadas{item.required_when_cel ? ' · tiene condición' : ''}
+        </summary>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <Input value={item.key} onChange={(e) => onChange({ ...item, key: e.target.value })} placeholder="identificador" className="h-8 w-48 font-mono text-xs" title="Se genera del nombre; lo usan las integraciones." />
+          <Input
+            value={item.required_when_cel ?? ''}
+            onChange={(e) => onChange({ ...item, required_when_cel: e.target.value || null })}
+            placeholder="Solo se exige si… (CEL), p. ej. request.nacionalidad != 'PE'"
+            className="h-8 min-w-64 flex-1 font-mono text-xs"
+          />
+        </div>
+      </details>
     </div>
   )
 }
@@ -185,7 +205,7 @@ export function ProfileEditorPage() {
 
   function handleSave() {
     if (isNew && (!profileKey || !name.trim())) {
-      toast.error('Indica la clave y el nombre del perfil.')
+      toast.error('Indica el nombre y el identificador del proceso.')
       return
     }
     save.mutate(
@@ -220,29 +240,32 @@ export function ProfileEditorPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">{isNew ? 'Nuevo perfil de proceso' : `Nueva versión de ${profile?.name ?? routeKey}`}</h1>
-        <p className="text-muted-foreground">
-          Se arma con lo que ya existe: tipos, atributos y reglas de la biblioteca, con sugerencias de lo que usan otros procesos.{' '}
-          <Link to="/profiles" className="underline">
-            Volver a perfiles
-          </Link>
-        </p>
+        <h1 className="text-2xl font-semibold tracking-tight">{isNew ? 'Nuevo proceso' : `Nueva versión de ${profile?.name ?? routeKey}`}</h1>
+        <p className="text-muted-foreground">Qué documentos exige y qué comprueba. Se guarda como borrador; los expedientes nuevos lo usan al publicarlo.</p>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>Perfil</CardTitle>
+          <CardTitle>1. Datos del proceso</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-wrap items-end gap-3">
           {isNew && (
             <>
               <div className="flex flex-col gap-1">
-                <Label>Clave</Label>
-                <Input value={key} onChange={(e) => setKey(e.target.value)} placeholder="contratacion-tarjetas" className="w-56 font-mono" />
+                <Label>Nombre</Label>
+                <Input
+                  value={name}
+                  onChange={(e) => {
+                    if (!key || key === slug(name, '-')) setKey(slug(e.target.value, '-'))
+                    setName(e.target.value)
+                  }}
+                  placeholder="Contratación de tarjetas"
+                  className="w-64"
+                />
               </div>
               <div className="flex flex-col gap-1">
-                <Label>Nombre</Label>
-                <Input value={name} onChange={(e) => setName(e.target.value)} className="w-64" />
+                <Label>Identificador</Label>
+                <Input value={key} onChange={(e) => setKey(e.target.value)} placeholder="contratacion-tarjetas" className="w-56 font-mono text-xs" />
               </div>
               <div className="flex flex-1 flex-col gap-1">
                 <Label>Descripción</Label>
@@ -286,8 +309,8 @@ export function ProfileEditorPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Requisitos ({definition.checklist.length})</CardTitle>
-          <CardDescription>Por tipo de documento, o por evidencia: un atributo que cualquier documento que lo aporte satisface.</CardDescription>
+          <CardTitle>2. Qué documentos exige ({definition.checklist.length})</CardTitle>
+          <CardDescription>Un tipo de documento concreto, o un dato (p. ej. el ingreso del titular) que cumple cualquier documento que lo traiga.</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           {definition.checklist.map((item, i) => (
@@ -305,23 +328,26 @@ export function ProfileEditorPage() {
             className="self-start"
             onClick={() => set({ checklist: [...definition.checklist, { key: '', label: '', document_type: '', requires_attributes: [], role: 'titular', required: true, min_count: 1 }] })}
           >
-            <Plus className="size-3.5" /> Requisito
+            <Plus className="size-3.5" /> Agregar requisito
           </Button>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle>Reglas vinculadas ({definition.rule_bindings.length})</CardTitle>
-          <CardDescription>La severidad y si bloquea la decide el perfil. Una regla que bloquea y falla define el veredicto.</CardDescription>
+          <CardTitle>3. Qué comprueba ({definition.rule_bindings.length})</CardTitle>
+          <CardDescription>Las reglas que se aplican y qué pasa si una falla. Si «decide», su falla define el veredicto del expediente.</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-2">
           {definition.rule_bindings.map((b, i) => (
-            <div key={b.rule_id} className="flex flex-wrap items-center gap-2 text-sm">
-              <code className="min-w-72 text-xs">{b.rule_id}</code>
-              <Choice value={b.severity} width="w-28" options={['info', 'warning', 'error'].map((v) => ({ value: v, label: v }))} onChange={(v) => setBinding(i, { ...b, severity: v as RuleBinding['severity'] })} />
+            <div key={b.rule_id} className="flex flex-wrap items-center gap-2 rounded-lg border p-2.5 text-sm">
+              <span className="flex min-w-72 flex-1 flex-col">
+                <span>{describe(b.rule_id)?.description || b.rule_id}</span>
+                <code className="text-[11px] text-muted-foreground">{describe(b.rule_id) ? b.rule_id : `${b.rule_id} · no está en la biblioteca de este catálogo`}</code>
+              </span>
+              <Choice value={b.severity} width="w-32" options={(['info', 'warning', 'error'] as const).map((v) => ({ value: v, label: SEVERITY_LABEL[v] }))} onChange={(v) => setBinding(i, { ...b, severity: v as RuleBinding['severity'] })} />
               <label className="flex items-center gap-1.5 text-xs">
-                <input type="checkbox" checked={b.blocking} onChange={(e) => setBinding(i, { ...b, blocking: e.target.checked })} /> Bloquea
+                <input type="checkbox" checked={b.blocking} onChange={(e) => setBinding(i, { ...b, blocking: e.target.checked })} /> Decide
               </label>
               {b.blocking && (
                 <Choice
@@ -334,7 +360,6 @@ export function ProfileEditorPage() {
                   onChange={(v) => setBinding(i, { ...b, on_fail: v as RuleBinding['on_fail'] })}
                 />
               )}
-              <span className="flex-1 truncate text-xs text-muted-foreground">{describe(b.rule_id)?.description ?? 'no está en la biblioteca de este catálogo'}</span>
               <Button variant="ghost" size="icon" onClick={() => set({ rule_bindings: definition.rule_bindings.filter((_, j) => j !== i) })} aria-label="Quitar regla">
                 <Trash2 className="size-4" />
               </Button>
@@ -343,8 +368,8 @@ export function ProfileEditorPage() {
           <Choice
             value=""
             width="w-96"
-            placeholder="Vincular otra regla de la biblioteca…"
-            options={library.rules.filter((r) => !definition.rule_bindings.some((b) => b.rule_id === r.rule_id)).map((r) => ({ value: r.rule_id, label: r.rule_id }))}
+            placeholder="Agregar otra regla…"
+            options={library.rules.filter((r) => !definition.rule_bindings.some((b) => b.rule_id === r.rule_id)).map((r) => ({ value: r.rule_id, label: r.description || r.rule_id }))}
             onChange={bind}
           />
         </CardContent>
@@ -354,22 +379,22 @@ export function ProfileEditorPage() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Lightbulb className="size-4" /> Sugerencias de reutilización
+              <Lightbulb className="size-4" /> Reglas que podrías agregar
             </CardTitle>
-            <CardDescription>Reglas que corren sobre los documentos de este perfil o que ya usan otros procesos.</CardDescription>
+            <CardDescription>Revisan los documentos que exige este proceso, o ya las usan otros procesos.</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-2">
             {suggestions.slice(0, 12).map(({ rule, runsOn }) => (
               <div key={rule.rule_id} className="flex flex-wrap items-center gap-2 text-sm">
                 <Button variant="outline" size="sm" onClick={() => bind(rule.rule_id)}>
-                  <Plus className="size-3.5" /> Vincular
+                  <Plus className="size-3.5" /> Agregar
                 </Button>
-                <code className="text-xs">{rule.rule_id}</code>
+                <span>{rule.description || rule.rule_id}</span>
                 <Badge variant="outline" className="text-[10px]">
                   {rule.kind === 'format' ? 'formato' : rule.kind === 'cel' ? 'regla de negocio' : 'sistema'}
                 </Badge>
                 <span className="text-xs text-muted-foreground">
-                  {runsOn.length > 0 && `corre sobre ${runsOn.join(', ')}`}
+                  {runsOn.length > 0 && `revisa ${runsOn.map((t) => library.document_types.find((d) => d.key === t)?.display_name ?? t).join(', ')}`}
                   {runsOn.length > 0 && rule.used_by.length > 0 && ' · '}
                   {rule.used_by.length > 0 && `usada en ${rule.used_by.join(', ')}`}
                 </span>
@@ -379,8 +404,11 @@ export function ProfileEditorPage() {
         </Card>
       )}
 
-      <div className="flex items-center gap-2">
-        <Button onClick={handleSave} disabled={save.isPending}>
+      <div className="sticky bottom-0 -mx-8 flex items-center gap-3 border-t bg-background/95 px-8 py-3 backdrop-blur">
+        <span className="flex-1 text-sm text-muted-foreground">
+          {savedDraft ? `Borrador v${savedDraft} guardado. Publícalo para que lo usen los expedientes nuevos.` : 'Los cambios se guardan como borrador.'}
+        </span>
+        <Button variant={savedDraft ? 'outline' : 'default'} onClick={handleSave} disabled={save.isPending}>
           {save.isPending && <Loader2 className="size-4 animate-spin" />}
           Guardar borrador
         </Button>
