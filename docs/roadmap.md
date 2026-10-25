@@ -499,3 +499,6 @@ Método, mediciones y aprendizajes: [eficiencia-modelos-ia.md](eficiencia-modelo
 ## VRT-95 — Herramientas para agentes en palabras
 **Why:** una tabla de 23 filas con descripciones escritas para agentes (parámetros entre comillas, nombres técnicos) no dejaba ver qué puede hacer un sistema conectado ni qué usa cada agente por dentro. **Scope:** dos fichas que filtran (para otros sistemas / internas), búsqueda y «solo las que usan IA»; bloques por uso con una tarjeta por herramienta: frase de negocio, usa IA o no, consulta o cambia algo, costo en semáforo y quién la usa; el texto para el agente, el nombre y si se puede repetir, plegados. Sin cambios de API.
 
+
+## VRT-96 — Personas en palabras
+**Why:** una tabla con un ícono rojo de borrar en cada fila, y para cambiar el rol de alguien había que quitarlo y volver a crearlo; el alta pedía «Contraseña: solo si es una persona nueva» sin explicar qué hacía cada rol. **Scope:** fichas por rol con lo que puede hacer y cuántos hay (filtran), búsqueda, personas en tarjetas agrupadas por rol; un diálogo para cambiar el rol o quitar de la unidad, de solo lectura para cuentas corporativas; alta con el rol elegido por lo que permite. API: `PATCH /users/{id}` cambia el rol (no el propio ni el de una cuenta corporativa).

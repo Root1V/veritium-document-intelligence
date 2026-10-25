@@ -6,6 +6,7 @@ import { apiClient } from '@/lib/apiClient'
 import { getToken } from '@/lib/auth'
 import type {
   AssistantReply,
+  UserRole,
   AssistantTurn,
   Investigation,
   InvestigationStats,
@@ -640,6 +641,14 @@ export function useCreateUser() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] })
     },
+  })
+}
+
+export function useChangeUserRole() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id, role }: { id: string; role: UserRole }) => (await apiClient.patch<AppUser>(`/users/${id}`, { role })).data,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['users'] }),
   })
 }
 

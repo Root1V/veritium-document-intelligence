@@ -212,6 +212,10 @@ async def test_what_nothing_used_goes_and_what_was_used_is_archived(live_setting
             people = {p["email"]: p["id"] for p in (await client.get("/users", headers=admin)).json()}
             me, other = people[f"test-del-admin-{scratch_unit}@example.com"], people[f"test-del-operador-{scratch_unit}@example.com"]
             assert (await client.delete(f"/users/{me}", headers=admin)).status_code == 409
+            assert (await client.patch(f"/users/{me}", headers=admin, json={"role": "visor"})).status_code == 409, "not your own role"
+            assert (await client.patch(f"/users/{other}", headers=admin, json={"role": "jefe"})).status_code == 400
+            changed = await client.patch(f"/users/{other}", headers=admin, json={"role": "visor"})
+            assert changed.status_code == 200 and changed.json()["role"] == "visor"
             assert (await client.delete(f"/users/{other}", headers=admin)).status_code == 204
             assert other not in {p["id"] for p in (await client.get("/users", headers=admin)).json()}
     finally:
