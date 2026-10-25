@@ -24,6 +24,14 @@ _DOCUMENT_STEPS = (
 CASE_STATUS = {"uploaded": "En cola", "processing": "En proceso", "completed": "Terminado", "failed": "Con error", "submitted": "Recibido"}
 
 
+def run_state(case_status: str, run_status: str | None) -> str | None:
+    """The latest run's status. Cases from before runs (batches, v0.3.0) have
+    none: how they ended is their own status."""
+    if run_status is None and case_status in ("completed", "failed"):
+        return case_status
+    return run_status
+
+
 class Step(BaseModel):
     key: str
     label: str
@@ -42,6 +50,7 @@ class Progress(BaseModel):
 def progress(case_status: str, run_status: str | None, document_statuses: list[str]) -> Progress:
     """``document_statuses``: the logical documents of the case (a file that
     was split counts by its parts, not by itself)."""
+    run_status = run_state(case_status, run_status)
     statuses = [s for s in document_statuses if s != "segmented"]
     total = len(statuses)
     failed = sum(s == "failed" for s in statuses)

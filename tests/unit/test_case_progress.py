@@ -35,3 +35,8 @@ def test_a_run_that_stopped() -> None:
 def test_waiting_in_the_queue() -> None:
     p = progress("uploaded", "pending", ["uploaded", "uploaded"])
     assert _states(p) == ["done", "pending", "pending", "pending", "pending", "pending"] and p.current == "En cola"
+
+
+def test_a_case_from_before_runs_ends_as_its_own_status() -> None:
+    p = progress("completed", None, ["completed"])
+    assert set(_states(p)) == {"done"} and p.current == "Terminado"

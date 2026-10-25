@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from idp.api.disclosure import case_masker
 
 from idp.api.case_contract import latest_run
-from idp.domain.case_progress import progress
+from idp.domain.case_progress import progress, run_state
 from idp.persistence.models import Case
 from idp.pipeline.orchestrator import case_document_fields, load_semantic_catalog, resolve_semantic_view
 from idp.persistence.repositories import CaseConditionRepository, DocumentRepository, DocumentTypeRepository
@@ -46,7 +46,7 @@ async def case_outcome(session: AsyncSession, case: Case) -> CaseOutcome:
 
 async def _outcome(session: AsyncSession, case: Case) -> CaseOutcome:
     run = latest_run(case)
-    run_status = run.status if run else None
+    run_status = run_state(case.status, run.status if run else None)
     status: Literal["processing", "completed", "failed"] = (
         "completed" if run_status == "completed" else "failed" if run_status == "failed" else "processing"
     )
