@@ -490,3 +490,6 @@ Método, mediciones y aprendizajes: [eficiencia-modelos-ia.md](eficiencia-modelo
 ## VRT-91 — Riesgos y Legal en palabras
 **Why:** las lecturas de cada área se veían como una lista larga que se volvía formulario al editar, y no había cómo crear una nueva. **Scope:** un bloque por área con lo que recibe; cada lectura con qué documentos lee y en qué se enfoca, o sus puntos con la importancia en semáforo; crear y editar en un diálogo (documentos a leer como chips, puntos con su importancia). Sin cambios de API: `PUT /v1/lenses/{key}` ya creaba.
 
+## VRT-92 — Probar cambios en palabras
+**Why:** el formulario ocupaba la página aunque casi siempre se mira un resultado, las pruebas anteriores eran botones sin decir qué encontraron, y desde un proceso había que volver a elegir proceso y versión. **Scope:** lista de pruebas con su resultado en semáforo (sin cambios, cuántas cambiarían, activa, no terminó) y la elegida al lado: titular, cifras, hoy contra con el cambio con su diferencia, qué cambiaría y los expedientes afectados. Nueva prueba en un diálogo de tres preguntas que abre listo desde un proceso y propone su borrador. Sin cambios de API.
+
