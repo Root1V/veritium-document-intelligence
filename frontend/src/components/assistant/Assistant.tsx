@@ -90,10 +90,14 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
           <button
             type="button"
             onClick={() => setOpen(true)}
-            className="fixed right-6 bottom-6 z-40 flex items-center gap-2 rounded-full bg-primary py-2.5 pr-2.5 pl-4 text-sm font-medium text-primary-foreground shadow-lg transition hover:shadow-xl hover:brightness-110"
+            aria-label={`Asistente (${SHORTCUT})`}
+            className="group fixed right-6 bottom-6 z-40 flex size-12 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg transition hover:shadow-xl hover:brightness-110"
           >
-            <Sparkles className="size-4" /> Preguntar
-            <kbd className="rounded-md bg-primary-foreground/20 px-1.5 py-0.5 font-sans text-xs">{SHORTCUT}</kbd>
+            <Sparkles className="size-5" />
+            <span className="pointer-events-none absolute right-full mr-3 flex items-center gap-1.5 rounded-md bg-foreground px-2 py-1 text-xs font-medium whitespace-nowrap text-background opacity-0 shadow-md transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+              Asistente
+              <kbd className="rounded bg-background/20 px-1 font-sans">{SHORTCUT}</kbd>
+            </span>
           </button>
         ))}
     </AssistantContext.Provider>
