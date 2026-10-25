@@ -16,10 +16,10 @@ def _draft(**override) -> dict:
         "key": "electricity_bill", "display_name": "Recibo de luz", "description": "Recibo de servicio eléctrico",
         "extraction_hint": "El total está al pie.", "schema_title": "ElectricityBillSchema", "rationale": "x",
         "fields": [
-            {"name": "holder_name", "type": "str", "required": True, "description": "Titular del suministro"},
-            {"name": "holder_dni", "type": "str", "required": False, "description": "DNI del titular"},
-            {"name": "lines", "type": "list", "required": False, "description": "Detalle", "item_name": "BillLine",
-             "items": [{"name": "amount", "type": "float", "required": True, "description": "Importe"}]},
+            {"name": "holder_name", "label": "Nombre del titular", "type": "str", "required": True, "description": "Titular del suministro"},
+            {"name": "holder_dni", "label": "DNI del titular", "type": "str", "required": False, "description": "DNI del titular"},
+            {"name": "lines", "label": "Detalle", "type": "list", "required": False, "description": "Detalle", "item_name": "BillLine",
+             "items": [{"name": "amount", "label": "Importe", "type": "float", "required": True, "description": "Importe"}]},
         ],
     } | override
 
@@ -30,7 +30,7 @@ def test_a_valid_draft_is_a_type_definition():
 
 
 def test_an_invalid_draft_is_rejected_with_the_reason():
-    bad = _draft(fields=[{"name": "lines", "type": "list", "required": False, "description": "Detalle"}])
+    bad = _draft(fields=[{"name": "lines", "label": "Detalle", "type": "list", "required": False, "description": "Detalle"}])
     with pytest.raises(ValidationError, match="items"):
         TypeDraft.model_validate(bad)
 

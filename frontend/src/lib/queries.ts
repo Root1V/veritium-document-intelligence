@@ -347,6 +347,16 @@ export function useProposeDocumentType() {
   })
 }
 
+/** How people read the fields of a published type; no new version (VRT-88). */
+export function useSetFieldLabels() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ key, labels }: { key: string; labels: Record<string, string> }) =>
+      (await apiClient.patch(`/v1/document-types/${key}/labels`, { labels })).data,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['document-types'] }),
+  })
+}
+
 export function useRegisterDocumentType() {
   const queryClient = useQueryClient()
   return useMutation({

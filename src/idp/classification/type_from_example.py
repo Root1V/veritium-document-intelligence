@@ -28,6 +28,7 @@ LeafType = Literal["str", "int", "float", "bool", "enum"]
 
 class DraftLeaf(BaseModel):
     name: str = Field(description="snake_case en ingles.")
+    label: str = Field(description="Como lo nombraria una persona, en español y corto, p. ej. 'DNI del socio'.")
     type: LeafType
     required: bool = Field(description="True solo si este tipo de documento siempre lo trae.")
     description: str = Field(description="En español, explicita: que representa y donde aparece en el documento. Es lo unico que vera el agente de extraccion.")
@@ -81,6 +82,7 @@ que sirva para cualquier documento de esa misma clase, aunque cambie el formato.
 
 Reglas del esquema:
 - Campos en snake_case ingles; type entre str, int, float, bool, enum o list.
+- Cada campo lleva label: su nombre en español, corto, como lo leeria una persona (p. ej. 'DNI del socio', 'Fecha de emision').
 - Fechas, codigos, documentos de identidad y montos con formato van como str; montos numericos como float.
 - Una lista (type 'list') es para tablas o items repetidos; sus elementos tienen campos simples (sin listas dentro).
 - required=True solo si el campo esta siempre presente en esta clase de documento.

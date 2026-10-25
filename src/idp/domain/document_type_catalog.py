@@ -39,6 +39,9 @@ class FieldSpec(BaseModel):
     type: Literal["str", "int", "float", "bool", "enum", "list"]
     required: bool = False
     description: str | None = None
+    # How a person reads it, in Spanish ('DNI del socio'): shown, never sent to
+    # the model nor part of the version — it changes without one (VRT-88).
+    label: str | None = None
     enum_values: list[str] | None = None
     # False: a plain value (e.g. a label the model names), not an
     # Extracted[T] with page/bbox/confidence.
@@ -90,7 +93,9 @@ class DocumentTypeDefinition(BaseModel):
         return self
 
     def content_hash(self) -> str:
-        canonical = json.dumps(self.model_dump(mode="json"), sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+        # Labels are what people read, not what is extracted: renaming one is not a new version.
+        dumped = self.model_dump(mode="json", exclude={"fields": {"__all__": {"label": True, "items": {"__all__": {"label"}}}}})
+        canonical = json.dumps(dumped, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
         return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
     def field_paths(self) -> set[str]:

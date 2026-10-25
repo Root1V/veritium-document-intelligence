@@ -18,6 +18,7 @@ from idp.domain.document_type_catalog import DocumentTypeCatalog, DocumentTypeDe
 from idp.domain.lenses import SEED_LENSES, LensDefinition
 from idp.domain.document_type_seed import seed_definitions
 from idp.domain.process_profile import ProcessProfileDefinition
+from idp.domain.field_labels import labeled
 from idp.domain.process_profile_seed import AD_HOC_KEY, SEED_PROFILES
 from idp.domain.semantic import SemanticCatalog
 from idp.domain.semantic_seed import seed_catalog
@@ -966,7 +967,7 @@ class DocumentTypeRepository:
     async def load_catalog(self) -> DocumentTypeCatalog:
         stmt = select(DocumentTypeRecord.key, DocumentTypeVersion).join(DocumentTypeVersion).where(DocumentTypeVersion.status != "draft")
         rows = (await self._session.execute(stmt)).all()
-        return DocumentTypeCatalog([(key, v.version, v.status, DocumentTypeDefinition.model_validate(v.definition)) for key, v in rows])
+        return DocumentTypeCatalog([(key, v.version, v.status, labeled(DocumentTypeDefinition.model_validate(v.definition))) for key, v in rows])
 
     async def list_types(self) -> list[DocumentTypeRecord]:
         stmt = select(DocumentTypeRecord).options(selectinload(DocumentTypeRecord.versions)).order_by(DocumentTypeRecord.key)

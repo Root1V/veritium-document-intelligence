@@ -10,6 +10,7 @@ POST /v1/document-types/{key}/versions/{version}/publish draft -> published (adm
 POST /v1/document-types/{key}/versions/{version}/retire  published -> retired (admin)
 DELETE /v1/document-types/{key}/versions/{version}       a draft, for good (admin; VRT-72)
 DELETE /v1/document-types/{key}                          the type: for good if nothing used it, else archived (admin; VRT-72)
+PATCH /v1/document-types/{key}/labels                    how people read its fields; no new version (admin; VRT-88)
 POST /v1/document-types/proposals                        draft a new type from an example document (admin, VRT-33)
 POST /v1/document-types/registrations                    register a reviewed draft: type published + its semantic
                                                          mappings as a new catalog version (admin, VRT-33)
@@ -53,6 +54,7 @@ admin_router = APIRouter(prefix="/v1/document-types", tags=["document-types"], d
 
 class FieldInfo(BaseModel):
     name: str
+    label: str | None = None
     field_type: str
     description: str | None
     required: bool
@@ -90,6 +92,7 @@ def _field_info(spec: FieldSpec) -> FieldInfo:
         kind = spec.type
     return FieldInfo(
         name=spec.name,
+        label=spec.label,
         field_type=kind,
         description=spec.description,
         required=spec.required,
@@ -313,6 +316,44 @@ async def delete_document_type(key: str, session: AsyncSession = Depends(get_db_
             row.status, row.retired_at = "retired", datetime.now(UTC)
     await session.commit()
     return RemovedResponse(outcome="archived")
+
+
+class LabelsRequest(BaseModel):
+    labels: dict[str, str] = Field(description="Ruta del campo ('campo', 'lista' o 'lista[].campo') → cómo lo lee una persona; vacío lo quita.")
+
+
+@admin_router.patch("/{key}/labels", response_model=TypeVersionDetail)
+async def set_field_labels(
+    key: str, body: LabelsRequest, session: AsyncSession = Depends(get_db_session), _: User = Depends(require_platform("admin"))
+) -> TypeVersionDetail:
+    """How people read the fields of the published version (VRT-88). Labels
+    are outside the content hash and the extraction, so they change in place."""
+    record = await _type_or_404(DocumentTypeRepository(session), key)
+    published = [v for v in record.versions if v.status == "published"]
+    if not published:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="el tipo no tiene una versión publicada")
+    row = max(published, key=lambda v: v.version)
+    definition = DocumentTypeDefinition.model_validate(row.definition)
+    known = {f.name for f in definition.fields} | {f"{f.name}[].{i.name}" for f in definition.fields for i in f.items or []}
+    unknown = sorted(set(body.labels) - known)
+    if unknown:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=[f"el tipo no tiene el campo '{p}'" for p in unknown])
+
+    def named(path: str, current: str | None) -> str | None:
+        return (body.labels[path].strip() or None) if path in body.labels else current
+
+    fields = [
+        f.model_copy(
+            update={
+                "label": named(f.name, f.label),
+                "items": [i.model_copy(update={"label": named(f"{f.name}[].{i.name}", i.label)}) for i in f.items] if f.items else f.items,
+            }
+        )
+        for f in definition.fields
+    ]
+    row.definition = definition.model_copy(update={"fields": fields}).model_dump(mode="json")
+    await session.commit()
+    return _detail(record, row)
 
 
 # --- a new type from an example (VRT-33) -------------------------------------

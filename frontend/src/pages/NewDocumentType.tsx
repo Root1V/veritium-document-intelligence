@@ -1,112 +1,81 @@
-import { useState } from 'react'
+// A new document type from an example (VRT-33, VRT-88), in three steps:
+// drop the example, review what Veritium proposes — each datum by its name,
+// with its format and what it means — and register it. The technical side
+// (keys, schema name, reading hints) stays folded.
+import { useEffect, useState, type ReactNode } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { AlertTriangle, Loader2, Plus, Trash2 } from 'lucide-react'
+import { AlertTriangle, Check, CircleAlert, FileSearch, Loader2, Plus, RotateCcw } from 'lucide-react'
 import { toast } from 'sonner'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
+import { FieldEditor, type Meaning } from '@/components/documentTypes/FieldEditor'
+import { Dropzone } from '@/components/upload/Dropzone'
 import { errorDetail } from '@/lib/apiErrors'
-import { useProposeDocumentType, useRegisterDocumentType } from '@/lib/queries'
-import type { DocumentTypeDefinition, FieldSpec, FieldSpecType, TypeProposal } from '@/types/api'
+import { useDocumentTypeCatalog, useProposeDocumentType, useRegisterDocumentType, useSemanticCatalog } from '@/lib/queries'
+import { cn } from '@/lib/utils'
+import type { DocumentTypeDefinition, FieldSpec, TypeProposal } from '@/types/api'
 
-const LEAF_TYPES: FieldSpecType[] = ['str', 'int', 'float', 'bool', 'enum']
+const SNAKE = /^[a-z][a-z0-9_]*$/
+const normalized = (path: string) => path.replace(/\[\d*\]/g, '[]')
+const pathsOf = (fields: FieldSpec[]) => new Set(fields.flatMap((f) => [f.name, ...(f.items ?? []).map((i) => `${f.name}[].${i.name}`)]))
 
-function FieldRow({
-  field,
-  onChange,
-  onRemove,
-  nested = false,
-}: {
-  field: FieldSpec
-  onChange: (field: FieldSpec) => void
-  onRemove: () => void
-  nested?: boolean
-}) {
-  const types = nested ? LEAF_TYPES : [...LEAF_TYPES, 'list' as FieldSpecType]
-  function setType(type: FieldSpecType) {
-    onChange({
-      ...field,
-      type,
-      required: type === 'list' ? false : field.required,
-      enum_values: type === 'enum' ? (field.enum_values ?? []) : null,
-      item_name: type === 'list' ? (field.item_name ?? 'Item') : null,
-      items: type === 'list' ? (field.items ?? [{ name: 'value', type: 'str', required: true, description: '' }]) : null,
-    })
-  }
+function Steps({ current }: { current: 1 | 2 | 3 }) {
+  const steps = ['Sube un ejemplo', 'Revisa la propuesta', 'Regístralo']
   return (
-    <div className={nested ? 'flex flex-col gap-2 border-l-2 pl-3' : 'flex flex-col gap-2 rounded-lg border p-3'}>
-      <div className="grid grid-cols-1 gap-2 md:grid-cols-[1fr_120px_110px_auto]">
-        <Input value={field.name} onChange={(e) => onChange({ ...field, name: e.target.value })} className="font-mono text-xs" aria-label="Nombre del campo" />
-        <Select value={field.type} onValueChange={(v) => setType(v as FieldSpecType)}>
-          <SelectTrigger aria-label="Tipo de dato">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {types.map((t) => (
-              <SelectItem key={t} value={t}>
-                {t}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={field.required}
-            disabled={field.type === 'list'}
-            onChange={(e) => onChange({ ...field, required: e.target.checked })}
-          />
-          Obligatorio
-        </label>
-        <Button variant="ghost" size="icon" onClick={onRemove} aria-label="Quitar campo">
-          <Trash2 className="size-4" />
-        </Button>
-      </div>
-      <Input
-        value={field.description ?? ''}
-        onChange={(e) => onChange({ ...field, description: e.target.value })}
-        placeholder="Qué es el campo y dónde aparece (lo lee el agente de extracción)"
-        className="text-xs"
-      />
-      {field.type === 'enum' && (
-        <Input
-          value={(field.enum_values ?? []).join(', ')}
-          onChange={(e) => onChange({ ...field, enum_values: e.target.value.split(',').map((v) => v.trim()).filter(Boolean) })}
-          placeholder="Valores posibles, separados por coma"
-          className="text-xs"
-        />
-      )}
-      {field.type === 'list' && (
-        <div className="flex flex-col gap-2">
-          <Input
-            value={field.item_name ?? ''}
-            onChange={(e) => onChange({ ...field, item_name: e.target.value })}
-            placeholder="Nombre de cada elemento (CamelCase)"
-            className="font-mono text-xs"
-          />
-          {(field.items ?? []).map((item, i) => (
-            <FieldRow
-              key={i}
-              nested
-              field={item}
-              onChange={(next) => onChange({ ...field, items: (field.items ?? []).map((it, j) => (j === i ? next : it)) })}
-              onRemove={() => onChange({ ...field, items: (field.items ?? []).filter((_, j) => j !== i) })}
-            />
-          ))}
-          <Button
-            variant="outline"
-            size="sm"
-            className="self-start"
-            onClick={() => onChange({ ...field, items: [...(field.items ?? []), { name: '', type: 'str', required: false, description: '' }] })}
-          >
-            <Plus className="size-3.5" /> Campo del elemento
-          </Button>
+    <ol className="flex flex-wrap items-center gap-2 text-sm">
+      {steps.map((label, i) => {
+        const n = (i + 1) as 1 | 2 | 3
+        return (
+          <li key={label} className="flex items-center gap-2">
+            {i > 0 && <span className="h-px w-6 bg-border" />}
+            <span
+              className={cn(
+                'flex size-6 items-center justify-center rounded-full text-xs font-semibold',
+                n < current ? 'bg-emerald-500 text-white' : n === current ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground',
+              )}
+            >
+              {n < current ? <Check className="size-3.5" /> : n}
+            </span>
+            <span className={n === current ? 'font-medium' : 'text-muted-foreground'}>{label}</span>
+          </li>
+        )
+      })}
+    </ol>
+  )
+}
+
+function Panel({ title, description, children }: { title: string; description?: string; children: ReactNode }) {
+  return (
+    <Card>
+      <CardContent className="flex flex-col gap-4 p-5">
+        <div className="flex flex-col gap-0.5">
+          <h2 className="font-semibold">{title}</h2>
+          {description && <p className="text-sm text-muted-foreground">{description}</p>}
         </div>
-      )}
+        {children}
+      </CardContent>
+    </Card>
+  )
+}
+
+/** While the model reads: what it is doing, so 40 seconds do not look like a hang. */
+function Reading() {
+  const [seconds, setSeconds] = useState(0)
+  useEffect(() => {
+    const timer = setInterval(() => setSeconds((s) => s + 1), 1000)
+    return () => clearInterval(timer)
+  }, [])
+  const doing = seconds < 10 ? 'Leyendo el documento' : seconds < 30 ? 'Reconociendo qué datos trae' : 'Proponiendo nombres y significados'
+  return (
+    <div className="flex items-center gap-3 rounded-lg bg-muted/50 p-4">
+      <Loader2 className="size-5 animate-spin text-primary" />
+      <div className="flex flex-col">
+        <span className="text-sm font-medium">{doing}…</span>
+        <span className="text-xs text-muted-foreground">Suele tardar entre 30 y 60 segundos · {seconds} s</span>
+      </div>
     </div>
   )
 }
@@ -116,39 +85,109 @@ export function NewDocumentTypePage() {
   const [params] = useSearchParams()
   const documentId = params.get('document_id') ?? undefined
   const suggestionId = params.get('suggestion_id') ?? undefined
-  const [file, setFile] = useState<File | undefined>()
+  const [files, setFiles] = useState<File[]>([])
   const [nameHint, setNameHint] = useState(params.get('name') ?? '')
   const [proposal, setProposal] = useState<TypeProposal | undefined>()
   const [definition, setDefinition] = useState<DocumentTypeDefinition | undefined>()
-  const [acceptedMappings, setAcceptedMappings] = useState<Set<number>>(new Set())
+  const [accepted, setAccepted] = useState<Set<number>>(new Set())
   const propose = useProposeDocumentType()
   const register = useRegisterDocumentType()
+  const { data: semantic } = useSemanticCatalog()
+  const { data: types } = useDocumentTypeCatalog()
 
   function handlePropose() {
-    if (!file && !documentId) {
-      toast.error('Elige un documento de ejemplo.')
-      return
-    }
+    if (!files[0] && !documentId) return void toast.error('Elige un documento de ejemplo.')
     propose.mutate(
-      { file, documentId, nameHint: nameHint.trim() || undefined },
+      { file: files[0], documentId, nameHint: nameHint.trim() || undefined },
       {
         onSuccess: (data) => {
           setProposal(data)
           setDefinition(data.definition)
-          setAcceptedMappings(new Set(data.mappings.map((_, i) => i)))
+          setAccepted(new Set(data.mappings.map((_, i) => i)))
         },
         onError: (error) => toast.error(errorDetail(error)),
       },
     )
   }
 
+  if (!proposal || !definition) {
+    return (
+      <div className="flex max-w-3xl flex-col gap-6">
+        <div className="flex flex-col gap-3">
+          <h1 className="text-2xl font-semibold tracking-tight">Nuevo tipo de documento</h1>
+          <Steps current={1} />
+        </div>
+        <Panel
+          title="Sube un documento de ejemplo"
+          description="Un PDF o una foto de un documento real de esa clase. Veritium lo lee y te propone qué datos trae, cómo se llaman y qué significan."
+        >
+          {documentId ? (
+            <p className="flex items-center gap-2 rounded-lg bg-muted/50 p-3 text-sm">
+              <FileSearch className="size-4 text-muted-foreground" /> Se usará el documento del expediente donde se detectó.
+            </p>
+          ) : (
+            <Dropzone files={files} onChange={(next) => setFiles(next.slice(-1))} />
+          )}
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="name-hint">Cómo lo llamas (opcional)</Label>
+            <Input id="name-hint" value={nameHint} onChange={(e) => setNameHint(e.target.value)} placeholder="p. ej. Constancia de no adeudo" />
+            <span className="text-xs text-muted-foreground">Ayuda a Veritium a nombrarlo como en tu negocio.</span>
+          </div>
+          {propose.isPending ? (
+            <Reading />
+          ) : (
+            <Button onClick={handlePropose} disabled={!files[0] && !documentId} className="self-start">
+              Leer el ejemplo y proponer
+            </Button>
+          )}
+        </Panel>
+      </div>
+    )
+  }
+
+  const catalog = semantic?.catalog
+  const meaningLabel = (attribute: string, role: string) =>
+    `${catalog?.attributes.find((a) => a.key === attribute)?.name ?? attribute} · ${(catalog?.roles.find((r) => r.key === role)?.name ?? role).toLowerCase()}`
+  const meanings = (path: string): Meaning[] =>
+    proposal.mappings
+      .map((m, index) => ({ m, index }))
+      .filter(({ m }) => normalized(m.field_path) === path)
+      .map(({ m, index }) => ({ index, label: meaningLabel(m.attribute, m.role), accepted: accepted.has(index) }))
+  const toggle = (index: number) => {
+    const next = new Set(accepted)
+    if (next.has(index)) next.delete(index)
+    else next.add(index)
+    setAccepted(next)
+  }
+  const set = (patch: Partial<DocumentTypeDefinition>) => setDefinition({ ...definition, ...patch })
+  const paths = pathsOf(definition.fields)
+  const linked = proposal.mappings.filter((m, i) => accepted.has(i) && paths.has(normalized(m.field_path)))
+  const allFields = definition.fields.flatMap((f) => [f, ...(f.items ?? [])])
+
+  // What keeps it from being registered, in the person's words.
+  const problems: string[] = []
+  if (!definition.display_name.trim()) problems.push('Ponle un nombre al documento.')
+  if (!SNAKE.test(definition.key)) problems.push('La clave debe ir en minúsculas, sin espacios ni tildes (opciones avanzadas).')
+  if (proposal.key_taken && definition.key === proposal.definition.key)
+    problems.push(`Ya existe «${types?.registered.find((t) => t.name === definition.key)?.display_name ?? definition.key}»: si es otro documento, cambia la clave en opciones avanzadas.`)
+  if (!definition.fields.length) problems.push('Necesita al menos un dato.')
+  allFields.forEach((f, i) => {
+    const who = f.label?.trim() || `El dato ${i + 1}`
+    if (!f.label?.trim()) problems.push(`${who}: ponle un nombre.`)
+    if (!SNAKE.test(f.name)) problems.push(`${who}: su nombre técnico debe ir en minúsculas y con guiones bajos.`)
+    if (f.type === 'enum' && !f.enum_values?.length) problems.push(`${who}: indica sus opciones.`)
+    if (f.type === 'list' && !f.items?.length) problems.push(`${who}: una tabla necesita columnas.`)
+  })
+  const names = definition.fields.map((f) => f.name)
+  if (new Set(names).size < names.length) problems.push('Dos datos tienen el mismo nombre técnico.')
+
   function handleRegister() {
-    if (!definition || !proposal) return
+    if (problems.length) return void toast.error(problems[0])
     register.mutate(
-      { definition, mappings: proposal.mappings.filter((_, i) => acceptedMappings.has(i)), suggestion_id: suggestionId ?? null },
+      { definition: definition!, mappings: linked, suggestion_id: suggestionId ?? null },
       {
         onSuccess: () => {
-          toast.success(`Tipo '${definition.display_name}' registrado y publicado.`)
+          toast.success(`«${definition!.display_name}» registrado. Veritium ya lo reconoce en los expedientes nuevos.`)
           navigate('/document-types')
         },
         onError: (error) => toast.error(errorDetail(error)),
@@ -156,146 +195,123 @@ export function NewDocumentTypePage() {
     )
   }
 
-  const setField = (i: number, field: FieldSpec) =>
-    definition && setDefinition({ ...definition, fields: definition.fields.map((f, j) => (j === i ? field : f)) })
+  const startOver = () => {
+    setProposal(undefined)
+    setDefinition(undefined)
+  }
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Nuevo tipo desde un ejemplo</h1>
-        <p className="text-muted-foreground">
-          El modelo lee un documento de ejemplo y propone el tipo completo: campos, textos para el clasificador y el agente,
-          y qué campos corresponden a atributos del catálogo semántico. Revísalo y edítalo antes de registrarlo.
-        </p>
+      <div className="flex flex-col gap-3">
+        <h1 className="text-2xl font-semibold tracking-tight">Nuevo tipo de documento</h1>
+        <Steps current={2} />
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Documento de ejemplo</CardTitle>
-          <CardDescription>
-            {documentId ? 'Se usa el documento de la sugerencia aceptada.' : 'PDF o imagen de un documento de la clase que quieres registrar.'}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-3">
-          {!documentId && <Input type="file" accept=".pdf,image/*" onChange={(e) => setFile(e.target.files?.[0])} />}
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="name-hint">Cómo lo llamas (opcional)</Label>
-            <Input id="name-hint" value={nameHint} onChange={(e) => setNameHint(e.target.value)} placeholder="p. ej. Constancia de no adeudo" />
-          </div>
-          <Button onClick={handlePropose} disabled={propose.isPending} className="self-start">
-            {propose.isPending && <Loader2 className="size-4 animate-spin" />}
-            {propose.isPending ? 'Leyendo el documento y proponiendo… (30–60 s)' : 'Proponer tipo'}
-          </Button>
-        </CardContent>
-      </Card>
-
-      {proposal && definition && (
-        <>
-          {(proposal.similar_existing_type || proposal.key_taken || proposal.dropped_mappings.length > 0) && (
-            <Card className="border-amber-300 bg-amber-50 dark:bg-amber-950/30">
-              <CardContent className="flex flex-col gap-1 pt-6 text-sm">
-                {proposal.similar_existing_type && (
-                  <p className="flex items-center gap-2">
-                    <AlertTriangle className="size-4" /> Se parece al tipo existente <code>{proposal.similar_existing_type}</code>: quizá baste
-                    con una versión nueva de ese tipo.
-                  </p>
-                )}
-                {proposal.key_taken && <p>La clave <code>{definition.key}</code> ya existe: cámbiala para registrarlo.</p>}
-                {proposal.dropped_mappings.map((m) => (
-                  <p key={m}>Mapeo descartado — {m}</p>
-                ))}
-              </CardContent>
-            </Card>
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px] xl:items-start">
+        <div className="flex min-w-0 flex-col gap-6">
+          {proposal.similar_existing_type && (
+            <div className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-sm text-amber-800 dark:text-amber-300">
+              <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+              <span>
+                Se parece a «{types?.registered.find((t) => t.name === proposal.similar_existing_type)?.display_name ?? proposal.similar_existing_type}», que ya
+                existe. Si es el mismo documento, conviene una versión nueva de ese tipo en lugar de uno nuevo.
+              </span>
+            </div>
           )}
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Tipo</CardTitle>
-              <CardDescription>{proposal.rationale}</CardDescription>
-            </CardHeader>
-            <CardContent className="grid grid-cols-1 gap-3 md:grid-cols-3">
-              <div className="flex flex-col gap-1.5">
-                <Label>Clave</Label>
-                <Input value={definition.key} onChange={(e) => setDefinition({ ...definition, key: e.target.value })} className="font-mono" />
+          <Panel title="El documento" description="Cómo se llama y cómo se reconoce entre los demás.">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="display-name">Nombre</Label>
+              <Input id="display-name" value={definition.display_name} onChange={(e) => set({ display_name: e.target.value })} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="description">Cómo se reconoce</Label>
+              <Textarea id="description" value={definition.description} onChange={(e) => set({ description: e.target.value })} className="min-h-20" />
+              <span className="text-xs text-muted-foreground">Lo usa Veritium para distinguirlo de los otros tipos: qué es y en qué se diferencia de los parecidos.</span>
+            </div>
+            <details className="text-sm">
+              <summary className="w-fit cursor-pointer text-muted-foreground select-none hover:text-foreground">Opciones avanzadas</summary>
+              <div className="mt-3 grid gap-4 md:grid-cols-2">
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="key">Clave</Label>
+                  <Input id="key" value={definition.key} onChange={(e) => set({ key: e.target.value })} className="font-mono text-xs" />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="schema">Nombre del esquema</Label>
+                  <Input id="schema" value={definition.schema_title} onChange={(e) => set({ schema_title: e.target.value })} className="font-mono text-xs" />
+                </div>
+                <div className="flex flex-col gap-1.5 md:col-span-2">
+                  <Label htmlFor="hint">Pistas para leerlo</Label>
+                  <Textarea id="hint" value={definition.extraction_hint} onChange={(e) => set({ extraction_hint: e.target.value })} className="min-h-16 text-xs" />
+                </div>
               </div>
-              <div className="flex flex-col gap-1.5">
-                <Label>Nombre visible</Label>
-                <Input value={definition.display_name} onChange={(e) => setDefinition({ ...definition, display_name: e.target.value })} />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <Label>Nombre del esquema</Label>
-                <Input value={definition.schema_title} onChange={(e) => setDefinition({ ...definition, schema_title: e.target.value })} className="font-mono" />
-              </div>
-              <div className="flex flex-col gap-1.5 md:col-span-3">
-                <Label>Descripción (la lee el clasificador)</Label>
-                <Textarea value={definition.description} onChange={(e) => setDefinition({ ...definition, description: e.target.value })} />
-              </div>
-              <div className="flex flex-col gap-1.5 md:col-span-3">
-                <Label>Pistas para el agente de extracción</Label>
-                <Textarea value={definition.extraction_hint} onChange={(e) => setDefinition({ ...definition, extraction_hint: e.target.value })} />
-              </div>
-            </CardContent>
-          </Card>
+            </details>
+          </Panel>
 
+          <Panel
+            title={`Datos que leerá (${allFields.length})`}
+            description="Revisa el nombre de cada dato y si siempre aparece. «Significa» vincula el dato al catálogo, para compararlo con otros documentos; haz clic para quitarlo."
+          >
+            {definition.fields.map((field, i) => (
+              <FieldEditor
+                key={i}
+                field={field}
+                meanings={meanings}
+                onToggleMeaning={toggle}
+                onChange={(next) => set({ fields: definition.fields.map((f, j) => (j === i ? next : f)) })}
+                onRemove={() => set({ fields: definition.fields.filter((_, j) => j !== i) })}
+              />
+            ))}
+            <Button variant="outline" size="sm" className="self-start" onClick={() => set({ fields: [...definition.fields, { name: '', label: '', type: 'str', required: false, description: '' }] })}>
+              <Plus className="size-3.5" /> Agregar dato
+            </Button>
+          </Panel>
+        </div>
+
+        <aside className="flex flex-col gap-4 xl:sticky xl:top-20">
           <Card>
-            <CardHeader>
-              <CardTitle>Campos ({definition.fields.length})</CardTitle>
-              <CardDescription>Nombres en snake_case. Una lista es para tablas o elementos repetidos.</CardDescription>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-3">
-              {definition.fields.map((field, i) => (
-                <FieldRow
-                  key={i}
-                  field={field}
-                  onChange={(next) => setField(i, next)}
-                  onRemove={() => setDefinition({ ...definition, fields: definition.fields.filter((_, j) => j !== i) })}
-                />
-              ))}
-              <Button
-                variant="outline"
-                size="sm"
-                className="self-start"
-                onClick={() => setDefinition({ ...definition, fields: [...definition.fields, { name: '', type: 'str', required: false, description: '' }] })}
-              >
-                <Plus className="size-3.5" /> Agregar campo
+            <CardContent className="flex flex-col gap-4 p-5">
+              <span className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Resumen</span>
+              <div className="flex flex-col gap-1">
+                <span className="font-semibold">{definition.display_name || 'Sin nombre'}</span>
+                <span className="text-sm text-muted-foreground">
+                  {allFields.length} datos · {allFields.filter((f) => f.required).length} siempre presentes · {linked.length} con significado
+                </span>
+              </div>
+              {proposal.rationale && <p className="rounded-lg bg-muted/50 p-3 text-xs text-muted-foreground">{proposal.rationale}</p>}
+              {proposal.dropped_mappings.length > 0 && (
+                <details className="text-xs text-muted-foreground">
+                  <summary className="cursor-pointer">{proposal.dropped_mappings.length} significados descartados por el catálogo</summary>
+                  <ul className="mt-1 list-disc pl-4">
+                    {proposal.dropped_mappings.map((m) => (
+                      <li key={m}>{m}</li>
+                    ))}
+                  </ul>
+                </details>
+              )}
+              {problems.length > 0 && (
+                <div className="flex flex-col gap-1 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-xs text-amber-800 dark:text-amber-300">
+                  <span className="flex items-center gap-1.5 font-medium">
+                    <CircleAlert className="size-3.5" /> Para registrarlo falta
+                  </span>
+                  {problems.slice(0, 4).map((p) => (
+                    <span key={p}>· {p}</span>
+                  ))}
+                  {problems.length > 4 && <span>· y {problems.length - 4} más</span>}
+                </div>
+              )}
+              <Button onClick={handleRegister} disabled={register.isPending || problems.length > 0}>
+                {register.isPending && <Loader2 className="size-4 animate-spin" />}
+                Registrar y publicar
               </Button>
+              <Button variant="ghost" size="sm" onClick={startOver} disabled={register.isPending}>
+                <RotateCcw className="size-3.5" /> Empezar con otro ejemplo
+              </Button>
+              <p className="text-xs text-muted-foreground">Al registrarlo, Veritium lo reconoce en los expedientes nuevos y sus significados se agregan al catálogo de datos.</p>
             </CardContent>
           </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Mapeos al catálogo semántico</CardTitle>
-              <CardDescription>
-                Los marcados se publican en una versión nueva del catálogo, junto con el tipo. Si renombras un campo, desmarca su mapeo.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-2">
-              {proposal.mappings.length === 0 && <p className="text-sm text-muted-foreground">Sin mapeos propuestos.</p>}
-              {proposal.mappings.map((m, i) => (
-                <label key={`${m.field_path}-${m.attribute}`} className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={acceptedMappings.has(i)}
-                    onChange={(e) => {
-                      const next = new Set(acceptedMappings)
-                      if (e.target.checked) next.add(i)
-                      else next.delete(i)
-                      setAcceptedMappings(next)
-                    }}
-                  />
-                  <code>{m.field_path}</code> → <Badge variant="secondary">{m.attribute}</Badge>
-                  <span className="text-muted-foreground">rol {m.role}</span>
-                </label>
-              ))}
-            </CardContent>
-          </Card>
-
-          <Button onClick={handleRegister} disabled={register.isPending} className="self-start">
-            {register.isPending && <Loader2 className="size-4 animate-spin" />}
-            Registrar y publicar
-          </Button>
-        </>
-      )}
+        </aside>
+      </div>
     </div>
   )
 }

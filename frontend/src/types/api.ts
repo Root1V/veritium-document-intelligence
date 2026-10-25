@@ -164,6 +164,8 @@ export interface UpdateTypeSuggestionRequest {
 
 export interface DocumentTypeFieldInfo {
   name: string
+  /** How a person reads it, in Spanish (VRT-88). */
+  label?: string | null
   field_type: string
   description: string | null
   required: boolean
@@ -387,6 +389,7 @@ export type FieldSpecType = 'str' | 'int' | 'float' | 'bool' | 'enum' | 'list'
 
 export interface FieldSpec {
   name: string
+  label?: string | null
   type: FieldSpecType
   required: boolean
   description: string | null

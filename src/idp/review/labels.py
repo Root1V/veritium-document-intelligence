@@ -78,9 +78,10 @@ def describe_field(
 
     spec = next((f for f in definition.fields if f.name == field), None) if definition else None
     if index is None:
-        return FieldLabel(label=_humanize(field), description=spec.description if spec else None)
+        return FieldLabel(label=(spec.label if spec else None) or _humanize(field), description=spec.description if spec else None)
     item = next((i for i in spec.items or [] if i.name == sub), None) if spec else None
+    row = ((spec.label if spec else None) or _humanize(field)).lower()
     return FieldLabel(
-        label=f"{_humanize(sub)} — {_humanize(field).lower()} #{int(index) + 1}",
+        label=f"{(item.label if item else None) or _humanize(sub)} — {row} #{int(index) + 1}",
         description=(item.description if item else None) or (spec.item_description if spec else None),
     )
