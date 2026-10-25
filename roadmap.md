@@ -132,3 +132,4 @@ Estados: `done` · `todo` · `blocked` (espera a otro equipo) · `superseded` (a
 | VRT-83 | Nuevo expediente por proceso y reportes en palabras | done | Subir elige el proceso y pide solo sus datos; observaciones, auditoría y evaluación sin jerga. |
 | VRT-84 | Asistente flotante, menú plegable y herramientas de IA en palabras | done | El asistente acompaña en todas las páginas; el menú se pliega a iconos; IA sin jerga. |
 | VRT-85 | Modo claro, oscuro o como el sistema | todo | Cada persona elige la apariencia desde su menú, para trabajar de noche. |
+| VRT-86 | Primeros pasos con avance real | todo | Cada paso se comprueba solo, muestra el avance y lleva al siguiente. |

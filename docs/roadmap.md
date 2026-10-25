@@ -471,3 +471,6 @@ Método, mediciones y aprendizajes: [eficiencia-modelos-ia.md](eficiencia-modelo
 
 ## VRT-85 — Modo claro, oscuro o como el sistema
 **Why:** quienes revisan expedientes de noche trabajaban con la pantalla en blanco; la paleta oscura existía pero nadie podía activarla. **Scope:** «Apariencia» en el menú de la cuenta (Claro / Oscuro / Como el sistema, por defecto el del sistema), recordada en el navegador y aplicada a todas las páginas, avisos e inicio de sesión. Fuera: preferencia guardada por usuario en el servidor.
+
+## VRT-86 — Primeros pasos con avance real
+**Why:** la página era una lista de textos iguales: no decía qué estaba hecho ni qué seguía, y el admin debía revisar cada pantalla para saberlo. **Scope:** cada paso se comprueba contra la plataforma (personas y operadores, tipos de documento, catálogo publicado, reglas activas, proceso publicado, expedientes; sistemas conectados opcional; revisión como día a día); barra de avance y «Siguiente paso» con su acción; los pasos listos plegados con su dato; quién lo hace y, si no te toca, a quién pedírselo. Fuera: marcar pasos a mano.
