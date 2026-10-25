@@ -456,3 +456,6 @@ Método, mediciones y aprendizajes: [eficiencia-modelos-ia.md](eficiencia-modelo
 
 ## VRT-80 — Editor de procesos en tres pasos
 **Why:** armar un proceso pedía claves, condiciones CEL, atributos (`ingreso.neto_mensual`), ids de reglas y severidades en inglés. **Scope:** tres pasos (datos del proceso, qué documentos exige, qué comprueba); el identificador del proceso y de cada requisito se genera del nombre; datos, tipos y reglas por su nombre; la condición CEL y el identificador, en «Opciones avanzadas»; barra fija para guardar y publicar.
+
+## VRT-81 — Catálogo de datos y tipos de documento en palabras
+**Why:** el catálogo mostraba claves (`persona.dni`, `payslip`), tipos y comparaciones en inglés (`string`, `person_name`), «PII» y CEL; Tipos de documento remitía a la API. **Scope:** al leer, cada dato por su nombre (la clave, tenue), tipos, comparaciones y dato personal en español, el formato como «Se valida»; mapeos con el nombre del tipo, del dato y de a quién pertenece; pestañas y descripciones en lenguaje de negocio. Al editar se siguen viendo los valores guardados.

@@ -11,6 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { errorDetail } from '@/lib/apiErrors'
 import { isPlatformAdmin } from '@/lib/auth'
 import { DeleteButton } from '@/components/DeleteButton'
+import { useTypeName } from '@/lib/labels'
 import {
   useCreateCatalogDraft,
   useDocumentTypeCatalog,
@@ -28,6 +29,19 @@ interface Column<T> {
   label: string
   read: (row: T) => ReactNode
   edit: (row: T, set: (row: T) => void) => ReactNode
+  /** Shown only while editing (its value is already part of another column when reading). */
+  editOnly?: boolean
+}
+
+// What each setting means, for reading the catalog (VRT-81); editing keeps the stored values.
+const DATA_TYPE_LABEL: Record<string, string> = { string: 'Texto', number: 'Número', integer: 'Entero', date: 'Fecha', boolean: 'Sí / no' }
+const COMPARISON_LABEL: Record<string, string> = {
+  identifier: 'Identificador exacto',
+  person_name: 'Nombre de persona',
+  company_name: 'Nombre de empresa',
+  text: 'Texto',
+  number: 'Número',
+  date: 'Fecha',
 }
 
 function EditableTable<T>({
@@ -43,12 +57,13 @@ function EditableTable<T>({
   onChange: (rows: T[]) => void
   blank: () => T
 }) {
+  const shown = columns.filter((c) => editing || !c.editOnly)
   return (
     <div className="flex flex-col gap-2">
       <Table>
         <TableHeader>
           <TableRow>
-            {columns.map((c) => (
+            {shown.map((c) => (
               <TableHead key={c.label}>{c.label}</TableHead>
             ))}
             {editing && <TableHead className="w-10" />}
@@ -57,7 +72,7 @@ function EditableTable<T>({
         <TableBody>
           {rows.map((row, i) => (
             <TableRow key={i}>
-              {columns.map((c) => (
+              {shown.map((c) => (
                 <TableCell key={c.label} className="align-top text-sm">
                   {editing ? c.edit(row, (next) => onChange(rows.map((r, j) => (j === i ? next : r)))) : c.read(row)}
                 </TableCell>
@@ -117,6 +132,7 @@ export function SemanticCatalogPage() {
   const { data: active, isLoading } = useSemanticCatalog()
   const { data: versions } = useSemanticCatalogVersions()
   const { data: types } = useDocumentTypeCatalog()
+  const typeName = useTypeName()
   const { data: profiles } = useProcessProfiles()
   const createDraft = useCreateCatalogDraft()
   const publish = usePublishCatalogVersion()
@@ -136,6 +152,8 @@ export function SemanticCatalogPage() {
   const set = (patch: Partial<SemanticCatalog>) => setDraft({ ...catalog, ...patch })
   const attributeKeys = catalog.attributes.map((a) => a.key)
   const roleKeys = catalog.roles.map((r) => r.key)
+  const attributeName = (key: string) => catalog.attributes.find((a) => a.key === key)?.name ?? key
+  const roleName = (key: string) => catalog.roles.find((r) => r.key === key)?.name ?? key
 
   function save() {
     if (!draft) return
@@ -156,36 +174,45 @@ export function SemanticCatalogPage() {
   }
 
   const attributeColumns: Column<SemanticAttribute>[] = [
-    { label: 'Clave', read: (a) => <code className="text-xs">{a.key}</code>, edit: text((a) => a.key, (a, v) => ({ ...a, key: v }), true) },
-    { label: 'Nombre', read: (a) => a.name, edit: text((a) => a.name, (a, v) => ({ ...a, name: v })) },
+    {
+      label: 'Dato',
+      read: (a) => (
+        <span className="flex flex-col">
+          {a.name}
+          <code className="text-[11px] text-muted-foreground">{a.key}</code>
+        </span>
+      ),
+      edit: text((a) => a.key, (a, v) => ({ ...a, key: v }), true),
+    },
+    { label: 'Nombre', read: () => null, edit: text((a) => a.name, (a, v) => ({ ...a, name: v })), editOnly: true },
     { label: 'Definición', read: (a) => <span className="text-muted-foreground">{a.definition}</span>, edit: text((a) => a.definition, (a, v) => ({ ...a, definition: v })) },
-    { label: 'Tipo', read: (a) => a.data_type, edit: choice(['string', 'number', 'integer', 'date', 'boolean'], (a) => a.data_type, (a, v) => ({ ...a, data_type: v as SemanticAttribute['data_type'] })) },
+    { label: 'Tipo', read: (a) => DATA_TYPE_LABEL[a.data_type] ?? a.data_type, edit: choice(['string', 'number', 'integer', 'date', 'boolean'], (a) => a.data_type, (a, v) => ({ ...a, data_type: v as SemanticAttribute['data_type'] })) },
     {
       label: 'Comparación',
-      read: (a) => a.comparison + (a.tolerance ? ` ±${a.tolerance * 100}%` : ''),
+      read: (a) => (COMPARISON_LABEL[a.comparison] ?? a.comparison) + (a.tolerance ? ` ±${a.tolerance * 100}%` : ''),
       edit: choice(['identifier', 'person_name', 'company_name', 'text', 'number', 'date'], (a) => a.comparison, (a, v) => ({ ...a, comparison: v as SemanticAttribute['comparison'] })),
     },
     {
-      label: 'Formato (CEL sobre value)',
-      read: (a) => (a.format_cel ? <code className="text-xs">{a.format_cel}</code> : <span className="text-muted-foreground">—</span>),
+      label: 'Formato',
+      read: (a) => (a.format_cel ? <span title={a.format_cel}>Se valida</span> : <span className="text-muted-foreground">—</span>),
       edit: text((a) => a.format_cel ?? '', (a, v) => ({ ...a, format_cel: v.trim() ? v : null }), true),
     },
     {
-      label: 'PII',
-      read: (a) => (a.pii_class === 'none' ? '—' : <Badge variant={a.pii_class === 'sensitive' ? 'destructive' : 'secondary'}>{a.pii_class}</Badge>),
+      label: 'Dato personal',
+      read: (a) => (a.pii_class === 'none' ? '—' : <Badge variant={a.pii_class === 'sensitive' ? 'destructive' : 'secondary'}>{a.pii_class === 'sensitive' ? 'Sensible' : 'Personal'}</Badge>),
       edit: choice(['none', 'personal', 'sensitive'], (a) => a.pii_class, (a, v) => ({ ...a, pii_class: v as SemanticAttribute['pii_class'] })),
     },
   ]
 
   const mappingColumns: Column<FieldMapping>[] = [
     {
-      label: 'Tipo documental',
-      read: (m) => <code className="text-xs">{m.document_type}</code>,
+      label: 'Tipo de documento',
+      read: (m) => typeName(m.document_type),
       edit: choice(Object.keys(pathsByType), (m) => m.document_type, (m, v) => ({ ...m, document_type: v, field_path: '' })),
     },
     {
       label: 'Campo(s)',
-      read: (m) => <code className="text-xs">{joinPath(m.field_path)}</code>,
+      read: (m) => <code className="text-xs text-muted-foreground">{joinPath(m.field_path)}</code>,
       edit: (m, onSet) => (
         <>
           <Input
@@ -203,8 +230,8 @@ export function SemanticCatalogPage() {
         </>
       ),
     },
-    { label: 'Atributo', read: (m) => <Badge variant="secondary">{m.attribute}</Badge>, edit: choice(attributeKeys, (m) => m.attribute, (m, v) => ({ ...m, attribute: v })) },
-    { label: 'Rol', read: (m) => m.role, edit: choice(roleKeys, (m) => m.role, (m, v) => ({ ...m, role: v })) },
+    { label: 'Dato', read: (m) => <Badge variant="secondary">{attributeName(m.attribute)}</Badge>, edit: choice(attributeKeys, (m) => m.attribute, (m, v) => ({ ...m, attribute: v })) },
+    { label: 'De quién', read: (m) => roleName(m.role), edit: choice(roleKeys, (m) => m.role, (m, v) => ({ ...m, role: v })) },
   ]
 
   const keyNameDefinition = <T extends { key: string; name: string; definition: string }>(): Column<T>[] => [
@@ -219,9 +246,8 @@ export function SemanticCatalogPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Catálogo de datos</h1>
           <p className="text-muted-foreground">
-            Qué significan los datos, más allá del documento que los trae: entidades, atributos, roles y qué campo de cada tipo
-            documental expresa cada atributo. Cada perfil de proceso fija una versión del catálogo: una versión nueva aplica a
-            un proceso cuando una versión de su perfil la adopta (ver Versiones).
+            Qué significa cada dato, venga del documento que venga, y de qué campo de cada tipo de documento sale. Cada proceso usa
+            una versión del catálogo; una versión nueva le llega cuando se publica una versión del proceso que la adopta.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -270,10 +296,10 @@ export function SemanticCatalogPage() {
 
       <Tabs defaultValue="mappings">
         <TabsList>
-          <TabsTrigger value="mappings">Mapeos ({catalog.mappings.length})</TabsTrigger>
-          <TabsTrigger value="attributes">Atributos ({catalog.attributes.length})</TabsTrigger>
+          <TabsTrigger value="mappings">De dónde sale cada dato ({catalog.mappings.length})</TabsTrigger>
+          <TabsTrigger value="attributes">Datos ({catalog.attributes.length})</TabsTrigger>
           <TabsTrigger value="entities">Entidades ({catalog.entities.length})</TabsTrigger>
-          <TabsTrigger value="roles">Roles ({catalog.roles.length})</TabsTrigger>
+          <TabsTrigger value="roles">Personas del expediente ({catalog.roles.length})</TabsTrigger>
           <TabsTrigger value="versions">Versiones</TabsTrigger>
         </TabsList>
         <TabsContent value="mappings">

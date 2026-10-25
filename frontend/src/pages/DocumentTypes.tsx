@@ -18,9 +18,8 @@ export function DocumentTypesPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Tipos de documento</h1>
           <p className="text-muted-foreground">
-            Catálogo de tipos de documento que la plataforma reconoce y sus campos, con la versión publicada de cada uno.
-            Un tipo nuevo se registra desde un documento de ejemplo; una versión nueva de un tipo existente, por ahora vía API
-            (<code>/v1/document-types</code>).
+            Los documentos que Veritium reconoce y los datos que lee de cada uno. Un tipo nuevo se registra desde un documento de
+            ejemplo: Veritium propone sus campos y tú los ajustas.
           </p>
         </div>
         {isPlatformAdmin() && (
