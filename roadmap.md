@@ -137,3 +137,4 @@ Estados: `done` · `todo` · `blocked` (espera a otro equipo) · `superseded` (a
 | VRT-88 | Tipos de documento en palabras | done | Cada dato con su nombre en español, formato y significado; registrar un tipo en tres pasos. |
 | VRT-89 | Catálogo de datos en palabras | done | Cada dato con su significado, privacidad y documentos que lo traen; se edita con un clic y un solo borrador. |
 | VRT-90 | Reglas de validación en palabras | todo | Reglas agrupadas por con qué comparan, interruptor en su sitio y regla nueva en tres preguntas. |
+| VRT-91 | Riesgos y Legal en palabras | todo | Un bloque por área, lecturas en tarjetas con su importancia en colores, y crear o editar en un diálogo. |

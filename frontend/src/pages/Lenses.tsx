@@ -1,185 +1,154 @@
-// The lenses Risk and Legal read cases with (VRT-45). Legal keeps its
-// playbook here — what each document must say — and Risk what its summary
-// should focus on. Only an admin edits; a reading done before an edit is
-// marked as outdated on the case.
-import { useMemo, useState } from 'react'
-import { Loader2, Plus, Trash2 } from 'lucide-react'
-import { toast } from 'sonner'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Textarea } from '@/components/ui/textarea'
-import { errorDetail } from '@/lib/apiErrors'
-import { isPlatformAdmin } from '@/lib/auth'
-import { useDocumentTypeCatalog, useLenses, useSaveLens } from '@/lib/queries'
-import type { LensDefinition, PlaybookItem } from '@/types/api'
+// The readings Risk and Legal make of a case (VRT-45, VRT-91), one block per
+// area: Risk's summaries say what they focus on, Legal's reviews each point
+// a document must meet, with its importance. The platform team creates and
+// edits them in a dialog; a reading done before an edit is marked outdated
+// on the case.
+import { useState } from 'react'
+import { FileText, Gauge, Loader2, Pencil, Plus, Scale, type LucideIcon } from 'lucide-react'
 import { SharedConfigNote } from '@/components/layout/SharedConfigNote'
-import { DeleteButton } from '@/components/DeleteButton'
+import { LensDialog } from '@/components/lenses/LensDialog'
+import { isPlatformAdmin } from '@/lib/auth'
+import { AREA, IMPORTANCE } from '@/lib/lenses'
+import { useDocumentTypeCatalog, useLenses } from '@/lib/queries'
+import { cn } from '@/lib/utils'
+import type { LensDefinition } from '@/types/api'
 
-const AREA = { riesgos: 'Riesgos', legal: 'Legal' } as const
-const IMPORTANCE = { alta: 'Importante', media: 'Normal', baja: 'Menor' } as const
+const AREA_ICON: Record<LensDefinition['area'], LucideIcon> = { riesgos: Gauge, legal: Scale }
 
-function keyFrom(label: string, taken: string[]): string {
-  const base =
-    label
-      .normalize('NFKD')
-      .replace(/[̀-ͯ]/g, '')
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '_')
-      .replace(/^_+|_+$/g, '')
-      .slice(0, 40) || 'punto'
-  const key = /^[a-z]/.test(base) ? base : `p_${base}`
-  let n = 1
-  let candidate = key
-  while (taken.includes(candidate)) candidate = `${key}_${++n}`
-  return candidate
-}
-
-function LensCard({ lens, typeName }: { lens: LensDefinition; typeName: Record<string, string> }) {
-  const save = useSaveLens()
-  const [draft, setDraft] = useState<LensDefinition | null>(null)
-  const editing = draft !== null
-  const shown = draft ?? lens
-  const setItem = (i: number, patch: Partial<PlaybookItem>) =>
-    setDraft((d) => (d ? { ...d, playbook: d.playbook.map((item, j) => (j === i ? { ...item, ...patch } : item)) } : d))
-
+function LensCard({ lens, typeName, onOpen }: { lens: LensDefinition; typeName: (key: string) => string; onOpen?: () => void }) {
+  const important = lens.playbook.filter((p) => p.importance === 'alta').length
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex flex-wrap items-center gap-2">
-          <Badge variant="secondary">{AREA[lens.area]}</Badge> {lens.name}
-          {isPlatformAdmin() && !editing && (
-            <span className="ml-auto flex items-center gap-1">
-              <Button size="sm" variant="outline" onClick={() => setDraft(structuredClone(lens))}>
-                Editar
-              </Button>
-              <DeleteButton
-                iconOnly
-                label="Eliminar lente"
-                path={`/v1/lenses/${lens.key}`}
-                question={`¿Eliminar la lente «${lens.name}»? Deja de ofrecerse en los expedientes; las lecturas ya hechas se conservan.`}
-              />
+    <div className={cn('group flex flex-col gap-4 rounded-xl border bg-card p-5', onOpen && 'cursor-pointer transition hover:border-primary/40 hover:shadow-sm')} onClick={onOpen}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 flex-col gap-1">
+          <span className="font-semibold group-hover:underline">{lens.name}</span>
+          {lens.description && <p className="text-sm text-muted-foreground">{lens.description}</p>}
+        </div>
+        {onOpen && <Pencil className="mt-1 size-3.5 shrink-0 text-muted-foreground opacity-0 transition group-hover:opacity-100" />}
+      </div>
+
+      <div className="flex flex-wrap items-center gap-1.5 text-xs">
+        <span className="text-muted-foreground">Lee</span>
+        {lens.document_types.length ? (
+          lens.document_types.map((t) => (
+            <span key={t} className="inline-flex items-center gap-1 rounded-md bg-primary/10 px-2 py-0.5 font-medium text-primary">
+              <FileText className="size-3" /> {typeName(t)}
             </span>
-          )}
-        </CardTitle>
-        <CardDescription>
-          {lens.description} Lee: {lens.document_types.length ? lens.document_types.map((t) => typeName[t] ?? t).join(', ') : 'todos los documentos del expediente'}.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-3 text-sm">
-        {shown.kind === 'summary' ? (
-          <div className="flex flex-col gap-1">
-            <span className="font-medium">En qué se enfoca el resumen</span>
-            {editing ? (
-              <Textarea rows={4} value={shown.instructions} onChange={(e) => setDraft({ ...shown, instructions: e.target.value })} />
-            ) : (
-              <p className="text-muted-foreground">{shown.instructions}</p>
-            )}
-          </div>
+          ))
         ) : (
-          <div className="flex flex-col gap-2">
-            <span className="font-medium">Lo que el documento debe cumplir</span>
-            {shown.playbook.map((item, i) =>
-              editing ? (
-                <div key={item.key} className="flex flex-col gap-1 rounded-md border p-2">
-                  <div className="flex gap-2">
-                    <Input value={item.label} placeholder="Qué debe cumplirse" onChange={(e) => setItem(i, { label: e.target.value })} />
-                    <Select value={item.importance} onValueChange={(v) => setItem(i, { importance: v as PlaybookItem['importance'] })}>
-                      <SelectTrigger className="w-36">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {Object.entries(IMPORTANCE).map(([k, v]) => (
-                          <SelectItem key={k} value={k}>
-                            {v}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      aria-label="Quitar"
-                      onClick={() => setDraft({ ...shown, playbook: shown.playbook.filter((_, j) => j !== i) })}
-                    >
-                      <Trash2 className="size-4" />
-                    </Button>
-                  </div>
-                  <Input value={item.guidance} placeholder="Cómo saber si cumple (opcional)" onChange={(e) => setItem(i, { guidance: e.target.value })} />
-                </div>
-              ) : (
-                <div key={item.key} className="flex flex-col">
-                  <span>
-                    {item.label} {item.importance === 'alta' && <Badge variant="outline" className="text-[10px]">importante</Badge>}
-                  </span>
-                  {item.guidance && <span className="text-xs text-muted-foreground">{item.guidance}</span>}
-                </div>
-              ),
-            )}
-            {editing && (
-              <Button
-                size="sm"
-                variant="outline"
-                className="w-fit"
-                onClick={() =>
-                  setDraft({
-                    ...shown,
-                    playbook: [...shown.playbook, { key: keyFrom(`punto ${shown.playbook.length + 1}`, shown.playbook.map((p) => p.key)), label: '', guidance: '', importance: 'media' }],
-                  })
-                }
-              >
-                <Plus className="size-3.5" /> Agregar punto
-              </Button>
-            )}
-          </div>
+          <span className="rounded-md bg-primary/10 px-2 py-0.5 font-medium text-primary">Todo el expediente</span>
         )}
-        {editing && (
-          <div className="flex gap-2">
-            <Button
-              disabled={save.isPending || (shown.kind === 'playbook' && shown.playbook.some((p) => !p.label.trim()))}
-              onClick={() =>
-                save.mutate(shown, {
-                  onSuccess: () => {
-                    setDraft(null)
-                    toast.success('Lente guardada. Las próximas lecturas la usan.')
-                  },
-                  onError: (e) => toast.error(errorDetail(e)),
-                })
-              }
-            >
-              {save.isPending && <Loader2 className="size-4 animate-spin" />} Guardar
-            </Button>
-            <Button variant="ghost" onClick={() => setDraft(null)}>
-              Cancelar
-            </Button>
-          </div>
-        )}
-      </CardContent>
-    </Card>
+      </div>
+
+      {lens.kind === 'summary' ? (
+        <div className="flex flex-col gap-1 rounded-lg bg-muted/50 px-3 py-2.5 text-sm">
+          <span className="text-xs font-medium text-muted-foreground">En qué se enfoca el resumen</span>
+          <p>{lens.instructions}</p>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-2">
+          <span className="text-xs font-medium text-muted-foreground">Lo que el documento debe cumplir</span>
+          <ol className="flex flex-col gap-2 text-sm">
+            {lens.playbook.map((p) => (
+              <li key={p.key} className="flex items-start gap-2.5">
+                <span className={cn('mt-1.5 size-2 shrink-0 rounded-full', IMPORTANCE[p.importance].dot)} title={IMPORTANCE[p.importance].label} />
+                <span className="flex flex-col">
+                  <span>{p.label}</span>
+                  {p.guidance && <span className="text-xs text-muted-foreground">{p.guidance}</span>}
+                </span>
+              </li>
+            ))}
+          </ol>
+          <span className="mt-1 border-t pt-2 text-xs text-muted-foreground">
+            {lens.playbook.length} puntos{important > 0 && ` · ${important === 1 ? '1 importante' : `${important} importantes`}`}
+          </span>
+        </div>
+      )}
+    </div>
   )
 }
 
 export function LensesPage() {
-  const { data: lenses, isLoading } = useLenses()
+  const admin = isPlatformAdmin()
+  const { data: lenses, isLoading, isError } = useLenses()
   const { data: types } = useDocumentTypeCatalog()
-  const typeName = useMemo(() => Object.fromEntries((types?.registered ?? []).map((t) => [t.name, t.display_name])), [types])
+  const [editing, setEditing] = useState<{ lens: LensDefinition | null; area: LensDefinition['area'] } | null>(null)
+  const typeName = (key: string) => types?.registered.find((t) => t.name === key)?.display_name ?? key
 
   return (
     <div className="flex flex-col gap-6">
       <div className="max-w-3xl">
         <h1 className="text-2xl font-semibold tracking-tight">Riesgos y Legal</h1>
         <p className="text-muted-foreground">
-          Cómo leen los expedientes las áreas que deciden después: Riesgos recibe un resumen con lo que le importa, y Legal revisa cada documento contra
-          lo que debe cumplir. Cada afirmación cita dónde lo dice el documento. Se usan desde la vista de cada expediente.
+          Lo que cada área recibe al leer un expediente. Se piden desde la vista del expediente, y cada afirmación cita dónde lo dice el documento.
         </p>
       </div>
-      <SharedConfigNote show={!isPlatformAdmin()} />
+      <SharedConfigNote show={!admin} />
+
       {isLoading ? (
         <Loader2 className="size-5 animate-spin text-muted-foreground" />
+      ) : isError ? (
+        <p className="text-sm text-muted-foreground">No se pudieron cargar las lecturas: el servidor de Veritium no responde.</p>
       ) : (
-        (lenses ?? []).map((lens) => <LensCard key={lens.key} lens={lens} typeName={typeName} />)
+        (Object.keys(AREA) as LensDefinition['area'][]).map((area) => {
+          const Icon = AREA_ICON[area]
+          const list = (lenses ?? []).filter((l) => l.area === area)
+          return (
+            <section key={area} className="rounded-2xl border bg-muted/40">
+              <div className="flex flex-wrap items-center gap-3 rounded-t-2xl border-b bg-background px-4 py-3 sm:px-5">
+                <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+                  <Icon className="size-5" />
+                </span>
+                <div className="flex min-w-0 flex-1 flex-col">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h2 className="text-xl font-semibold tracking-tight">{AREA[area].name}</h2>
+                    <span className="rounded-full bg-background px-2 py-0.5 text-xs font-medium text-muted-foreground ring-1 ring-border">
+                      {list.length === 1 ? '1 lectura' : `${list.length} lecturas`}
+                    </span>
+                  </div>
+                  <p className="text-sm text-muted-foreground">{AREA[area].hint}</p>
+                </div>
+                {area === 'legal' && (
+                  <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
+                    {Object.values(IMPORTANCE).map((i) => (
+                      <span key={i.label} className="inline-flex items-center gap-1.5">
+                        <span className={cn('size-2 rounded-full', i.dot)} /> {i.label}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="grid gap-4 p-4 sm:p-5 lg:grid-cols-2">
+                {list.map((lens) => (
+                  <LensCard key={lens.key} lens={lens} typeName={typeName} onOpen={admin ? () => setEditing({ lens, area }) : undefined} />
+                ))}
+                {admin ? (
+                  <button
+                    type="button"
+                    onClick={() => setEditing({ lens: null, area })}
+                    className="flex min-h-40 flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed p-6 text-center text-sm text-muted-foreground transition hover:border-primary/40 hover:text-foreground"
+                  >
+                    <Plus className="size-5" />
+                    <span className="font-medium">Nueva lectura para {AREA[area].name}</span>
+                    <span className="text-xs">{area === 'legal' ? 'Una revisión punto por punto de un documento.' : 'Un resumen del expediente enfocado en lo que importa.'}</span>
+                  </button>
+                ) : (
+                  !list.length && <p className="text-sm text-muted-foreground">{AREA[area].name} aún no tiene lecturas.</p>
+                )}
+              </div>
+            </section>
+          )
+        })
+      )}
+
+      {editing && (
+        <LensDialog
+          lens={editing.lens}
+          area={editing.area}
+          taken={(lenses ?? []).map((l) => l.key)}
+          types={types?.registered ?? []}
+          onClose={() => setEditing(null)}
+        />
       )}
     </div>
   )

@@ -487,3 +487,6 @@ Método, mediciones y aprendizajes: [eficiencia-modelos-ia.md](eficiencia-modelo
 ## VRT-90 — Reglas de validación en palabras
 **Why:** la lista era una tabla con identificadores técnicos y el alta pedía categoría, campo y atributo en claves internas; una regla creada aquí, una vez desactivada, no volvía a activarse; y si prometheus no tenía sus modelos, la API ni arrancaba, así que ni las reglas se podían listar. **Scope:** reglas agrupadas por con qué comparan, con a quién aplican, gravedad en semáforo, quién la creó y qué procesos la usan, e interruptor en la fila (`POST /validation-rules/{id}/enable`); por revisar con sus casos de prueba en palabras y «Probar y activar»; regla nueva en tres preguntas, con CEL a mano plegado. La API arranca sin modelos, los reintenta cada 30 s y responde 503 claro a lo que los necesita; el worker sigue exigiéndolos.
 
+## VRT-91 — Riesgos y Legal en palabras
+**Why:** las lecturas de cada área se veían como una lista larga que se volvía formulario al editar, y no había cómo crear una nueva. **Scope:** un bloque por área con lo que recibe; cada lectura con qué documentos lee y en qué se enfoca, o sus puntos con la importancia en semáforo; crear y editar en un diálogo (documentos a leer como chips, puntos con su importancia). Sin cambios de API: `PUT /v1/lenses/{key}` ya creaba.
+
