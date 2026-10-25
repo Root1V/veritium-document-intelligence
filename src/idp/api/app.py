@@ -8,7 +8,8 @@ from contextlib import asynccontextmanager
 
 from a2a.server.routes import add_a2a_routes_to_fastapi
 import argus
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from opentelemetry import trace
@@ -16,7 +17,7 @@ from sqlalchemy import select
 
 from idp.api.routes import api_clients, overview, assistant, audit, auth, batches, bulk_jobs, data_access, events, investigations, tools, calibration, cases, document_types, documents, evaluation, lenses, profiles, prompts, simulations, upload_sessions, review, semantic_catalog, tenants, type_suggestions, users, validation, validation_rules, webhooks
 from idp.config import get_settings
-from idp.llm.port import inference_lifespan
+from idp.llm.port import ModelResolutionError, inference_lifespan
 from idp.search.models import search_models_lifespan
 from idp.llm.prompts import current as current_prompts
 from idp.llm.prompts import set_published
@@ -61,7 +62,7 @@ def create_app() -> FastAPI:
         # The event bus, when configured: outbox out, commands in (VRT-49).
         events = asyncio.create_task(bus.run(settings, stop)) if settings.event_bus_brokers else None
         # The MCP server (VRT-51) and the in-process executor / rule drafting, which call models; search, its own (VRT-59).
-        async with mcp.session_manager.run(), inference_lifespan(settings), search_models_lifespan(settings):
+        async with mcp.session_manager.run(), inference_lifespan(settings, required=False), search_models_lifespan(settings):
             yield
         await a2a.handler.aclose()
         stop.set()
@@ -75,6 +76,12 @@ def create_app() -> FastAPI:
         trace.get_tracer_provider().force_flush()  # type: ignore[union-attr]
 
     app = FastAPI(title="Veritium", version="0.3.0", lifespan=lifespan)
+
+    # The API starts without its models (VRT-90); what needs one says so instead of failing blind.
+    @app.exception_handler(ModelResolutionError)
+    async def _no_models(_: Request, exc: ModelResolutionError) -> JSONResponse:
+        return JSONResponse(status_code=503, content={"detail": f"La IA no está disponible ahora: {exc}. Lo demás funciona; inténtalo cuando prometheus tenga el modelo."})
+
     # The trace of each request, joined to the caller's when it comes from a trusted network.
     app.add_middleware(argus.ASGIMiddleware, propagate_mode="trusted")
     app.add_middleware(

@@ -4,7 +4,8 @@ write CEL directly), GET /validation-rules (list, filterable by
 kind/status), PATCH /validation-rules/{id} (edit a still-draft CEL rule,
 re-validates CEL compiles on every edit), POST /validation-rules/{id}/activate
 or /reject (kind="cel" only), POST /validation-rules/{id}/disable
-(deactivates an already-active kind="cel" rule), and
+(deactivates an already-active kind="cel" rule), POST /validation-rules/{id}/enable
+(turns a disabled one back on, its test cases checked again; VRT-90), and
 GET/POST /validation-rules/toggles/* (on/off switch for the hardcoded
 rule_ids from pipeline/orchestrator.py::build_default_rules), and
 POST /validation-rules/{id}/test (run the rule's test cases).
@@ -375,6 +376,26 @@ async def disable_active_rule(
     if row.status != "active":
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="only an active rule can be disabled")
     row = await repo.set_status(definition_id, status="disabled", reviewer_identity=current_user.name)
+    await session.commit()
+    return _to_response(row)
+
+
+@router.post("/{definition_id}/enable", response_model=ValidationRuleResponse, dependencies=[Depends(require_platform("admin"))])
+async def enable_disabled_rule(
+    definition_id: uuid.UUID,
+    session: AsyncSession = Depends(get_db_session),
+    current_user: User = Depends(get_current_user),
+) -> ValidationRuleResponse:
+    repo = ValidationRuleRepository(session)
+    row = await repo.get(definition_id)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="rule not found")
+    if row.status != "disabled":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="only a disabled rule can be enabled again")
+    problems = await _test_problems(session, row)
+    if problems:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=problems)
+    row = await repo.set_status(definition_id, status="active", reviewer_identity=current_user.name)
     await session.commit()
     return _to_response(row)
 

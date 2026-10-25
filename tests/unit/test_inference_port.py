@@ -148,3 +148,36 @@ async def test_the_models_are_discovered_from_prometheus_through_axonium(monkeyp
         assert inference.models == {"reasoning": "gpt-oss-20b-mxfp4", "vision": "qwen3vl-30b-a3b"}
         assert port.model_for("vision") == "qwen3vl-30b-a3b" and port.resolved_models() == inference.models
     assert port.resolved_models() is None
+
+
+@pytest.mark.asyncio
+async def test_the_api_starts_without_its_models_and_the_first_call_tries_again(monkeypatch):
+    """VRT-90: a prometheus still loading its vision model doesn't stop the
+    API (listing rules needs no model); the worker still refuses to start."""
+    granted = [_Granted("gpt-oss-20b-mxfp4", "text")]
+
+    class Catalog:
+        async def mine(self):
+            return list(granted)
+
+    class Client:
+        def __init__(self, **_):
+            self.models = Catalog()
+
+        async def aclose(self):
+            pass
+
+    monkeypatch.setattr(port, "AsyncAxonium", Client)
+    settings = Settings(_env_file=None, axonium_client_id="veritium", axonium_client_secret="s")
+    with pytest.raises(port.ModelResolutionError):
+        async with port.inference_lifespan(settings):
+            pass
+    async with port.inference_lifespan(settings, required=False) as inference:
+        assert port.resolved_models() is None
+        with pytest.raises(port.ModelResolutionError, match="vision"):
+            port.model_for("reasoning")  # what callers ask first, for their records
+        with pytest.raises(port.ModelResolutionError, match="vision"):
+            await inference.vision(purpose="ocr", image_b64="x", prompt="lee")
+        granted.append(_Granted("qwen3vl-30b-a3b", "vision"))
+        await inference._ensure_models()
+        assert inference.models == {"reasoning": "gpt-oss-20b-mxfp4", "vision": "qwen3vl-30b-a3b"}

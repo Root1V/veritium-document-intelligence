@@ -1,639 +1,260 @@
+// The checks made to every document and case (VRT-36, VRT-79, VRT-90): each
+// rule said by what it checks, grouped by what it compares against, switched
+// on and off in place; the ones waiting to be tried come first, and a new one
+// is written in words.
 import { useState } from 'react'
-import { Loader2, Pencil, Plus, Sparkles, Wand2 } from 'lucide-react'
-import { isAxiosError } from 'axios'
+import { AlertTriangle, CheckCircle2, CircleDashed, Loader2, Plus, Search } from 'lucide-react'
 import { toast } from 'sonner'
-import {
-  useCreateManualRule,
-  useDocumentTypeCatalog,
-  useDraftValidationRule,
-  useResolveValidationRule,
-  useRunRuleTests,
-  useSemanticCatalog,
-  useSetRuleToggle,
-  useToggleRules,
-  useUpdateValidationRule,
-  useValidationRules,
-} from '@/lib/queries'
-import { isPlatformAdmin } from '@/lib/auth'
-import { DeleteButton } from '@/components/DeleteButton'
-import { ToneBadge } from '@/components/StatusBadge'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import type { RuleCelCategory, RuleTestCase, RuleTestResult, ValidationRule } from '@/types/api'
 import { SharedConfigNote } from '@/components/layout/SharedConfigNote'
+import { DraftRuleCard } from '@/components/rules/DraftRuleCard'
+import { NewRuleDialog } from '@/components/rules/NewRuleDialog'
+import { errorDetail } from '@/lib/apiErrors'
+import { isPlatformAdmin } from '@/lib/auth'
+import { useTypeName } from '@/lib/labels'
+import { useProcessProfiles, useProfileLibrary, useResolveValidationRule, useSemanticCatalog, useSetRuleToggle, useToggleRules, useValidationRules } from '@/lib/queries'
+import { GROUPS, SEVERITY, groupOf } from '@/lib/validationRules'
+import { cn } from '@/lib/utils'
+import type { ValidationRule } from '@/types/api'
 
-const CATEGORY_OPTIONS: { value: RuleCelCategory; label: string }[] = [
-  { value: 'self', label: 'Interna del documento' },
-  { value: 'request_input', label: 'Datos de entrada' },
-  { value: 'reference_data', label: 'Existe en datos de referencia' },
-]
-const CATEGORY_LABEL: Record<string, string> = {
-  ...Object.fromEntries(CATEGORY_OPTIONS.map((c) => [c.value, c.label])),
-  cross_document: 'Entre documentos',
-  external_system: 'Sistema externo',
-  conditional: 'Condicional',
-  semantic: 'Entre documentos',
-}
-const SEVERITY_OPTIONS = ['info', 'warning', 'error'] as const
-
-function errorDetail(error: unknown, fallback: string): string {
-  const detail = isAxiosError(error) ? error.response?.data?.detail : undefined
-  if (typeof detail === 'string') return detail
-  if (Array.isArray(detail)) return detail.map((d) => (typeof d === 'string' ? d : d.msg)).join(' · ')
-  return fallback
-}
-
-// Only what the case sets: empty `doc`/`case`/`request` are noise.
-function compactInput(input: RuleTestCase['input']): string {
-  const set = Object.entries(input).filter(([, v]) => v !== null && v !== undefined && !(typeof v === 'object' && Object.keys(v as object).length === 0))
-  return JSON.stringify(Object.fromEntries(set))
+interface Row {
+  key: string
+  what: string
+  code: string
+  technical: string | null
+  category: string
+  severity: string | null
+  origin: string
+  about: string | null
+  active: boolean
+  usedBy: string[]
+  toggle: () => void
+  pending: boolean
 }
 
-function NewRuleForm() {
-  const { data: catalog } = useDocumentTypeCatalog()
-  const { data: semantic } = useSemanticCatalog()
-  const draftMutation = useDraftValidationRule()
-  const manualMutation = useCreateManualRule()
-  const [manualMode, setManualMode] = useState(false)
-
-  const [target, setTarget] = useState<'document' | 'attribute'>('attribute')
-  const [documentType, setDocumentType] = useState('')
-  const [attribute, setAttribute] = useState('')
-  const [questions, setQuestions] = useState<string[]>([])
-  const [category, setCategory] = useState<RuleCelCategory>('self')
-  const [fieldPath, setFieldPath] = useState('')
-  const [description, setDescription] = useState('')
-  const [ruleIdSuffix, setRuleIdSuffix] = useState('')
-  const [conditionCel, setConditionCel] = useState('')
-  const [severity, setSeverity] = useState<'info' | 'warning' | 'error'>('warning')
-  const [messagePass, setMessagePass] = useState('')
-  const [messageFail, setMessageFail] = useState('')
-
-  const isPending = draftMutation.isPending || manualMutation.isPending
-
-  function resetForm() {
-    setFieldPath('')
-    setDescription('')
-    setRuleIdSuffix('')
-    setConditionCel('')
-    setMessagePass('')
-    setMessageFail('')
-  }
-
-  const scope = target === 'attribute' ? { attribute } : { document_type: documentType }
-
-  function handleSubmit() {
-    if (target === 'document' ? !documentType : !attribute) {
-      toast.error(target === 'document' ? 'Elige un tipo de documento.' : 'Elige un atributo.')
-      return
-    }
-    if (manualMode) {
-      if (!ruleIdSuffix.trim() || !conditionCel.trim() || !messagePass.trim() || !messageFail.trim()) {
-        toast.error('Completa el identificador, la condición CEL y ambos mensajes.')
-        return
-      }
-      manualMutation.mutate(
-        {
-          rule_id_suffix: ruleIdSuffix.trim(),
-          ...scope,
-          category,
-          field_path: fieldPath || undefined,
-          condition_cel: conditionCel,
-          severity,
-          message_pass: messagePass,
-          message_fail: messageFail,
-        },
-        {
-          onSuccess: () => {
-            toast.success('Regla creada como borrador.')
-            resetForm()
-          },
-          onError: (error) => toast.error(errorDetail(error, 'No se pudo crear la regla.')),
-        },
-      )
-    } else {
-      if (!description.trim()) {
-        toast.error('Describe la regla en lenguaje natural.')
-        return
-      }
-      const existingFieldsHint = target === 'document' ? catalog?.registered.find((t) => t.name === documentType)?.fields.map((f) => f.name) : undefined
-      draftMutation.mutate(
-        { description, ...scope, category, field_path: fieldPath || undefined, existing_fields_hint: existingFieldsHint },
-        {
-          onSuccess: (data) => {
-            if (data.outcome === 'ambiguous') {
-              setQuestions(data.questions)
-              toast.info('La descripción es ambigua: responde las preguntas en la descripción y vuelve a generar.')
-              return
-            }
-            setQuestions([])
-            toast.success('Borrador generado con IA — revísalo abajo antes de activarlo.')
-            resetForm()
-          },
-          onError: (error) => toast.error(errorDetail(error, 'No se pudo generar el borrador.')),
-        },
-      )
-    }
-  }
-
+function Switch({ on, disabled, onClick, label }: { on: boolean; disabled?: boolean; onClick: () => void; label: string }) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Nueva regla</CardTitle>
-        <CardDescription>
-          Sobre un atributo del catálogo semántico (corre en cualquier documento que lo aporte) o sobre los campos de
-          un tipo de documento. Puede comparar con el expediente (<code>case</code>) y con los datos del proceso
-          (<code>request</code>). Cada regla trae casos de prueba, y solo se activa si todos dan lo esperado.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-4">
-        <div className="flex flex-wrap gap-3">
-          <div className="flex flex-col gap-1">
-            <Label>La regla es sobre</Label>
-            <Select value={target} onValueChange={(v) => setTarget(v as typeof target)}>
-              <SelectTrigger className="w-56">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="attribute">Un atributo (cualquier documento)</SelectItem>
-                <SelectItem value="document">Un tipo de documento</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          {target === 'attribute' ? (
-            <div className="flex flex-col gap-1">
-              <Label>Atributo</Label>
-              <Select value={attribute} onValueChange={setAttribute}>
-                <SelectTrigger className="w-64">
-                  <SelectValue placeholder="Elegir atributo" />
-                </SelectTrigger>
-                <SelectContent>
-                  {semantic?.catalog.attributes.map((a) => (
-                    <SelectItem key={a.key} value={a.key}>
-                      {a.key}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          ) : (
-          <div className="flex flex-col gap-1">
-            <Label>Tipo de documento</Label>
-            <Select value={documentType} onValueChange={setDocumentType}>
-              <SelectTrigger className="w-56">
-                <SelectValue placeholder="Elegir tipo" />
-              </SelectTrigger>
-              <SelectContent>
-                {catalog?.registered.map((type) => (
-                  <SelectItem key={type.name} value={type.name}>
-                    {type.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          )}
-          <div className="flex flex-col gap-1">
-            <Label>Categoría</Label>
-            <Select value={category} onValueChange={(v) => setCategory(v as RuleCelCategory)}>
-              <SelectTrigger className="w-64">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {CATEGORY_OPTIONS.map((c) => (
-                  <SelectItem key={c.value} value={c.value}>
-                    {c.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="flex flex-col gap-1">
-            <Label>Campo (opcional)</Label>
-            <Input value={fieldPath} onChange={(e) => setFieldPath(e.target.value)} placeholder="p. ej. net_pay" className="w-44" />
-          </div>
-        </div>
-
-        {!manualMode ? (
-          <div className="flex flex-col gap-2">
-            <Label>Descripción en lenguaje natural</Label>
-            <Textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder={
-                target === 'attribute'
-                  ? 'p. ej. el ingreso neto mensual debe ser de al menos 1025 soles (remuneración mínima vital)'
-                  : 'p. ej. el neto de la boleta debe ser igual al bruto menos los descuentos, con una tolerancia de 0.01'
-              }
-              rows={3}
-            />
-            {questions.length > 0 && (
-              <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm dark:bg-amber-950/30">
-                <p className="font-medium">AMBIGUA — la IA no inventa lo que falta. Precisa en la descripción:</p>
-                <ul className="mt-1 list-disc pl-5">
-                  {questions.map((q) => (
-                    <li key={q}>{q}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </div>
-        ) : (
-          <div className="flex flex-col gap-3">
-            <div className="flex flex-col gap-1">
-              <Label>Identificador de la regla</Label>
-              <Input value={ruleIdSuffix} onChange={(e) => setRuleIdSuffix(e.target.value)} placeholder="p. ej. net_pay_tolerance" />
-            </div>
-            <div className="flex flex-col gap-1">
-              <Label>Condición CEL</Label>
-              <Textarea
-                value={conditionCel}
-                onChange={(e) => setConditionCel(e.target.value)}
-                placeholder="has(doc.net_pay) && doc.net_pay > 0.0"
-                className="font-mono text-xs"
-                rows={2}
-              />
-            </div>
-            <div className="flex flex-wrap gap-3">
-              <div className="flex flex-col gap-1">
-                <Label>Severidad</Label>
-                <Select value={severity} onValueChange={(v) => setSeverity(v as typeof severity)}>
-                  <SelectTrigger className="w-32">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {SEVERITY_OPTIONS.map((s) => (
-                      <SelectItem key={s} value={s}>
-                        {s}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="flex flex-1 flex-col gap-1">
-                <Label>Mensaje si cumple</Label>
-                <Input value={messagePass} onChange={(e) => setMessagePass(e.target.value)} />
-              </div>
-              <div className="flex flex-1 flex-col gap-1">
-                <Label>Mensaje si no cumple</Label>
-                <Input value={messageFail} onChange={(e) => setMessageFail(e.target.value)} />
-              </div>
-            </div>
-          </div>
-        )}
-
-        <div className="flex items-center gap-2">
-          <Button size="sm" disabled={isPending} onClick={handleSubmit}>
-            {isPending ? <Loader2 className="size-3.5 animate-spin" /> : manualMode ? <Pencil className="size-3.5" /> : <Wand2 className="size-3.5" />}
-            {manualMode ? 'Crear borrador' : 'Generar con IA'}
-          </Button>
-          <Button size="sm" variant="ghost" onClick={() => setManualMode((v) => !v)}>
-            {manualMode ? 'Volver a lenguaje natural' : 'Escribir CEL manualmente'}
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      aria-label={label}
+      disabled={disabled}
+      onClick={onClick}
+      className={cn('relative mt-0.5 h-5 w-9 shrink-0 rounded-full transition disabled:opacity-50', on ? 'bg-emerald-500' : 'bg-muted-foreground/30')}
+    >
+      <span className={cn('absolute top-0.5 left-0.5 size-4 rounded-full bg-white shadow transition-transform', on && 'translate-x-4')} />
+    </button>
   )
 }
 
-function RuleDraftCard({ rule }: { rule: ValidationRule }) {
-  const update = useUpdateValidationRule()
-  const resolve = useResolveValidationRule()
-  const runTests = useRunRuleTests()
-  const [results, setResults] = useState<RuleTestResult[] | undefined>()
-  const [testCasesJson, setTestCasesJson] = useState(JSON.stringify(rule.test_cases, null, 2))
-  const [isEditing, setIsEditing] = useState(false)
-  const [conditionCel, setConditionCel] = useState(rule.condition_cel ?? '')
-  const [appliesWhenCel, setAppliesWhenCel] = useState(rule.applies_when_cel ?? '')
-  const [severity, setSeverity] = useState(rule.severity ?? 'warning')
-  const [messagePass, setMessagePass] = useState(rule.message_pass ?? '')
-  const [messageFail, setMessageFail] = useState(rule.message_fail ?? '')
-
-  const canSave = conditionCel.trim().length > 0 && messagePass.trim().length > 0 && messageFail.trim().length > 0
-
-  function startEditing() {
-    setConditionCel(rule.condition_cel ?? '')
-    setAppliesWhenCel(rule.applies_when_cel ?? '')
-    setSeverity(rule.severity ?? 'warning')
-    setMessagePass(rule.message_pass ?? '')
-    setMessageFail(rule.message_fail ?? '')
-    setTestCasesJson(JSON.stringify(rule.test_cases, null, 2))
-    setIsEditing(true)
-  }
-
-  function handleRunTests() {
-    runTests.mutate(rule.id, {
-      onSuccess: (data) => setResults(data.results),
-      onError: (error) => toast.error(errorDetail(error, 'No se pudieron correr los casos.')),
-    })
-  }
-
-  function handleSave() {
-    let testCases: RuleTestCase[]
-    try {
-      testCases = JSON.parse(testCasesJson)
-    } catch {
-      toast.error('Los casos de prueba no son JSON válido.')
-      return
-    }
-    setResults(undefined)
-    update.mutate(
-      {
-        id: rule.id,
-        body: { condition_cel: conditionCel, applies_when_cel: appliesWhenCel || undefined, severity, message_pass: messagePass, message_fail: messageFail, test_cases: testCases },
-      },
-      {
-        onSuccess: () => {
-          toast.success('Borrador actualizado.')
-          setIsEditing(false)
-        },
-        onError: (error) => toast.error(errorDetail(error, 'No se pudo guardar — revisa la condición CEL.')),
-      },
-    )
-  }
-
-  function handleResolve(decision: 'activate' | 'reject') {
-    resolve.mutate(
-      { id: rule.id, decision },
-      {
-        onSuccess: () => toast.success(decision === 'activate' ? 'Regla activada.' : 'Regla rechazada.'),
-        onError: (error) => toast.error(errorDetail(error, 'No se pudo procesar la decisión.')),
-      },
-    )
-  }
-
+function RuleRow({ row, canChange }: { row: Row; canChange: boolean }) {
+  const [details, setDetails] = useState(false)
+  const severity = row.severity ? SEVERITY[row.severity] : null
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center gap-2">
-          <Sparkles className="size-4 text-primary" />
-          <CardTitle className="text-base">{rule.rule_id}</CardTitle>
-          <Badge variant="outline" className="text-[10px]">
-            {CATEGORY_LABEL[rule.category] ?? rule.category}
-          </Badge>
-          {rule.document_type && (
-            <Badge variant="outline" className="text-[10px]">
-              {rule.document_type}
-            </Badge>
+    <li className={cn('flex items-start gap-4 px-4 py-3', !row.active && 'bg-muted/30')}>
+      {canChange ? (
+        <Switch on={row.active} disabled={row.pending} onClick={row.toggle} label={row.active ? 'Desactivar regla' : 'Activar regla'} />
+      ) : row.active ? (
+        <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-600" />
+      ) : (
+        <CircleDashed className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+      )}
+      <div className="flex min-w-0 flex-1 flex-col gap-1">
+        <p className={cn('text-sm first-letter:uppercase', row.active ? 'font-medium' : 'text-muted-foreground')}>{row.what}</p>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+          {!row.active && <span className="rounded-full bg-muted px-2 py-0.5 font-medium">Desactivada</span>}
+          {row.about && <span>Sobre: {row.about}</span>}
+          {severity && (
+            <span className="inline-flex items-center gap-1.5">
+              <span className={cn('size-2 rounded-full', severity.dot)} /> Si falla: {severity.label.toLowerCase()}
+            </span>
           )}
-          {rule.attribute && (
-            <Badge variant="secondary" className="text-[10px]">
-              atributo {rule.attribute}
-            </Badge>
-          )}
+          <span>{row.origin}</span>
+          {row.usedBy.length > 0 && <span>La usan: {row.usedBy.join(', ')}</span>}
+          <button type="button" className="hover:text-foreground hover:underline" onClick={() => setDetails(!details)}>
+            {details ? 'Ocultar detalle técnico' : 'Detalle técnico'}
+          </button>
         </div>
-        {rule.description_nl && <CardDescription>{rule.description_nl}</CardDescription>}
-        {rule.rationale && <p className="text-xs text-muted-foreground">{rule.rationale}</p>}
-      </CardHeader>
-      <CardContent className="flex flex-col gap-3">
-        {isEditing ? (
-          <div className="flex flex-col gap-3">
-            <div className="flex flex-col gap-1">
-              <Label>Condición CEL</Label>
-              <Textarea value={conditionCel} onChange={(e) => setConditionCel(e.target.value)} className="font-mono text-xs" rows={2} />
-            </div>
-            <div className="flex flex-col gap-1">
-              <Label>Condición adicional (opcional)</Label>
-              <Textarea value={appliesWhenCel} onChange={(e) => setAppliesWhenCel(e.target.value)} className="font-mono text-xs" rows={2} />
-            </div>
-            <div className="flex flex-wrap gap-3">
-              <div className="flex flex-col gap-1">
-                <Label>Severidad</Label>
-                <Select value={severity} onValueChange={(v) => setSeverity(v as typeof severity)}>
-                  <SelectTrigger className="w-32">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {SEVERITY_OPTIONS.map((s) => (
-                      <SelectItem key={s} value={s}>
-                        {s}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="flex flex-1 flex-col gap-1">
-                <Label>Mensaje si cumple</Label>
-                <Input value={messagePass} onChange={(e) => setMessagePass(e.target.value)} />
-              </div>
-              <div className="flex flex-1 flex-col gap-1">
-                <Label>Mensaje si no cumple</Label>
-                <Input value={messageFail} onChange={(e) => setMessageFail(e.target.value)} />
-              </div>
-            </div>
-            <div className="flex flex-col gap-1">
-              <Label>Casos de prueba (JSON: name, input &#123;value | doc | case | request&#125;, expect pass|fail)</Label>
-              <Textarea value={testCasesJson} onChange={(e) => setTestCasesJson(e.target.value)} className="font-mono text-xs" rows={6} />
-            </div>
-          </div>
-        ) : (
-          <div className="flex flex-col gap-1">
-            <code className="rounded-md bg-muted px-2 py-1.5 text-xs">{rule.condition_cel}</code>
-            {rule.applies_when_cel && <code className="rounded-md bg-muted px-2 py-1.5 text-xs text-muted-foreground">aplica si: {rule.applies_when_cel}</code>}
-            <div className="mt-1 flex items-center gap-2 text-xs">
-              <Badge variant="outline" className="text-[10px]">
-                {rule.severity}
-              </Badge>
-              <span className="text-muted-foreground">{rule.message_fail}</span>
-            </div>
-            <div className="mt-2 flex flex-col gap-1">
-              <span className="text-xs font-medium">Casos de prueba ({rule.test_cases.length})</span>
-              {rule.test_cases.length === 0 && <span className="text-xs text-muted-foreground">Sin casos: no se puede activar hasta tener uno que cumpla y uno que no.</span>}
-              {rule.test_cases.map((c, i) => {
-                const result = results?.[i]
-                return (
-                  <div key={i} className="flex flex-wrap items-center gap-2 text-xs">
-                    <Badge variant="outline" className="text-[10px]">
-                      espera {c.expect}
-                    </Badge>
-                    {result && (
-                      <Badge variant={result.got === c.expect ? 'secondary' : 'destructive'} className="text-[10px]">
-                        dio {result.got}
-                      </Badge>
-                    )}
-                    <span>{c.name}</span>
-                    <code className="text-muted-foreground">{compactInput(c.input)}</code>
-                  </div>
-                )
-              })}
-            </div>
+        {details && (
+          <div className="mt-1 flex flex-col gap-1 rounded-md bg-muted px-2 py-1.5 font-mono text-[11px] text-muted-foreground">
+            <span>{row.code}</span>
+            {row.technical && <span className="break-all text-foreground">{row.technical}</span>}
           </div>
         )}
-
-        <div className="flex gap-2">
-          {isEditing ? (
-            <>
-              <Button size="sm" disabled={!canSave || update.isPending} onClick={handleSave}>
-                {update.isPending && <Loader2 className="size-3.5 animate-spin" />}
-                Guardar
-              </Button>
-              <Button size="sm" variant="ghost" onClick={() => setIsEditing(false)}>
-                Cancelar
-              </Button>
-            </>
-          ) : (
-            <>
-              <Button size="sm" variant="outline" disabled={runTests.isPending} onClick={handleRunTests}>
-                {runTests.isPending && <Loader2 className="size-3.5 animate-spin" />}
-                Probar casos
-              </Button>
-              <Button size="sm" disabled={resolve.isPending} onClick={() => handleResolve('activate')}>
-                Activar
-              </Button>
-              <Button size="sm" variant="outline" disabled={resolve.isPending} onClick={() => handleResolve('reject')}>
-                Rechazar
-              </Button>
-              <Button size="sm" variant="ghost" onClick={startEditing}>
-                <Pencil className="size-3.5" />
-                Editar
-              </Button>
-              <DeleteButton
-                className="ml-auto"
-                path={`/validation-rules/${rule.id}`}
-                question="Se eliminará para siempre este borrador de regla. Nunca se aplicó a ningún expediente."
-              />
-            </>
-          )}
-        </div>
-      </CardContent>
-    </Card>
-  )
-}
-
-const SEVERITY_LABEL: Record<string, string> = { info: 'Informativa', warning: 'Advertencia', error: 'Error' }
-
-/** Every rule in force — the platform's and the ones written here — said by what it checks (VRT-79). */
-function RulesTable() {
-  const { data: custom } = useValidationRules({ kind: 'cel', status_filter: 'active' })
-  const { data: toggles, isLoading } = useToggleRules()
-  const resolve = useResolveValidationRule()
-  const setToggle = useSetRuleToggle()
-  const canChange = isPlatformAdmin()
-
-  if (isLoading) {
-    return (
-      <div className="flex h-24 items-center justify-center">
-        <Loader2 className="size-5 animate-spin text-muted-foreground" />
       </div>
-    )
-  }
-  const rows = [
-    ...(custom ?? []).map((r) => ({
-      key: r.id,
-      what: r.description_nl || r.message_fail || r.rule_id,
-      code: r.rule_id,
-      origin: 'Creada aquí',
-      category: r.category,
-      severity: r.severity,
-      active: true,
-      technical: r.condition_cel,
-      toggle: () => resolve.mutate({ id: r.id, decision: 'disable' }, { onSuccess: () => toast.success('Regla desactivada.') }),
-      pending: resolve.isPending && resolve.variables?.id === r.id,
-    })),
-    ...(toggles ?? []).map((t) => ({
-      key: t.rule_id,
-      what: t.description || t.rule_id,
-      code: t.rule_id,
-      origin: 'Del sistema',
-      category: t.category,
-      severity: null,
-      active: t.status === 'active',
-      technical: null,
-      toggle: () =>
-        setToggle.mutate({ ruleId: t.rule_id, action: t.status === 'active' ? 'disable' : 'enable' }, { onSuccess: () => toast.success('Actualizado.') }),
-      pending: setToggle.isPending && setToggle.variables?.ruleId === t.rule_id,
-    })),
-  ]
-
-  return (
-    <div className="overflow-x-auto rounded-lg border">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Qué verifica</TableHead>
-            <TableHead>Tipo</TableHead>
-            <TableHead>Origen</TableHead>
-            <TableHead>Estado</TableHead>
-            {canChange && <TableHead className="w-28" />}
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {rows.map((r) => (
-            <TableRow key={r.key}>
-              <TableCell className="max-w-xl whitespace-normal">
-                <span className="text-sm">{r.what}</span>
-                <span className="mt-0.5 block font-mono text-[11px] text-muted-foreground" title={r.technical ?? undefined}>
-                  {r.code}
-                </span>
-              </TableCell>
-              <TableCell className="text-sm text-muted-foreground">
-                {CATEGORY_LABEL[r.category] ?? r.category}
-                {r.severity && <span className="block text-xs">{SEVERITY_LABEL[r.severity] ?? r.severity}</span>}
-              </TableCell>
-              <TableCell className="text-sm text-muted-foreground">{r.origin}</TableCell>
-              <TableCell>
-                <ToneBadge tone={r.active ? 'ok' : 'neutral'} label={r.active ? 'Activa' : 'Desactivada'} />
-              </TableCell>
-              {canChange && (
-                <TableCell>
-                  <Button size="sm" variant="outline" disabled={r.pending} onClick={r.toggle}>
-                    {r.active ? 'Desactivar' : 'Activar'}
-                  </Button>
-                </TableCell>
-              )}
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </div>
+    </li>
   )
 }
 
 export function ValidationRulesPage() {
-  const canResolve = isPlatformAdmin() // the rule library runs in every unit (VRT-71)
-  const { data: drafts, isLoading } = useValidationRules({ kind: 'cel', status_filter: 'draft' })
+  const admin = isPlatformAdmin() // the rule library runs in every unit (VRT-71)
+  const { data: custom, isLoading: loadingCustom, isError: customFailed, refetch: refetchCustom } = useValidationRules({ kind: 'cel' })
+  const { data: toggles, isLoading: loadingToggles, isError: togglesFailed, refetch: refetchToggles } = useToggleRules()
+  const { data: semantic } = useSemanticCatalog()
+  const { data: library } = useProfileLibrary(undefined)
+  const { data: profiles } = useProcessProfiles()
+  const typeName = useTypeName()
+  const resolve = useResolveValidationRule()
+  const setToggle = useSetRuleToggle()
   const [creating, setCreating] = useState(false)
+  const [query, setQuery] = useState('')
+  const [group, setGroup] = useState<string | null>(null)
+
+  const processName = (key: string) => profiles?.find((p) => p.key === key)?.name ?? key
+  const usedBy = (ruleId: string) => (library?.rules.find((r) => r.rule_id === ruleId)?.used_by ?? []).map(processName)
+  const aboutOf = (r: ValidationRule) =>
+    r.attribute ? (semantic?.catalog.attributes.find((a) => a.key === r.attribute)?.name ?? r.attribute) : r.document_type ? typeName(r.document_type) : null
+  const done = (message: string) => ({ onSuccess: () => toast.success(message), onError: (e: unknown) => toast.error(errorDetail(e)) })
+
+  const drafts = (custom ?? []).filter((r) => r.status === 'draft')
+  const rows: Row[] = [
+    ...(custom ?? [])
+      .filter((r) => r.status === 'active' || r.status === 'disabled')
+      .map((r) => ({
+        key: r.id,
+        what: r.description_nl || r.message_fail || r.rule_id,
+        code: r.rule_id,
+        technical: r.condition_cel,
+        category: r.category,
+        severity: r.severity,
+        origin: r.created_by ? `Creada por ${r.created_by}` : 'Creada aquí',
+        about: aboutOf(r),
+        active: r.status === 'active',
+        usedBy: usedBy(r.rule_id),
+        toggle: () =>
+          resolve.mutate(
+            { id: r.id, decision: r.status === 'active' ? 'disable' : 'enable' },
+            done(r.status === 'active' ? 'Regla desactivada.' : 'Regla activada.'),
+          ),
+        pending: resolve.isPending && resolve.variables?.id === r.id,
+      })),
+    ...(toggles ?? []).map((t) => ({
+      key: t.rule_id,
+      what: t.description || t.rule_id,
+      code: t.rule_id,
+      technical: null,
+      category: t.category,
+      severity: null,
+      origin: 'Del sistema',
+      about: null,
+      active: t.status === 'active',
+      usedBy: usedBy(t.rule_id),
+      toggle: () =>
+        setToggle.mutate({ ruleId: t.rule_id, action: t.status === 'active' ? 'disable' : 'enable' }, done(t.status === 'active' ? 'Regla desactivada.' : 'Regla activada.')),
+      pending: setToggle.isPending && setToggle.variables?.ruleId === t.rule_id,
+    })),
+  ]
+  const words = query.toLowerCase().split(/\s+/).filter(Boolean)
+  const shown = rows.filter((r) => words.every((w) => `${r.what} ${r.about ?? ''} ${r.code}`.toLowerCase().includes(w)))
+  const active = rows.filter((r) => r.active).length
 
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
+        <div className="max-w-3xl">
           <h1 className="text-2xl font-semibold tracking-tight">Reglas de validación</h1>
-          <p className="text-muted-foreground">Las comprobaciones que se hacen a cada documento y expediente. Una regla nueva se describe en palabras y se prueba antes de activarla.</p>
+          <p className="text-muted-foreground">
+            Las comprobaciones que Veritium hace a cada documento y expediente. Cada proceso elige cuáles usa y qué pasa si fallan; una regla nueva se
+            escribe en palabras y se prueba antes de activarla.
+          </p>
         </div>
-        {canResolve && (
-          <Button variant={creating ? 'outline' : 'default'} onClick={() => setCreating((c) => !c)}>
-            {creating ? 'Cerrar' : <><Plus className="size-4" /> Nueva regla</>}
+        {admin && (
+          <Button onClick={() => setCreating(true)}>
+            <Plus className="size-4" /> Nueva regla
           </Button>
         )}
       </div>
-      <SharedConfigNote show={!isPlatformAdmin()} />
+      <SharedConfigNote show={!admin} />
 
-      {canResolve && creating && <NewRuleForm />}
-
-      {isLoading ? (
-        <div className="flex h-24 items-center justify-center">
-          <Loader2 className="size-5 animate-spin text-muted-foreground" />
+      {loadingCustom || loadingToggles ? (
+        <Loader2 className="size-5 animate-spin text-muted-foreground" />
+      ) : customFailed || togglesFailed ? (
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-red-500/30 bg-red-500/5 px-4 py-3 text-sm">
+          <AlertTriangle className="size-4 text-red-600" />
+          <span>No se pudieron cargar las reglas: el servidor de Veritium no responde. No es que no haya reglas.</span>
+          <Button
+            size="sm"
+            variant="outline"
+            className="ml-auto"
+            onClick={() => {
+              void refetchCustom()
+              void refetchToggles()
+            }}
+          >
+            Reintentar
+          </Button>
         </div>
-      ) : drafts && drafts.length > 0 ? (
-        <section className="flex flex-col gap-4">
-          <h2 className="text-lg font-semibold tracking-tight">Borradores por revisar ({drafts.length})</h2>
-          {drafts.map((rule) => (
-            <RuleDraftCard key={rule.id} rule={rule} />
-          ))}
-        </section>
-      ) : null}
+      ) : (
+        <>
+          <div className="flex flex-wrap gap-2 text-xs font-medium">
+            <span className="rounded-full bg-emerald-500/10 px-2.5 py-1 text-emerald-700 dark:text-emerald-400">{active} activas</span>
+            {rows.length > active && <span className="rounded-full bg-muted px-2.5 py-1 text-muted-foreground">{rows.length - active} desactivadas</span>}
+            {drafts.length > 0 && (
+              <span className="rounded-full bg-amber-500/10 px-2.5 py-1 text-amber-700 dark:text-amber-400">
+                {drafts.length === 1 ? '1 por revisar' : `${drafts.length} por revisar`}
+              </span>
+            )}
+          </div>
 
-      <section className="flex flex-col gap-3">
-        <h2 className="text-lg font-semibold tracking-tight">Reglas</h2>
-        <RulesTable />
-      </section>
+          {drafts.length > 0 && (
+            <section className="flex flex-col gap-3 rounded-2xl border border-amber-500/30 bg-amber-500/5 p-4 sm:p-5">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="size-4 text-amber-600 dark:text-amber-400" />
+                <h2 className="font-semibold">Por revisar ({drafts.length})</h2>
+              </div>
+              <p className="-mt-2 text-sm text-muted-foreground">Reglas nuevas que aún no corren. Revisa cómo las entendió Veritium, pruébalas y actívalas.</p>
+              {drafts.map((r) => (
+                <DraftRuleCard key={r.id} rule={r} about={aboutOf(r)} />
+              ))}
+            </section>
+          )}
+
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="relative w-full max-w-sm">
+              <Search className="absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Busca una regla, p. ej. «código de empleado»" className="pl-8" />
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {[{ key: null, name: 'Todas', count: rows.length }, ...GROUPS.map((g) => ({ key: g.key, name: g.name, count: rows.filter((r) => groupOf(r.category).key === g.key).length }))]
+                .filter((g) => g.count > 0)
+                .map((g) => (
+                  <button
+                    key={g.key ?? 'all'}
+                    type="button"
+                    onClick={() => setGroup(g.key)}
+                    className={cn('rounded-full border px-3 py-1 text-sm transition', group === g.key ? 'border-primary bg-primary/10 font-medium text-primary' : 'text-muted-foreground hover:text-foreground')}
+                  >
+                    {g.name} <span className="opacity-70">{g.count}</span>
+                  </button>
+                ))}
+            </div>
+          </div>
+
+          {GROUPS.filter((g) => !group || g.key === group).map((g) => {
+            const list = shown.filter((r) => groupOf(r.category).key === g.key).sort((a, b) => Number(b.active) - Number(a.active))
+            if (!list.length) return null
+            return (
+              <section key={g.key} className="overflow-hidden rounded-2xl border">
+                <div className="flex flex-wrap items-baseline gap-x-2 border-b bg-muted/40 px-4 py-3">
+                  <h2 className="font-semibold">{g.name}</h2>
+                  <span className="text-sm text-muted-foreground">{list.length === 1 ? '1 regla' : `${list.length} reglas`}</span>
+                  <p className="w-full text-sm text-muted-foreground">{g.hint}</p>
+                </div>
+                <ul className="divide-y bg-card">
+                  {list.map((r) => (
+                    <RuleRow key={r.key} row={r} canChange={admin} />
+                  ))}
+                </ul>
+              </section>
+            )
+          })}
+          {words.length > 0 && !shown.length && <p className="text-sm text-muted-foreground">Ninguna regla coincide con «{query}».</p>}
+        </>
+      )}
+
+      {creating && <NewRuleDialog onClose={() => setCreating(false)} />}
     </div>
   )
 }

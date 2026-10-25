@@ -136,3 +136,4 @@ Estados: `done` · `todo` · `blocked` (espera a otro equipo) · `superseded` (a
 | VRT-87 | Procesos en palabras y un solo borrador | done | Tarjetas por proceso; editor con vista previa de cómo decide y borrador que se guarda en su sitio. |
 | VRT-88 | Tipos de documento en palabras | done | Cada dato con su nombre en español, formato y significado; registrar un tipo en tres pasos. |
 | VRT-89 | Catálogo de datos en palabras | done | Cada dato con su significado, privacidad y documentos que lo traen; se edita con un clic y un solo borrador. |
+| VRT-90 | Reglas de validación en palabras | todo | Reglas agrupadas por con qué comparan, interruptor en su sitio y regla nueva en tres preguntas. |

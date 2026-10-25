@@ -46,6 +46,7 @@ from urllib.parse import urlparse
 
 from axonium import AsyncAxonium
 from axonium.config import Timeouts
+from axonium.errors import AxoniumError
 from opentelemetry import context as otel_context
 from pydantic import BaseModel
 from synaptum import Agent, FinalStep, ProviderError, FinishReason, Image, Limits, LocalGateway, MemoryCheckpointer, Phase, PromptTemplate, Request, Response, Sampling, Session, Text, ToolStep, generate
@@ -88,6 +89,9 @@ def pick_models(catalog: Iterable[Any]) -> dict[Role, str]:
         raise ModelResolutionError("las credenciales de prometheus (AXONIUM_CLIENT_ID) tienen " + "; ".join(problems))
     return models
 
+# How often an API started without its models asks prometheus again (VRT-90).
+_RETRY_SECONDS = 30
+
 # Turns for a structured call: the first answer plus two corrections shown
 # the validation error (what instructor's max_retries=2 used to give).
 STRUCTURED_MAX_STEPS = 3
@@ -99,6 +103,8 @@ class Inference:
         callable, and ``models`` the role → model id discovery — for tests."""
         self._settings = settings
         self._models = models
+        self._missing: str | None = None  # why the models aren't there yet, when the start went on without them
+        self._retry: asyncio.Task[None] | None = None
         self._loop = asyncio.get_running_loop()
         self._client = None
         self._governed = model is None and settings.inference_route == "governed"
@@ -121,7 +127,28 @@ class Inference:
         self._model_call = model
         self._gateway = LocalGateway(model=model, warn=False)
 
-    async def open(self) -> None:
+    async def open(self, *, required: bool = True) -> None:
+        """Resolves the model of each role. Not ``required`` (the API, VRT-90),
+        a prometheus without them doesn't stop the start: what doesn't call a
+        model keeps working, and the first model call tries again."""
+        try:
+            await self._ensure_models()
+        except (ModelResolutionError, AxoniumError) as exc:
+            if required:
+                raise
+            self._missing = str(exc)
+            self._retry = asyncio.create_task(self._keep_trying())
+            log.warning("inference: sin modelos por ahora (%s); se reintenta cada %ss", exc, _RETRY_SECONDS)
+
+    async def _keep_trying(self) -> None:
+        while self._models is None:
+            await asyncio.sleep(_RETRY_SECONDS)
+            try:
+                await self._ensure_models()
+            except (ModelResolutionError, AxoniumError) as exc:
+                self._missing = str(exc)
+
+    async def _ensure_models(self) -> None:
         if self._models is None:
             if self._client is None:
                 raise RuntimeError("con un modelo falso, indica models={'reasoning': ..., 'vision': ...}")
@@ -132,10 +159,14 @@ class Inference:
     def models(self) -> dict[Role, str]:
         """Role → model id, as resolved at open."""
         if self._models is None:
+            if self._missing:
+                raise ModelResolutionError(self._missing)
             raise RuntimeError("InferencePort sin abrir")
         return self._models
 
     async def aclose(self) -> None:
+        if self._retry is not None:
+            self._retry.cancel()
         if self._client is not None:
             await self._client.aclose()
 
@@ -146,6 +177,7 @@ class Inference:
         return self.models[role]
 
     async def _generate(self, purpose: str, role: Role, task: Any, **kwargs: Any) -> Any:
+        await self._ensure_models()
         model = self._model(role)
         checkpointer = MemoryCheckpointer()
         session = Session(run_id=f"veritium/{purpose}", gateway=self._gateway, checkpointer=checkpointer)
@@ -171,6 +203,7 @@ class Inference:
         Raises ``LimitExceeded`` (never submitted) or ``NoObjectGeneratedError``
         (submitted, never valid). Returns the result and the completed tool
         steps, for the extraction's trace."""
+        await self._ensure_models()
         gateway = LocalGateway(model=self._model_call, tools=tools, warn=False)
         agent = Agent(
             "veritium-extractor",
@@ -327,11 +360,11 @@ def on_premises(settings: Settings, gateway_url: str) -> None:
 
 
 @asynccontextmanager
-async def inference_lifespan(settings: Settings, *, model: Any = None, models: dict[Role, str] | None = None) -> AsyncGenerator[Inference]:
+async def inference_lifespan(settings: Settings, *, model: Any = None, models: dict[Role, str] | None = None, required: bool = True) -> AsyncGenerator[Inference]:
     global _current
     _current = Inference(settings, model=model, models=models)
     try:
-        await _current.open()
+        await _current.open(required=required)
         yield _current
     finally:
         await _current.aclose()

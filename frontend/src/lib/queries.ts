@@ -698,7 +698,7 @@ export function useUpdateValidationRule() {
 export function useResolveValidationRule() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async ({ id, decision }: { id: string; decision: 'activate' | 'reject' | 'disable' }) => {
+    mutationFn: async ({ id, decision }: { id: string; decision: 'activate' | 'reject' | 'disable' | 'enable' }) => {
       const { data } = await apiClient.post<ValidationRule>(`/validation-rules/${id}/${decision}`)
       return data
     },

@@ -1,6 +1,6 @@
 """The activation gate of VRT-36 against the real API and Postgres: a rule
 whose test cases do not give their expected outcome cannot be activated;
-fixed, it can."""
+fixed, it can; switched off, it can be switched back on (VRT-90)."""
 
 from __future__ import annotations
 
@@ -60,6 +60,12 @@ async def test_a_rule_is_activated_only_when_its_cases_pass(live_settings):
             assert fixed.status_code == 200
             activated = await client.post(f"/validation-rules/{rule['id']}/activate", headers=h)
             assert activated.status_code == 200 and activated.json()["status"] == "active"
+
+            # VRT-90: switched off, it can be switched back on — its cases are checked again.
+            assert (await client.post(f"/validation-rules/{rule['id']}/enable", headers=h)).status_code == 409, "an active rule is not enabled twice"
+            assert (await client.post(f"/validation-rules/{rule['id']}/disable", headers=h)).json()["status"] == "disabled"
+            enabled = await client.post(f"/validation-rules/{rule['id']}/enable", headers=h)
+            assert enabled.status_code == 200 and enabled.json()["status"] == "active"
     finally:
         async with factory() as session:
             await session.execute(delete(ValidationRuleDefinition).where(ValidationRuleDefinition.rule_id.like(f"custom.%.{suffix}")))
