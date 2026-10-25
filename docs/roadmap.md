@@ -502,3 +502,6 @@ Método, mediciones y aprendizajes: [eficiencia-modelos-ia.md](eficiencia-modelo
 
 ## VRT-96 — Personas en palabras
 **Why:** una tabla con un ícono rojo de borrar en cada fila, y para cambiar el rol de alguien había que quitarlo y volver a crearlo; el alta pedía «Contraseña: solo si es una persona nueva» sin explicar qué hacía cada rol. **Scope:** fichas por rol con lo que puede hacer y cuántos hay (filtran), búsqueda, personas en tarjetas agrupadas por rol; un diálogo para cambiar el rol o quitar de la unidad, de solo lectura para cuentas corporativas; alta con el rol elegido por lo que permite. API: `PATCH /users/{id}` cambia el rol (no el propio ni el de una cuenta corporativa).
+
+## VRT-97 — Sistemas conectados en palabras
+**Why:** una tabla con fechas sueltas («Secreto desde: 9/10/26, 2:14 p.m.») no decía si un sistema estaba en uso, y el alta mezclaba en una fila el nombre, una cuota numérica y las credenciales que aparecían debajo. **Scope:** una tarjeta por sistema con su estado en semáforo (en uso, sin uso reciente, aún no se conecta, sin acceso), último uso y cambio de secreto en palabras; conectar en un diálogo: nombre y cuota por opciones, luego las credenciales una sola vez con copiar; el nuevo secreto tras cambiarlo, en el mismo diálogo; los sistemas sin acceso y la guía para su equipo técnico, plegados. Sin cambios de API.

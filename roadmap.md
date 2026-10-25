@@ -142,3 +142,4 @@ Estados: `done` · `todo` · `blocked` (espera a otro equipo) · `superseded` (a
 | VRT-93 | Instrucciones al modelo en palabras | todo | Lista por etapa con su estado, detalle en pestañas (texto, borrador, historial) y cambio propuesto en un diálogo que verifica lo obligatorio. |
 | VRT-95 | Herramientas para agentes en palabras | todo | Bloques por uso (abrir expedientes, consultar, Riesgos y Legal, cada agente), una frase de negocio por herramienta y lo técnico plegado. |
 | VRT-96 | Personas en palabras | todo | Fichas por rol con lo que puede hacer, personas en tarjetas por rol, cambiar el rol sin borrar y agregar en un diálogo claro. |
+| VRT-97 | Sistemas conectados en palabras | todo | Cada sistema en una tarjeta con su estado en semáforo y «último uso hace…»; conectar en un diálogo de dos pasos; sin acceso y guía técnica plegados. |
