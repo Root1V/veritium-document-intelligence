@@ -1,134 +1,34 @@
-import { useMemo, useState } from 'react'
+// The process editor (VRT-37, VRT-80, VRT-87): what the process asks for and
+// what it checks, beside a live preview of how it will decide. Changes go to
+// one draft — saved in place, continued later — and publishing applies them
+// to new cases in a single step.
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Lightbulb, Loader2, Plus, Trash2 } from 'lucide-react'
+import { CircleAlert, FileText, Loader2, Plus, RotateCcw } from 'lucide-react'
 import { toast } from 'sonner'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { DecisionPreview } from '@/components/profiles/DecisionPreview'
+import { Choice, RequirementRow } from '@/components/profiles/RequirementRow'
+import { RuleList } from '@/components/profiles/RuleList'
 import { errorDetail } from '@/lib/apiErrors'
+import { slug, whenOf } from '@/lib/processProfile'
 import { useProcessProfiles, useProfileLibrary, useProfileVersion, usePublishProfileVersion, useSaveProfileVersion } from '@/lib/queries'
-import type { ChecklistItem, ProcessProfileDefinition, ProfileLibrary, RuleBinding } from '@/types/api'
-
-const usedBy = (profiles: string[]) => (profiles.length ? ` · usado en ${profiles.join(', ')}` : '')
-const SEVERITY_LABEL: Record<RuleBinding['severity'], string> = { info: 'Informativa', warning: 'Advertencia', error: 'Error' }
-
-/** An identifier from what a person wrote: "Boleta de pago" → "boleta_de_pago" (VRT-80). */
-function slug(text: string, sep = '_'): string {
-  return text
-    .normalize('NFKD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, sep)
-    .replace(new RegExp(`^\\${sep}+|\\${sep}+$`, 'g'), '')
-    .slice(0, 60)
-}
-
-function Choice({ value, options, onChange, placeholder, width = 'w-56' }: {
-  value: string
-  options: { value: string; label: string }[]
-  onChange: (value: string) => void
-  placeholder?: string
-  width?: string
-}) {
-  return (
-    <Select value={value} onValueChange={onChange}>
-      <SelectTrigger className={`h-8 text-xs ${width}`}>
-        <SelectValue placeholder={placeholder ?? '—'} />
-      </SelectTrigger>
-      <SelectContent>
-        {options.map((o) => (
-          <SelectItem key={o.value} value={o.value}>
-            {o.label}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
-  )
-}
-
-function ChecklistRow({ item, library, onChange, onRemove }: {
-  item: ChecklistItem
-  library: ProfileLibrary
-  onChange: (item: ChecklistItem) => void
-  onRemove: () => void
-}) {
-  const byType = item.document_type != null
-  const attribute = item.requires_attributes[0] ?? ''
-  const providers = library.attributes.find((a) => a.key === attribute)?.providers.filter((p) => p.role === item.role) ?? []
-  const typeName = (key: string) => library.document_types.find((t) => t.key === key)?.display_name ?? key
-  const setLabel = (label: string) => onChange({ ...item, label, key: !item.key || item.key === slug(item.label) ? slug(label) : item.key })
-  return (
-    <div className="flex flex-col gap-3 rounded-lg border p-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <Input value={item.label} onChange={(e) => setLabel(e.target.value)} placeholder="Qué se pide, p. ej. Boleta de pago del titular" className="h-9 min-w-64 flex-1" />
-        <Choice
-          value={byType ? 'type' : 'attribute'}
-          width="w-52"
-          options={[
-            { value: 'type', label: 'Un tipo de documento' },
-            { value: 'attribute', label: 'Un dato, venga de donde venga' },
-          ]}
-          onChange={(v) =>
-            onChange(v === 'type' ? { ...item, document_type: '', requires_attributes: [], accepted_document_types: null } : { ...item, document_type: null, requires_attributes: [''] })
-          }
-        />
-        <label className="flex items-center gap-1.5 text-xs">
-          <input type="checkbox" checked={item.required} onChange={(e) => onChange({ ...item, required: e.target.checked })} /> Obligatorio
-        </label>
-        <Button variant="ghost" size="icon" onClick={onRemove} aria-label="Quitar requisito">
-          <Trash2 className="size-4" />
-        </Button>
-      </div>
-      <div className="flex flex-wrap items-center gap-2">
-        {byType ? (
-          <Choice
-            value={item.document_type ?? ''}
-            placeholder="Elige el tipo de documento"
-            width="w-80"
-            options={library.document_types.map((t) => ({ value: t.key, label: `${t.display_name}${usedBy(t.used_by)}` }))}
-            onChange={(v) => onChange({ ...item, document_type: v })}
-          />
-        ) : (
-          <>
-            <Choice
-              value={attribute}
-              placeholder="Elige el dato"
-              width="w-72"
-              options={library.attributes.filter((a) => a.providers.length).map((a) => ({ value: a.key, label: `${a.name}${usedBy(a.used_by)}` }))}
-              onChange={(v) => onChange({ ...item, requires_attributes: [v] })}
-            />
-            <span className="text-xs text-muted-foreground">de</span>
-            <Choice value={item.role} width="w-36" options={library.roles.map((r) => ({ value: r.key, label: r.name }))} onChange={(v) => onChange({ ...item, role: v })} />
-            {attribute && (
-              <span className="text-xs text-muted-foreground">
-                {providers.length ? `Lo cumple: ${providers.map((p) => typeName(p.document_type)).join(', ')}` : 'Ningún tipo de documento lo trae con ese rol.'}
-              </span>
-            )}
-          </>
-        )}
-      </div>
-      <details className="text-xs">
-        <summary className="w-fit cursor-pointer select-none text-muted-foreground hover:text-foreground">
-          Opciones avanzadas{item.required_when_cel ? ' · tiene condición' : ''}
-        </summary>
-        <div className="mt-2 flex flex-wrap items-center gap-2">
-          <Input value={item.key} onChange={(e) => onChange({ ...item, key: e.target.value })} placeholder="identificador" className="h-8 w-48 font-mono text-xs" title="Se genera del nombre; lo usan las integraciones." />
-          <Input
-            value={item.required_when_cel ?? ''}
-            onChange={(e) => onChange({ ...item, required_when_cel: e.target.value || null })}
-            placeholder="Solo se exige si… (CEL), p. ej. request.nacionalidad != 'PE'"
-            className="h-8 min-w-64 flex-1 font-mono text-xs"
-          />
-        </div>
-      </details>
-    </div>
-  )
-}
+import { cn } from '@/lib/utils'
+import type { ProcessProfileDefinition, RuleBinding } from '@/types/api'
 
 const SEVERITY_RANK = { info: 0, warning: 1, error: 2 } as const
+const RETENTION = [
+  { value: 'none', label: 'Sin plazo: se conservan' },
+  { value: '30', label: '30 días' },
+  { value: '90', label: '90 días' },
+  { value: '180', label: '6 meses' },
+  { value: '365', label: '1 año' },
+  { value: '1825', label: '5 años' },
+  { value: 'other', label: 'Otro plazo…' },
+]
 
 /** A new version may not bind retired rule ids: each becomes the rule that
  * replaced it, the strictest binding winning when several merge (VRT-35). */
@@ -156,34 +56,62 @@ function emptyDefinition(catalogVersion: number): ProcessProfileDefinition {
   return { semantic_catalog_version: catalogVersion, checklist: [], include_all_rules: false, rule_bindings: [], thresholds: {} }
 }
 
+function Section({ number, title, description, children }: { number: number; title: string; description: string; children: ReactNode }) {
+  return (
+    <Card>
+      <CardContent className="flex flex-col gap-4 p-5">
+        <div className="flex gap-3">
+          <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">{number}</span>
+          <div className="flex flex-col gap-0.5">
+            <h2 className="font-semibold">{title}</h2>
+            <p className="text-sm text-muted-foreground">{description}</p>
+          </div>
+        </div>
+        {children}
+      </CardContent>
+    </Card>
+  )
+}
+
 export function ProfileEditorPage() {
   const { key: routeKey } = useParams()
   const isNew = !routeKey
   const navigate = useNavigate()
   const { data: profiles } = useProcessProfiles()
   const profile = profiles?.find((p) => p.key === routeKey)
-  const { data: activeVersion } = useProfileVersion(routeKey, profile?.active_version)
-  const [edited, setDefinition] = useState<ProcessProfileDefinition | undefined>()
-  const [key, setKey] = useState('')
-  const [name, setName] = useState('')
-  const [description, setDescription] = useState('')
+  const pendingDraft = profile?.versions.find((v) => v.status === 'draft')?.version
+  // Unpublished changes are continued; the person may start again from what is published.
+  const [fromPublished, setFromPublished] = useState(false)
+  const sourceVersion = pendingDraft && !fromPublished ? pendingDraft : profile?.active_version
+  const { data: source } = useProfileVersion(routeKey, sourceVersion)
+  const [edited, setEdited] = useState<ProcessProfileDefinition | undefined>()
   const [savedDraft, setSavedDraft] = useState<number | undefined>()
-  const { data: library } = useProfileLibrary(edited?.semantic_catalog_version ?? activeVersion?.definition.semantic_catalog_version)
+  const [dirty, setDirty] = useState(false)
+  const [name, setName] = useState<string | undefined>()
+  const [description, setDescription] = useState<string | undefined>()
+  const [key, setKey] = useState('')
+  const [customRetention, setCustomRetention] = useState(false)
+  const { data: library } = useProfileLibrary(edited?.semantic_catalog_version ?? source?.definition.semantic_catalog_version)
   const save = useSaveProfileVersion()
   const publish = usePublishProfileVersion()
-  // Until edited: the active version (a new version of an existing profile), or blank on the latest catalog.
+  const draft = savedDraft ?? pendingDraft
+
   const definition =
-    edited ??
-    (isNew ? (library ? emptyDefinition(library.catalog_version) : undefined) : activeVersion && library ? withCurrentRuleIds(activeVersion.definition, library.legacy_rule_ids) : undefined)
+    edited ?? (isNew ? (library ? emptyDefinition(library.catalog_version) : undefined) : source && library ? withCurrentRuleIds(source.definition, library.legacy_rule_ids) : undefined)
+
+  useEffect(() => {
+    if (!dirty) return
+    const warn = (e: BeforeUnloadEvent) => e.preventDefault()
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [dirty])
 
   const suggestions = useMemo(() => {
     if (!definition || !library) return []
     const types = new Set<string>()
     for (const item of definition.checklist) {
       if (item.document_type) types.add(item.document_type)
-      for (const a of item.requires_attributes) {
-        for (const p of library.attributes.find((x) => x.key === a)?.providers ?? []) if (p.role === item.role) types.add(p.document_type)
-      }
+      for (const a of item.requires_attributes) for (const p of library.attributes.find((x) => x.key === a)?.providers ?? []) if (p.role === item.role) types.add(p.document_type)
     }
     const bound = new Set(definition.rule_bindings.map((b) => b.rule_id))
     return library.rules
@@ -193,27 +121,57 @@ export function ProfileEditorPage() {
       .sort((a, b) => b.runsOn.length - a.runsOn.length || b.rule.used_by.length - a.rule.used_by.length)
   }, [definition, library])
 
-  if (!definition || !library) return <Loader2 className="size-5 animate-spin text-muted-foreground" />
+  if (!definition || !library || (!isNew && !profile)) return <Loader2 className="size-5 animate-spin text-muted-foreground" />
 
-  const set = (patch: Partial<ProcessProfileDefinition>) => {
-    setSavedDraft(undefined)
-    setDefinition({ ...definition, ...patch })
-  }
+  const shownName = name ?? profile?.name ?? ''
+  const shownDescription = description ?? profile?.description ?? ''
   const profileKey = isNew ? key.trim() : routeKey!
-  const bind = (rule_id: string) => set({ rule_bindings: [...definition.rule_bindings, { rule_id, severity: 'warning', blocking: false, on_fail: 'human_review' }] })
-  const setBinding = (i: number, b: RuleBinding) => set({ rule_bindings: definition.rule_bindings.map((x, j) => (j === i ? b : x)) })
+  const latestCatalog = Math.max(...library.catalog_versions)
+  const set = (patch: Partial<ProcessProfileDefinition>) => {
+    setDirty(true)
+    setEdited({ ...definition, ...patch })
+  }
+  const asked = new Set(definition.checklist.map((c) => c.document_type).filter(Boolean))
+  const quickTypes = library.document_types.filter((t) => !asked.has(t.key)).sort((a, b) => b.used_by.length - a.used_by.length).slice(0, 6)
+  const retentionValue = customRetention ? 'other' : definition.retention_days == null ? 'none' : RETENTION.some((r) => r.value === String(definition.retention_days)) ? String(definition.retention_days) : 'other'
 
-  function handleSave() {
-    if (isNew && (!profileKey || !name.trim())) {
-      toast.error('Indica el nombre y el identificador del proceso.')
-      return
-    }
+  // What keeps it from being saved, in the person's words.
+  const problems: string[] = []
+  if (!shownName.trim()) problems.push('Ponle un nombre al proceso.')
+  if (isNew && !profileKey) problems.push('Falta el identificador del proceso.')
+  definition.checklist.forEach((c, i) => {
+    const n = `Requisito ${i + 1}`
+    if (!c.label.trim()) problems.push(`${n}: indica qué se pide.`)
+    if (c.document_type != null ? !c.document_type : !c.requires_attributes[0]) problems.push(`${n}: elige ${c.document_type != null ? 'el tipo de documento' : 'el dato'}.`)
+    if (whenOf(c) === 'condition' && !c.required_when_cel?.trim()) problems.push(`${n}: escribe la condición.`)
+  })
+  const keys = definition.checklist.map((c) => c.key).filter(Boolean)
+  if (new Set(keys).size < keys.length) problems.push('Dos requisitos tienen el mismo nombre.')
+  const renamed = !isNew && (shownName.trim() !== profile?.name || (shownDescription.trim() || null) !== (profile?.description ?? null))
+  const changed = dirty || renamed
+  const busy = save.isPending || publish.isPending
+
+  function persist(then?: (version: number) => void) {
+    if (problems.length) return void toast.error(problems[0])
+    const cleaned = { ...definition!, checklist: definition!.checklist.map((c) => ({ ...c, key: c.key || slug(c.label) })) }
     save.mutate(
-      { key: profileKey, isNew: isNew && !profiles?.some((p) => p.key === profileKey), name: name.trim(), description, definition: definition! },
+      {
+        key: profileKey,
+        isNew: isNew && !profiles?.some((p) => p.key === profileKey),
+        renamed,
+        name: shownName.trim(),
+        description: shownDescription.trim(),
+        draft,
+        definition: cleaned,
+      },
       {
         onSuccess: (row) => {
           setSavedDraft(row.version)
-          toast.success(`Borrador v${row.version} guardado. Publícalo para que lo usen los expedientes nuevos.`)
+          setDirty(false)
+          setName(shownName.trim())
+          setDescription(shownDescription.trim())
+          if (then) then(row.version)
+          else toast.success('Cambios guardados. Aún no afectan a ningún expediente: publícalos cuando estén listos.')
         },
         onError: (error) => toast.error(errorDetail(error)),
       },
@@ -221,202 +179,247 @@ export function ProfileEditorPage() {
   }
 
   function handlePublish() {
-    if (!savedDraft) return
-    publish.mutate(
-      { key: profileKey, version: savedDraft },
-      {
-        onSuccess: () => {
-          toast.success(`Perfil ${profileKey} v${savedDraft} publicado.`)
-          navigate('/profiles')
+    if (problems.length) return void toast.error(problems[0])
+    if (!confirm(`¿Publicar «${shownName.trim()}»? Los expedientes nuevos lo usarán desde ahora; los que ya están en curso conservan su versión.`)) return
+    const go = (version: number) =>
+      publish.mutate(
+        { key: profileKey, version },
+        {
+          onSuccess: () => {
+            setDirty(false)
+            toast.success('Publicado. Los expedientes nuevos ya usan esta versión.')
+            navigate('/profiles')
+          },
+          onError: (error) => toast.error(errorDetail(error)),
         },
-        onError: (error) => toast.error(errorDetail(error)),
-      },
-    )
+      )
+    if (changed || !draft) persist(go)
+    else go(draft)
   }
 
-  const describe = (ruleId: string) => library.rules.find((r) => r.rule_id === ruleId)
-  const latestCatalog = Math.max(...library.catalog_versions)
+  const status = isNew
+    ? 'Proceso nuevo · aún no recibe expedientes'
+    : draft
+      ? `Cambios sin publicar · la versión ${profile?.active_version ?? '—'} sigue vigente`
+      : `Editando a partir de la versión ${profile?.active_version} publicada`
+
+  const actions = (
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center gap-2 text-sm">
+        <span className={cn('size-2 rounded-full', changed ? 'bg-amber-500' : draft ? 'bg-sky-500' : 'bg-emerald-500')} />
+        <span className="text-muted-foreground">{changed ? 'Hay cambios sin guardar' : draft ? 'Borrador guardado, sin publicar' : 'Sin cambios'}</span>
+      </div>
+      {problems.length > 0 && (
+        <div className="flex flex-col gap-1 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-xs">
+          <span className="flex items-center gap-1.5 font-medium text-amber-800 dark:text-amber-300">
+            <CircleAlert className="size-3.5" /> Para guardar falta
+          </span>
+          {problems.slice(0, 4).map((p) => (
+            <span key={p} className="text-amber-800/90 dark:text-amber-300/90">
+              · {p}
+            </span>
+          ))}
+          {problems.length > 4 && <span className="text-amber-800/90 dark:text-amber-300/90">· y {problems.length - 4} más</span>}
+        </div>
+      )}
+      <div className="flex gap-2">
+        <Button variant="outline" className="flex-1" onClick={() => persist()} disabled={busy || !changed}>
+          {save.isPending && !publish.isPending && <Loader2 className="size-4 animate-spin" />}
+          Guardar borrador
+        </Button>
+        <Button className="flex-1" onClick={handlePublish} disabled={busy || (!changed && !draft)}>
+          {publish.isPending && <Loader2 className="size-4 animate-spin" />}
+          Publicar
+        </Button>
+      </div>
+    </div>
+  )
+
+  const preview = (
+    <Card>
+      <CardContent className="flex flex-col gap-4 p-5">
+        <span className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Así decidirá</span>
+        <DecisionPreview definition={definition} library={library} />
+      </CardContent>
+    </Card>
+  )
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">{isNew ? 'Nuevo proceso' : `Nueva versión de ${profile?.name ?? routeKey}`}</h1>
-        <p className="text-muted-foreground">Qué documentos exige y qué comprueba. Se guarda como borrador; los expedientes nuevos lo usan al publicarlo.</p>
+      <div className="flex flex-col gap-2">
+        <h1 className="text-2xl font-semibold tracking-tight">{isNew ? 'Nuevo proceso' : shownName || routeKey}</h1>
+        <p className="text-muted-foreground">{status}</p>
+        {!isNew && pendingDraft && !fromPublished && !savedDraft && (
+          <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/40 px-3 py-2 text-sm">
+            <span className="flex-1">Continúas los cambios que quedaron sin publicar.</span>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7"
+              onClick={() => {
+                setFromPublished(true)
+                setEdited(undefined)
+                setDirty(true)
+              }}
+            >
+              <RotateCcw className="size-3.5" /> Empezar desde lo publicado
+            </Button>
+          </div>
+        )}
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>1. Datos del proceso</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-wrap items-end gap-3">
-          {isNew && (
-            <>
-              <div className="flex flex-col gap-1">
-                <Label>Nombre</Label>
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px] xl:items-start">
+        <div className="flex min-w-0 flex-col gap-6">
+          <Section number={1} title="El proceso" description="Cómo se llama y cuánto tiempo se guardan los datos personales de sus expedientes.">
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="name">Nombre</Label>
                 <Input
-                  value={name}
+                  id="name"
+                  value={shownName}
                   onChange={(e) => {
-                    if (!key || key === slug(name, '-')) setKey(slug(e.target.value, '-'))
+                    if (isNew && (!key || key === slug(shownName, '-'))) setKey(slug(e.target.value, '-'))
                     setName(e.target.value)
                   }}
-                  placeholder="Contratación de tarjetas"
-                  className="w-64"
+                  placeholder="p. ej. Contratación de tarjetas"
                 />
+                {isNew && profileKey && <span className="text-xs text-muted-foreground">Identificador para integraciones: <code>{profileKey}</code></span>}
               </div>
-              <div className="flex flex-col gap-1">
-                <Label>Identificador</Label>
-                <Input value={key} onChange={(e) => setKey(e.target.value)} placeholder="contratacion-tarjetas" className="w-56 font-mono text-xs" />
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="retention">Conservación de datos personales</Label>
+                <div className="flex gap-2">
+                  <Choice
+                    value={retentionValue}
+                    className="flex-1"
+                    options={RETENTION}
+                    onChange={(v) => {
+                      setCustomRetention(v === 'other')
+                      if (v !== 'other') set({ retention_days: v === 'none' ? null : Number(v) })
+                    }}
+                  />
+                  {retentionValue === 'other' && (
+                    <Input
+                      id="retention"
+                      type="number"
+                      min={1}
+                      className="w-28"
+                      placeholder="días"
+                      value={definition.retention_days ?? ''}
+                      onChange={(e) => set({ retention_days: e.target.value ? Number(e.target.value) : null })}
+                    />
+                  )}
+                </div>
+                <span className="text-xs text-muted-foreground">Desde la decisión; al vencer, el expediente queda anonimizado. Lo define Legal.</span>
               </div>
-              <div className="flex flex-1 flex-col gap-1">
-                <Label>Descripción</Label>
-                <Input value={description} onChange={(e) => setDescription(e.target.value)} />
+              <div className="flex flex-col gap-1.5 md:col-span-2">
+                <Label htmlFor="description">Descripción</Label>
+                <Input id="description" value={shownDescription} onChange={(e) => setDescription(e.target.value)} placeholder="Para qué se usa, en una frase." />
               </div>
-            </>
-          )}
-          <div className="flex flex-col gap-1">
-            <Label>Catálogo de datos</Label>
-            <Choice
-              value={String(definition.semantic_catalog_version)}
-              width="w-48"
-              options={library.catalog_versions.map((v) => ({ value: String(v), label: `v${v}${v === latestCatalog ? ' (última)' : ''}` }))}
-              onChange={(v) => set({ semantic_catalog_version: Number(v) })}
-            />
-          </div>
-          {definition.semantic_catalog_version < latestCatalog && (
-            <span className="text-xs text-amber-700 dark:text-amber-400">Hay una versión más nueva del catálogo (v{latestCatalog}).</span>
-          )}
-          <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={definition.include_all_rules} onChange={(e) => set({ include_all_rules: e.target.checked })} />
-            Aplicar todas las reglas activas (no solo las vinculadas)
-          </label>
-          <div className="flex flex-col gap-1">
-            <Label htmlFor="retention">Conservación de datos personales (días)</Label>
-            <Input
-              id="retention"
-              type="number"
-              min={1}
-              placeholder="Sin plazo: se conservan"
-              value={definition.retention_days ?? ''}
-              onChange={(e) => set({ retention_days: e.target.value ? Number(e.target.value) : null })}
-              className="w-56"
-            />
-            <span className="text-xs text-muted-foreground">
-              Desde la decisión del expediente. Al vencer se suprimen sus datos personales y queda anonimizado. Lo define Legal según el proceso.
-            </span>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>2. Qué documentos exige ({definition.checklist.length})</CardTitle>
-          <CardDescription>Un tipo de documento concreto, o un dato (p. ej. el ingreso del titular) que cumple cualquier documento que lo traiga.</CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-3">
-          {definition.checklist.map((item, i) => (
-            <ChecklistRow
-              key={i}
-              item={item}
-              library={library}
-              onChange={(next) => set({ checklist: definition.checklist.map((x, j) => (j === i ? next : x)) })}
-              onRemove={() => set({ checklist: definition.checklist.filter((_, j) => j !== i) })}
-            />
-          ))}
-          <Button
-            variant="outline"
-            size="sm"
-            className="self-start"
-            onClick={() => set({ checklist: [...definition.checklist, { key: '', label: '', document_type: '', requires_attributes: [], role: 'titular', required: true, min_count: 1 }] })}
-          >
-            <Plus className="size-3.5" /> Agregar requisito
-          </Button>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>3. Qué comprueba ({definition.rule_bindings.length})</CardTitle>
-          <CardDescription>Las reglas que se aplican y qué pasa si una falla. Si «decide», su falla define el veredicto del expediente.</CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-2">
-          {definition.rule_bindings.map((b, i) => (
-            <div key={b.rule_id} className="flex flex-wrap items-center gap-2 rounded-lg border p-2.5 text-sm">
-              <span className="flex min-w-72 flex-1 flex-col">
-                <span>{describe(b.rule_id)?.description || b.rule_id}</span>
-                <code className="text-[11px] text-muted-foreground">{describe(b.rule_id) ? b.rule_id : `${b.rule_id} · no está en la biblioteca de este catálogo`}</code>
-              </span>
-              <Choice value={b.severity} width="w-32" options={(['info', 'warning', 'error'] as const).map((v) => ({ value: v, label: SEVERITY_LABEL[v] }))} onChange={(v) => setBinding(i, { ...b, severity: v as RuleBinding['severity'] })} />
-              <label className="flex items-center gap-1.5 text-xs">
-                <input type="checkbox" checked={b.blocking} onChange={(e) => setBinding(i, { ...b, blocking: e.target.checked })} /> Decide
-              </label>
-              {b.blocking && (
-                <Choice
-                  value={b.on_fail}
-                  width="w-48"
-                  options={[
-                    { value: 'human_review', label: 'Revisión humana' },
-                    { value: 'return_to_client', label: 'Devolver al cliente' },
-                  ]}
-                  onChange={(v) => setBinding(i, { ...b, on_fail: v as RuleBinding['on_fail'] })}
-                />
-              )}
-              <Button variant="ghost" size="icon" onClick={() => set({ rule_bindings: definition.rule_bindings.filter((_, j) => j !== i) })} aria-label="Quitar regla">
-                <Trash2 className="size-4" />
-              </Button>
             </div>
-          ))}
-          <Choice
-            value=""
-            width="w-96"
-            placeholder="Agregar otra regla…"
-            options={library.rules.filter((r) => !definition.rule_bindings.some((b) => b.rule_id === r.rule_id)).map((r) => ({ value: r.rule_id, label: r.description || r.rule_id }))}
-            onChange={bind}
-          />
-        </CardContent>
-      </Card>
-
-      {suggestions.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Lightbulb className="size-4" /> Reglas que podrías agregar
-            </CardTitle>
-            <CardDescription>Revisan los documentos que exige este proceso, o ya las usan otros procesos.</CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-2">
-            {suggestions.slice(0, 12).map(({ rule, runsOn }) => (
-              <div key={rule.rule_id} className="flex flex-wrap items-center gap-2 text-sm">
-                <Button variant="outline" size="sm" onClick={() => bind(rule.rule_id)}>
-                  <Plus className="size-3.5" /> Agregar
-                </Button>
-                <span>{rule.description || rule.rule_id}</span>
-                <Badge variant="outline" className="text-[10px]">
-                  {rule.kind === 'format' ? 'formato' : rule.kind === 'cel' ? 'regla de negocio' : 'sistema'}
-                </Badge>
-                <span className="text-xs text-muted-foreground">
-                  {runsOn.length > 0 && `revisa ${runsOn.map((t) => library.document_types.find((d) => d.key === t)?.display_name ?? t).join(', ')}`}
-                  {runsOn.length > 0 && rule.used_by.length > 0 && ' · '}
-                  {rule.used_by.length > 0 && `usada en ${rule.used_by.join(', ')}`}
-                </span>
+            <details className="text-sm">
+              <summary className="w-fit cursor-pointer text-muted-foreground select-none hover:text-foreground">Opciones avanzadas</summary>
+              <div className="mt-3 grid gap-4 md:grid-cols-2">
+                {isNew && (
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="key">Identificador</Label>
+                    <Input id="key" value={key} onChange={(e) => setKey(e.target.value)} className="font-mono text-xs" />
+                    <span className="text-xs text-muted-foreground">Lo usan los sistemas conectados; no cambia después.</span>
+                  </div>
+                )}
+                <div className="flex flex-col gap-1.5">
+                  <Label>Versión del catálogo de datos</Label>
+                  <Choice
+                    value={String(definition.semantic_catalog_version)}
+                    options={library.catalog_versions.map((v) => ({ value: String(v), label: `Versión ${v}${v === latestCatalog ? ' (la más reciente)' : ''}` }))}
+                    onChange={(v) => set({ semantic_catalog_version: Number(v) })}
+                  />
+                  {definition.semantic_catalog_version < latestCatalog && (
+                    <span className="text-xs text-amber-700 dark:text-amber-400">Hay una versión más nueva del catálogo (la {latestCatalog}).</span>
+                  )}
+                </div>
               </div>
-            ))}
-          </CardContent>
-        </Card>
-      )}
+            </details>
+          </Section>
 
-      <div className="sticky bottom-0 -mx-8 flex items-center gap-3 border-t bg-background/95 px-8 py-3 backdrop-blur">
-        <span className="flex-1 text-sm text-muted-foreground">
-          {savedDraft ? `Borrador v${savedDraft} guardado. Publícalo para que lo usen los expedientes nuevos.` : 'Los cambios se guardan como borrador.'}
+          <Section
+            number={2}
+            title={`Qué documentos pide${definition.checklist.length ? ` (${definition.checklist.length})` : ''}`}
+            description="Un tipo de documento concreto, o un dato —como el ingreso del titular— que cumple cualquier documento que lo traiga."
+          >
+            {definition.checklist.length === 0 && (
+              <p className="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground">Aún no pide documentos. Agrega el primero o elige uno de los más usados.</p>
+            )}
+            {definition.checklist.map((item, i) => (
+              <RequirementRow
+                key={i}
+                index={i}
+                item={item}
+                library={library}
+                onChange={(next) => set({ checklist: definition.checklist.map((x, j) => (j === i ? next : x)) })}
+                onRemove={() => set({ checklist: definition.checklist.filter((_, j) => j !== i) })}
+              />
+            ))}
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => set({ checklist: [...definition.checklist, { key: '', label: '', document_type: '', requires_attributes: [], role: 'titular', required: true, min_count: 1 }] })}
+              >
+                <Plus className="size-3.5" /> Agregar requisito
+              </Button>
+              {quickTypes.length > 0 && <span className="text-xs text-muted-foreground">o rápido:</span>}
+              {quickTypes.map((t) => (
+                <button
+                  key={t.key}
+                  type="button"
+                  onClick={() =>
+                    set({ checklist: [...definition.checklist, { key: slug(t.display_name), label: t.display_name, document_type: t.key, requires_attributes: [], role: 'titular', required: true, min_count: 1 }] })
+                  }
+                  className="inline-flex items-center gap-1 rounded-full border border-dashed px-2.5 py-1 text-xs text-muted-foreground transition hover:border-primary/40 hover:text-foreground"
+                >
+                  <FileText className="size-3" /> {t.display_name}
+                </button>
+              ))}
+            </div>
+          </Section>
+
+          <Section
+            number={3}
+            title={`Qué comprueba${definition.rule_bindings.length ? ` (${definition.rule_bindings.length})` : ''}`}
+            description="Las comprobaciones que se hacen y qué pasa con el expediente si una falla."
+          >
+            <label className="flex items-start gap-3 rounded-lg border bg-muted/30 p-3 text-sm">
+              <input type="checkbox" className="mt-0.5 size-4" checked={definition.include_all_rules} onChange={(e) => set({ include_all_rules: e.target.checked })} />
+              <span className="flex flex-col gap-0.5">
+                <span className="font-medium">Usar también todas las demás reglas activas</span>
+                <span className="text-xs text-muted-foreground">Dejan observaciones sin decidir el veredicto. Útil al empezar, antes de elegir qué comprobar.</span>
+              </span>
+            </label>
+            <RuleList bindings={definition.rule_bindings} library={library} suggested={suggestions} onChange={(rule_bindings) => set({ rule_bindings })} />
+          </Section>
+
+          <div className="xl:hidden">{preview}</div>
+        </div>
+
+        <aside className="hidden flex-col gap-4 xl:sticky xl:top-20 xl:flex">
+          <Card>
+            <CardContent className="p-5">{actions}</CardContent>
+          </Card>
+          {preview}
+        </aside>
+      </div>
+
+      <div className="sticky bottom-0 z-20 -mx-8 -mb-6 flex flex-wrap items-center gap-3 border-t bg-background/95 py-3 pr-24 pl-8 backdrop-blur xl:hidden">
+        <span className="flex flex-1 items-center gap-2 text-sm text-muted-foreground">
+          <span className={cn('size-2 shrink-0 rounded-full', problems.length ? 'bg-amber-500' : changed ? 'bg-amber-500' : draft ? 'bg-sky-500' : 'bg-emerald-500')} />
+          {problems.length ? `Para guardar: ${problems[0]}${problems.length > 1 ? ` (y ${problems.length - 1} más)` : ''}` : changed ? 'Hay cambios sin guardar' : draft ? 'Borrador guardado, sin publicar' : 'Sin cambios'}
         </span>
-        <Button variant={savedDraft ? 'outline' : 'default'} onClick={handleSave} disabled={save.isPending}>
-          {save.isPending && <Loader2 className="size-4 animate-spin" />}
+        <Button variant="outline" onClick={() => persist()} disabled={busy || !changed}>
           Guardar borrador
         </Button>
-        {savedDraft && (
-          <Button onClick={handlePublish} disabled={publish.isPending}>
-            Publicar v{savedDraft}
-          </Button>
-        )}
+        <Button onClick={handlePublish} disabled={busy || (!changed && !draft)}>
+          Publicar
+        </Button>
       </div>
     </div>
   )

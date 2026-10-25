@@ -71,7 +71,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         )}
       >
         <TopBar />
-        <main className="flex-1 overflow-x-hidden px-8 py-6">
+        <main className="flex-1 overflow-x-clip px-8 py-6">
           {hub && (
             <Link to={hub.to} className="mb-3 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
               <ChevronLeft className="size-4" /> {hub.label}

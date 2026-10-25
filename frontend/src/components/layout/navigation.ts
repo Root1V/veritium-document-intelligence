@@ -137,6 +137,9 @@ export const GETTING_STARTED: Page = {
 /** The index page a path belongs to, to offer the way back to it. */
 export function hubOf(pathname: string): { to: string; label: string } | null {
   const inside = (pages: Page[]) => pages.some((p) => pathname === p.to || pathname.startsWith(`${p.to}/`))
+  // Inside a page (a new process, a test set): back to that page, not to the index.
+  const parent = [...REPORTS, ...SETTINGS.flatMap((g) => g.pages)].find((p) => pathname.startsWith(`${p.to}/`))
+  if (parent) return { to: parent.to, label: parent.label }
   if (inside(REPORTS)) return { to: '/reportes', label: 'Reportes' }
   if (inside([...SETTINGS.flatMap((g) => g.pages), GETTING_STARTED])) return { to: '/configuracion', label: 'Configuración' }
   return null

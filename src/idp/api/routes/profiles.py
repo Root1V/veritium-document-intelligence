@@ -5,14 +5,16 @@ GET  /v1/profiles/library                         what a profile can be built fr
 GET  /v1/profiles/{key}                            one profile and its versions (summary)
 GET  /v1/profiles/{key}/versions/{version}         one version, with its definition
 POST /v1/profiles                                  new profile (admin)
+PATCH /v1/profiles/{key}                           its name and description (admin)
 POST /v1/profiles/{key}/versions                   new draft version (admin)
+PUT  /v1/profiles/{key}/versions/{version}         a draft's new content, in place (admin)
 POST /v1/profiles/{key}/versions/{version}/publish draft -> published (admin)
 POST /v1/profiles/{key}/versions/{version}/retire  published -> retired (admin)
 
 A definition is validated twice on the way in: intrinsically by its Pydantic
 model (422) and against what it references — the pinned semantic catalog
 version, document types, roles, attributes and rule ids (400). Published
-versions are immutable. The web designer is F2 (VRT-37)."""
+versions are immutable; a draft is edited in place. The web designer is F2 (VRT-37)."""
 
 from __future__ import annotations
 
@@ -261,6 +263,20 @@ async def create_profile(
     return _profile(await repo.create_profile(key=body.key, name=body.name, description=body.description))
 
 
+class RenameProfileRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=256)
+    description: str | None = None
+
+
+@router.patch("/{key}", response_model=ProfileResponse)
+async def rename_profile(
+    key: str, body: RenameProfileRequest, session: AsyncSession = Depends(get_db_session), _: User = Depends(require_role("admin"))
+) -> ProfileResponse:
+    """How the process is called: not part of a version, so it changes without one."""
+    repo = ProcessProfileRepository(session)
+    return _profile(await repo.rename(await _profile_or_404(repo, key), name=body.name.strip(), description=(body.description or "").strip() or None))
+
+
 @router.post("/{key}/versions", response_model=ProfileVersionDetail, status_code=status.HTTP_201_CREATED)
 async def create_profile_draft(
     key: str,
@@ -271,7 +287,30 @@ async def create_profile_draft(
 ) -> ProfileVersionDetail:
     repo = ProcessProfileRepository(session)
     profile = await _profile_or_404(repo, key)
+    await _check_references(session, settings, definition)
+    return _detail(profile, await repo.create_draft(profile, definition, created_by=user.email))
 
+
+@router.put("/{key}/versions/{version}", response_model=ProfileVersionDetail)
+async def update_profile_draft(
+    key: str,
+    version: int,
+    definition: ProcessProfileDefinition,
+    session: AsyncSession = Depends(get_db_session),
+    settings: Settings = Depends(get_app_settings),
+    _: User = Depends(require_role("admin")),
+) -> ProfileVersionDetail:
+    """Saving a draft again keeps it one draft (VRT-87), instead of a new version per save."""
+    repo = ProcessProfileRepository(session)
+    profile = await _profile_or_404(repo, key)
+    row = await _version_or_404(repo, profile, version)
+    if row.status != "draft":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="una versión publicada no cambia; crea una versión nueva")
+    await _check_references(session, settings, definition)
+    return _detail(profile, await repo.update_draft(row, definition))
+
+
+async def _check_references(session: AsyncSession, settings: Settings, definition: ProcessProfileDefinition) -> None:
     catalog_row = await SemanticCatalogRepository(session).get_version(definition.semantic_catalog_version)
     if catalog_row is None or catalog_row.status != "published":
         raise HTTPException(
@@ -288,7 +327,6 @@ async def create_profile_draft(
     )
     if errors:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=errors)
-    return _detail(profile, await repo.create_draft(profile, definition, created_by=user.email))
 
 
 @router.post("/{key}/versions/{version}/publish", response_model=ProfileVersionDetail)

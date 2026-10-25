@@ -50,6 +50,7 @@ from idp.persistence.models import (
     ReferenceEmployee,
     ReviewItem,
     SemanticCatalogVersion,
+    Simulation,
     Tenant,
     User,
     ValidationIssue,
@@ -1058,6 +1059,22 @@ class ProcessProfileRepository:
 
     async def get_version(self, profile: ProcessProfile, version: int) -> ProcessProfileVersion | None:
         return next((v for v in profile.versions if v.version == version), None)
+
+    async def rename(self, profile: ProcessProfile, *, name: str, description: str | None) -> ProcessProfile:
+        profile.name, profile.description = name, description
+        await self._session.commit()
+        return await self.get_by_key(profile.key)  # type: ignore[return-value]
+
+    async def update_draft(self, row: ProcessProfileVersion, definition: ProcessProfileDefinition) -> ProcessProfileVersion:
+        """A draft is edited in place (VRT-87); its what-if runs described the
+        old content, so they go — as they would with the draft itself."""
+        await self._session.execute(delete(Simulation).where(Simulation.profile_version_id == row.id))
+        row.definition = definition.model_dump(mode="json")
+        row.content_hash = definition.content_hash()
+        row.semantic_catalog_version = definition.semantic_catalog_version
+        await self._session.commit()
+        await self._session.refresh(row)
+        return row
 
     @staticmethod
     def latest_published(profile: ProcessProfile) -> ProcessProfileVersion | None:

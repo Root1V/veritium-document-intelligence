@@ -480,9 +480,23 @@ export function useProfileLibrary(catalogVersion: number | undefined) {
 export function useSaveProfileVersion() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async (input: { key: string; isNew: boolean; name?: string; description?: string; definition: ProcessProfileDefinition }) => {
-      if (input.isNew) await apiClient.post('/v1/profiles', { key: input.key, name: input.name, description: input.description || null })
-      const { data } = await apiClient.post<ProfileVersionDetail>(`/v1/profiles/${input.key}/versions`, input.definition)
+    mutationFn: async (input: {
+      key: string
+      isNew: boolean
+      /** An existing process whose name or description changed: no new version for that (VRT-87). */
+      renamed?: boolean
+      name?: string
+      description?: string
+      /** The draft being edited: saved in place instead of as a new version. */
+      draft?: number
+      definition: ProcessProfileDefinition
+    }) => {
+      const naming = { name: input.name, description: input.description || null }
+      if (input.isNew) await apiClient.post('/v1/profiles', { key: input.key, ...naming })
+      else if (input.renamed) await apiClient.patch(`/v1/profiles/${input.key}`, naming)
+      const { data } = input.draft
+        ? await apiClient.put<ProfileVersionDetail>(`/v1/profiles/${input.key}/versions/${input.draft}`, input.definition)
+        : await apiClient.post<ProfileVersionDetail>(`/v1/profiles/${input.key}/versions`, input.definition)
       return data
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['profiles'] }),
