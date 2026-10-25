@@ -14,7 +14,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { errorDetail } from '@/lib/apiErrors'
 import { canExecute, isAISpecialist } from '@/lib/auth'
 import { DeleteButton } from '@/components/DeleteButton'
-import { percent } from '@/lib/evaluation'
+import { percent, runLabel } from '@/lib/evaluation'
 import { downloadFile, useCreateEvalSuite, useCreateGoldenSet, useDocumentTypeCatalog, useEvalSuites } from '@/lib/queries'
 
 function FromTable() {
@@ -28,7 +28,7 @@ function FromTable() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Desde una tabla</CardTitle>
+        <CardTitle>Nuevo conjunto desde una tabla</CardTitle>
         <CardDescription>
           CSV o Excel con las columnas <code>archivo</code>, <code>tipo</code>, <code>paginas</code> (opcional, p. ej. 1-2) y una columna por campo con el
           valor esperado. Una celda vacía no se evalúa. La plantilla trae una fila de ejemplo: reemplázala con tus documentos. Sube también los documentos que nombra la tabla.
@@ -57,7 +57,7 @@ function FromTable() {
             <Download className="size-3.5" /> Descargar plantilla
           </Button>
         </div>
-        <Input placeholder="Nombre de la suite" value={name} onChange={(e) => setName(e.target.value)} className="max-w-md" />
+        <Input placeholder="Nombre del conjunto" value={name} onChange={(e) => setName(e.target.value)} className="max-w-md" />
         <label className="flex flex-col gap-1">
           <span className="text-xs text-muted-foreground">Tabla (.csv o .xlsx)</span>
           <Input type="file" accept=".csv,.xlsx" onChange={(e) => setTable(e.target.files?.[0] ?? null)} className="max-w-md" />
@@ -73,11 +73,11 @@ function FromTable() {
               table &&
               create.mutate(
                 { name: name.trim(), description: '', table, files },
-                { onSuccess: (s) => toast.success(`Suite creada con ${s.case_count} casos.`), onError: (e) => toast.error(errorDetail(e)) },
+                { onSuccess: (s) => toast.success(`Conjunto creado con ${s.case_count} documentos.`), onError: (e) => toast.error(errorDetail(e)) },
               )
             }
           >
-            {create.isPending && <Loader2 className="size-4 animate-spin" />} Crear suite
+            {create.isPending && <Loader2 className="size-4 animate-spin" />} Crear conjunto
           </Button>
         </div>
       </CardContent>
@@ -91,23 +91,23 @@ function FromCorrections() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Golden set desde las correcciones</CardTitle>
+        <CardTitle>Nuevo conjunto desde las correcciones</CardTitle>
         <CardDescription>
-          Cada documento que un revisor corrigió, con el tipo y los valores que dejó. Mide justo donde el modelo se equivocó antes.
+          Cada documento que un revisor corrigió, con el tipo y los valores que dejó. Mide justo donde la lectura se equivocó antes.
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-wrap items-center gap-2">
-        <Input placeholder="Nombre del golden set" value={name} onChange={(e) => setName(e.target.value)} className="max-w-md" />
+        <Input placeholder="Nombre del conjunto" value={name} onChange={(e) => setName(e.target.value)} className="max-w-md" />
         <Button
           disabled={name.trim().length < 3 || create.isPending}
           onClick={() =>
             create.mutate(
               { name: name.trim() },
-              { onSuccess: (s) => toast.success(`Golden set con ${s.case_count} documentos.`), onError: (e) => toast.error(errorDetail(e)) },
+              { onSuccess: (s) => toast.success(`Conjunto creado con ${s.case_count} documentos.`), onError: (e) => toast.error(errorDetail(e)) },
             )
           }
         >
-          {create.isPending && <Loader2 className="size-4 animate-spin" />} Crear golden set
+          {create.isPending && <Loader2 className="size-4 animate-spin" />} Crear conjunto
         </Button>
       </CardContent>
     </Card>
@@ -122,8 +122,8 @@ export function EvaluationPage() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Evaluación</h1>
         <p className="text-muted-foreground">
-          Suites de documentos con su respuesta correcta. Correrlas mide los modelos, prompts y tipos documentales actuales, y compara cada corrida con la
-          anterior antes de publicar un cambio.
+          Conjuntos de documentos cuya respuesta correcta ya se conoce. Correrlos mide cuánto acierta la lectura hoy y la compara con la vez anterior,
+          antes de publicar un cambio.
         </p>
       </div>
 
@@ -133,12 +133,12 @@ export function EvaluationPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Suite</TableHead>
+              <TableHead>Conjunto de prueba</TableHead>
               <TableHead>Origen</TableHead>
-              <TableHead>Casos</TableHead>
+              <TableHead>Documentos</TableHead>
               <TableHead>Última corrida</TableHead>
-              <TableHead>Clasificación</TableHead>
-              <TableHead>Campos</TableHead>
+              <TableHead>Tipo acertado</TableHead>
+              <TableHead>Datos acertados</TableHead>
               <TableHead className="w-10" />
             </TableRow>
           </TableHeader>
@@ -146,7 +146,7 @@ export function EvaluationPage() {
             {(suites ?? []).length === 0 && (
               <TableRow>
                 <TableCell colSpan={7} className="text-sm text-muted-foreground">
-                  Todavía no hay suites.
+                  Todavía no hay conjuntos de prueba.
                 </TableCell>
               </TableRow>
             )}
@@ -159,10 +159,10 @@ export function EvaluationPage() {
                   {s.description && <div className="text-xs text-muted-foreground">{s.description}</div>}
                 </TableCell>
                 <TableCell>
-                  <Badge variant="outline">{s.source === 'corrections' ? 'correcciones' : 'tabla'}</Badge>
+                  <Badge variant="outline">{s.source === 'corrections' ? 'Correcciones' : 'Tabla'}</Badge>
                 </TableCell>
                 <TableCell>{s.case_count}</TableCell>
-                <TableCell className="text-sm">{s.latest_run ? `${s.latest_run.status} · ${new Date(s.latest_run.created_at).toLocaleString()}` : '—'}</TableCell>
+                <TableCell className="text-sm">{s.latest_run ? runLabel(s.latest_run) : 'Sin correr'}</TableCell>
                 <TableCell>{percent(s.latest_run?.metrics?.classification)}</TableCell>
                 <TableCell>{percent(s.latest_run?.metrics?.fields)}</TableCell>
                 <TableCell>
@@ -170,8 +170,8 @@ export function EvaluationPage() {
                     <DeleteButton
                       iconOnly
                       path={`/v1/eval-suites/${s.id}`}
-                      label="Eliminar suite"
-                      question={`Se eliminará para siempre la suite «${s.name}» con sus corridas y sus archivos.`}
+                      label="Eliminar conjunto"
+                      question={`Se eliminará para siempre el conjunto «${s.name}» con sus corridas y sus archivos.`}
                     />
                   )}
                 </TableCell>

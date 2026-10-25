@@ -11,7 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { errorDetail } from '@/lib/apiErrors'
 import { canExecute, isAISpecialist } from '@/lib/auth'
-import { configChanges, percent, show } from '@/lib/evaluation'
+import { configChanges, percent, runLabel, show } from '@/lib/evaluation'
 import { humanizeFieldName } from '@/lib/extraction'
 import { useDocumentTypeCatalog, useEvalRun, useEvalSuite, usePrompts, useRunEvalSuite } from '@/lib/queries'
 import type { EvalChange, EvalRunDetail, EvalRunSummary } from '@/types/api'
@@ -52,7 +52,7 @@ function RunView({ runId, baseline }: { runId: string; baseline: EvalRunSummary 
   if (run.status === 'pending' || run.status === 'running')
     return (
       <span className="flex items-center gap-2 text-sm text-muted-foreground">
-        <Loader2 className="size-4 animate-spin" /> Corriendo: {run.results.length} de {run.case_count} casos.
+        <Loader2 className="size-4 animate-spin" /> Corriendo: {run.results.length} de {run.case_count} documentos.
       </span>
     )
   const m = run.metrics
@@ -79,7 +79,7 @@ function RunView({ runId, baseline }: { runId: string; baseline: EvalRunSummary 
       {run.comparison && baseline && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Frente a la corrida del {new Date(baseline.created_at).toLocaleString()}</CardTitle>
+            <CardTitle className="text-base">Frente a la corrida del {new Date(baseline.created_at).toLocaleString('es-PE', { dateStyle: 'medium', timeStyle: 'short' })}</CardTitle>
             <CardDescription>
               Campos {percent(baseline.metrics?.fields)} → {percent(m?.fields)} · clasificación {percent(baseline.metrics?.classification)} →{' '}
               {percent(m?.classification)}
@@ -189,7 +189,7 @@ export function EvaluationSuitePage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">{suite.name}</h1>
           <p className="text-sm text-muted-foreground">
-            {suite.description ?? ''} {suite.case_count} casos · {suite.source === 'corrections' ? 'desde correcciones' : 'desde tabla'} · creada por{' '}
+            {suite.description ?? ''} {suite.case_count} documentos · {suite.source === 'corrections' ? 'desde las correcciones' : 'desde una tabla'} · creado por{' '}
             {suite.created_by}
           </p>
         </div>
@@ -243,7 +243,7 @@ export function EvaluationSuitePage() {
         <div className="flex flex-wrap gap-2">
           {runs.map((r) => (
             <Button key={r.id} size="sm" variant={r.id === current?.id ? 'default' : 'outline'} onClick={() => setSelected(r.id)}>
-              {new Date(r.created_at).toLocaleString()} · {r.status === 'completed' ? percent(r.metrics?.fields) : r.status}
+              {runLabel(r)}{r.status === 'completed' && ` · ${percent(r.metrics?.fields)}`}
               {r.provenance?.semantic_grounding && ' · con significado'}
               {r.provenance?.self_check && ' · con autovalidación'}
               {r.options?.prompt_drafts?.length ? ' · con borrador' : ''}

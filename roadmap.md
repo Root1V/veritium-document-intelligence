@@ -129,3 +129,4 @@ Estados: `done` · `todo` · `blocked` (espera a otro equipo) · `superseded` (a
 | VRT-80 | Editor de procesos en tres pasos | done | Datos del proceso, qué documentos exige y qué comprueba, con nombres de negocio y lo técnico plegado. |
 | VRT-81 | Catálogo de datos y tipos de documento en palabras | done | Cada dato y mapeo por su nombre; tipos, comparaciones y clase de dato personal en español. |
 | VRT-82 | Datos de documentos sin tipo, nombrados en español | done | El modelo nombra cada dato como lo leería una persona, sin datos de nadie en el nombre. |
+| VRT-83 | Nuevo expediente por proceso y reportes en palabras | todo | Subir elige el proceso y pide solo sus datos; observaciones, auditoría y evaluación sin jerga. |

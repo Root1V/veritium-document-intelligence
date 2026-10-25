@@ -17,7 +17,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from idp.api.deps import get_current_user, get_db_session, get_principal
 from idp.api.disclosure import CaseMaskers
 from idp.auth.authenticate import Principal
-from idp.persistence.repositories import ValidationRepository
+from idp.api.routes.review import field_label
+from idp.persistence.repositories import DocumentTypeRepository, SemanticCatalogRepository, ValidationRepository
 
 router = APIRouter(prefix="/validation", tags=["validation"], dependencies=[Depends(get_current_user)])
 
@@ -31,6 +32,7 @@ class ValidationIssueResponse(BaseModel):
     rule_id: str
     category: str
     field_path: str | None
+    field_label: str | None = None  # the field said for a person (review/labels.py)
     severity: str
     message: str
     confidence: float
@@ -59,6 +61,9 @@ async def list_validation_issues(
     rows = await repo.list(category=category, severity=severity, rule_id=rule_id, document_type=document_type, limit=limit, offset=offset)
     total = await repo.count(category=category, severity=severity, rule_id=rule_id, document_type=document_type)
     maskers = CaseMaskers(session, principal)  # findings quote the case's data (VRT-58)
+    type_catalog = await DocumentTypeRepository(session).load_catalog()
+    loaded = await SemanticCatalogRepository(session).load_active()
+    semantic = loaded[0] if loaded is not None else None
     issues = []
     for row in rows:
         issue = ValidationIssueResponse(
@@ -70,6 +75,7 @@ async def list_validation_issues(
             rule_id=row.rule_id,
             category=row.category,
             field_path=row.field_path,
+            field_label=field_label(row.document, row.field_path, type_catalog, semantic).label if row.document and row.field_path else None,
             severity=row.severity,
             message=row.message,
             confidence=row.confidence,

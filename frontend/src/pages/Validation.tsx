@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { AlertCircle, AlertTriangle, ChevronLeft, ChevronRight, Info, Loader2 } from 'lucide-react'
 import { useDocumentTypeCatalog, useValidationLog } from '@/lib/queries'
+import { useTypeName } from '@/lib/labels'
 import { humanizeFieldName } from '@/lib/extraction'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
@@ -23,6 +24,7 @@ const CATEGORY_LABEL: Record<string, string> = {
 }
 
 const SEVERITY_OPTIONS = ['error', 'warning', 'info']
+const SEVERITY_LABEL: Record<string, string> = { error: 'Error', warning: 'Advertencia', info: 'Informativa' }
 const SEVERITY_ICON = { error: AlertCircle, warning: AlertTriangle, info: Info }
 const SEVERITY_CLASSES: Record<string, string> = {
   error: 'text-red-600 dark:text-red-400',
@@ -41,6 +43,7 @@ export function ValidationPage() {
   const [offset, setOffset] = useState(0)
 
   const { data: catalog } = useDocumentTypeCatalog()
+  const typeName = useTypeName()
   const { data, isLoading, isFetching, isError } = useValidationLog({
     category: category === ALL ? undefined : category,
     severity: severity === ALL ? undefined : severity,
@@ -65,18 +68,17 @@ export function ValidationPage() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Observaciones de validación</h1>
         <p className="text-muted-foreground">
-          Observaciones de validación de todos los documentos{isError ? '' : ` (${total} en total)`} — solo se listan las reglas que no
-          pasaron; una regla que pasa no queda registrada.
+          Lo que no se cumplió en cada documento{isError ? '' : ` (${total} en total)`}. Una comprobación que pasa no aparece aquí.
         </p>
       </div>
 
       <div className="flex flex-wrap gap-3">
         <Select value={category} onValueChange={resetAndSet(setCategory)}>
           <SelectTrigger className="w-56">
-            <SelectValue placeholder="Categoría" />
+            <SelectValue placeholder="Comprobación" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value={ALL}>Todas las categorías</SelectItem>
+            <SelectItem value={ALL}>Todas las comprobaciones</SelectItem>
             {CATEGORY_OPTIONS.map((c) => (
               <SelectItem key={c} value={c}>
                 {CATEGORY_LABEL[c] ?? c}
@@ -87,13 +89,13 @@ export function ValidationPage() {
 
         <Select value={severity} onValueChange={resetAndSet(setSeverity)}>
           <SelectTrigger className="w-44">
-            <SelectValue placeholder="Severidad" />
+            <SelectValue placeholder="Gravedad" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value={ALL}>Toda severidad</SelectItem>
+            <SelectItem value={ALL}>Toda gravedad</SelectItem>
             {SEVERITY_OPTIONS.map((s) => (
               <SelectItem key={s} value={s}>
-                {s}
+                {SEVERITY_LABEL[s]}
               </SelectItem>
             ))}
           </SelectContent>
@@ -105,10 +107,10 @@ export function ValidationPage() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value={ALL}>Todos los tipos</SelectItem>
-            <SelectItem value="generic">generic</SelectItem>
+            <SelectItem value="generic">Otro documento</SelectItem>
             {catalog?.registered.map((type) => (
               <SelectItem key={type.name} value={type.name}>
-                {type.name}
+                {type.display_name}
               </SelectItem>
             ))}
           </SelectContent>
@@ -132,10 +134,8 @@ export function ValidationPage() {
                   <TableRow>
                     <TableHead>Fecha</TableHead>
                     <TableHead>Documento</TableHead>
-                    <TableHead>Regla</TableHead>
-                    <TableHead>Categoría</TableHead>
-                    <TableHead>Campo</TableHead>
                     <TableHead>Observación</TableHead>
+                    <TableHead>Dato</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -152,28 +152,27 @@ export function ValidationPage() {
                           ) : (
                             <span className="text-xs text-muted-foreground">—</span>
                           )}
-                          {issue.document_type && (
-                            <Badge variant="outline" className="ml-2 text-[10px]">
-                              {issue.document_type}
-                            </Badge>
-                          )}
+                          {issue.document_type && <div className="text-xs text-muted-foreground">{typeName(issue.document_type)}</div>}
                         </TableCell>
-                        <TableCell className="font-mono text-xs">{issue.rule_id}</TableCell>
-                        <TableCell>
-                          <Badge variant="outline" className="text-[10px]">
-                            {CATEGORY_LABEL[issue.category] ?? issue.category}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-xs">{issue.field_path ? humanizeFieldName(issue.field_path) : '—'}</TableCell>
                         <TableCell>
                           <div className="flex items-start gap-2">
-                            <Icon className={`mt-0.5 size-4 shrink-0 ${SEVERITY_CLASSES[issue.severity]}`} />
-                            <div className="flex flex-col gap-0.5">
+                            <Icon className={`mt-0.5 size-4 shrink-0 ${SEVERITY_CLASSES[issue.severity]}`} aria-label={SEVERITY_LABEL[issue.severity]} />
+                            <div className="flex flex-col gap-1">
                               <span className="whitespace-pre-line text-xs font-medium">{issue.message}</span>
-                              <span className="text-xs text-muted-foreground">{issue.explanation}</span>
+                              <Badge variant="outline" className="w-fit text-[10px]">
+                                {CATEGORY_LABEL[issue.category] ?? issue.category}
+                              </Badge>
+                              <details className="text-xs text-muted-foreground">
+                                <summary className="cursor-pointer select-none">Detalle técnico</summary>
+                                <div className="mt-1 flex flex-col gap-0.5">
+                                  <code>{issue.rule_id}</code>
+                                  <span>{issue.explanation}</span>
+                                </div>
+                              </details>
                             </div>
                           </div>
                         </TableCell>
+                        <TableCell className="text-xs">{issue.field_label ?? (issue.field_path ? humanizeFieldName(issue.field_path) : '—')}</TableCell>
                       </TableRow>
                     )
                   })}

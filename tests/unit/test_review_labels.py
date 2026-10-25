@@ -64,3 +64,14 @@ def test_generic_field_without_payload_still_reads_as_a_field() -> None:
         payload=None,
     )
     assert label.label == "Campo 5"
+
+
+def test_a_finding_between_documents_names_each_attribute_and_whose_it_is() -> None:
+    label = describe_field(
+        "titular.persona.dni,titular.persona.nombre_completo",
+        document_type="payslip",
+        definition=PAYSLIP,
+        catalog=seed_catalog(),
+        payload=None,
+    )
+    assert label.label == "DNI del titular, Nombre completo del titular"

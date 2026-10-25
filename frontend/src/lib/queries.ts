@@ -16,7 +16,6 @@ import type {
   BulkJobSummary,
   AppUser,
   AuditLogResponse,
-  BatchCreateResponse,
   BatchStatusResponse,
   CreateUserRequest,
   DocumentDetailResponse,
@@ -204,15 +203,16 @@ export function useBatchLiveUpdates(batchId: string | undefined) {
   }, [batchId, queryClient])
 }
 
-export function useCreateBatch() {
+/** Opens a case under a process with its documents (POST /v1/cases). */
+export function useSubmitCase() {
   return useMutation({
-    mutationFn: async ({ files, requestInputPayload }: { files: File[]; requestInputPayload?: Record<string, unknown> }) => {
+    mutationFn: async ({ profile, files, externalRef, processData }: { profile: string; files: File[]; externalRef?: string; processData: Record<string, string> }) => {
       const form = new FormData()
+      form.append('profile', profile)
       for (const file of files) form.append('files', file)
-      if (requestInputPayload && Object.keys(requestInputPayload).length > 0) {
-        form.append('request_input_payload', JSON.stringify(requestInputPayload))
-      }
-      const { data } = await apiClient.post<BatchCreateResponse>('/batches', form)
+      if (externalRef) form.append('external_ref', externalRef)
+      if (Object.keys(processData).length > 0) form.append('process_data', JSON.stringify(processData))
+      const { data } = await apiClient.post<{ case_id: string }>('/v1/cases', form)
       return data
     },
   })

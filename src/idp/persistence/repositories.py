@@ -474,7 +474,7 @@ class ValidationRepository:
     ) -> list[ValidationIssue]:
         stmt = (
             select(ValidationIssue)
-            .options(selectinload(ValidationIssue.document))
+            .options(selectinload(ValidationIssue.document).selectinload(Document.extraction))
             .order_by(ValidationIssue.created_at.desc())
             .limit(limit)
             .offset(offset)
@@ -611,7 +611,7 @@ class ReviewRepository:
         # document_id/field_path off the parent ReviewItem for every row.
         stmt = (
             select(AuditLogEntry)
-            .options(selectinload(AuditLogEntry.review_item).selectinload(ReviewItem.document))
+            .options(selectinload(AuditLogEntry.review_item).selectinload(ReviewItem.document).selectinload(Document.extraction))
             .order_by(AuditLogEntry.timestamp.desc())
             .limit(limit)
             .offset(offset)

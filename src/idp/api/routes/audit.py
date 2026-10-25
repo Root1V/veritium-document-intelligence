@@ -20,7 +20,8 @@ from idp.api.deps import get_current_user, get_db_session, get_principal
 from idp.api.disclosure import CaseMaskers
 from idp.auth.authenticate import Principal
 from idp.domain.correction_reasons import REASONS_BY_CODE
-from idp.persistence.repositories import ReviewRepository
+from idp.api.routes.review import field_label
+from idp.persistence.repositories import DocumentTypeRepository, ReviewRepository, SemanticCatalogRepository
 
 router = APIRouter(prefix="/audit", tags=["audit"], dependencies=[Depends(get_current_user)])
 
@@ -28,7 +29,9 @@ router = APIRouter(prefix="/audit", tags=["audit"], dependencies=[Depends(get_cu
 class AuditEntryResponse(BaseModel):
     id: uuid.UUID
     document_id: uuid.UUID
+    document_filename: str | None = None
     field_path: str
+    field_label: str | None = None  # the field said for a person (review/labels.py)
     reviewer_identity: str
     original_value: dict
     corrected_value: dict
@@ -57,6 +60,9 @@ async def list_audit_log(
     rows = await repo.list_audit_entries(limit=limit, offset=offset)
     total = await repo.count_audit_entries()
     maskers = CaseMaskers(session, principal)
+    type_catalog = await DocumentTypeRepository(session).load_catalog()
+    loaded = await SemanticCatalogRepository(session).load_active()
+    semantic = loaded[0] if loaded is not None else None
     entries = []
     for row in rows:
         document, path = row.review_item.document, row.review_item.field_path
@@ -66,7 +72,9 @@ async def list_audit_log(
             AuditEntryResponse(
                 id=row.id,
                 document_id=row.review_item.document_id,
+                document_filename=document.original_filename,
                 field_path=row.review_item.field_path,
+                field_label=field_label(document, path, type_catalog, semantic).label,
                 reviewer_identity=row.reviewer_identity,
                 original_value=row.original_value,
                 corrected_value=row.corrected_value,
@@ -94,7 +102,7 @@ async def correction_summary(session: AsyncSession = Depends(get_db_session)) ->
     return [
         CorrectionSummaryRow(
             reason_code=code,
-            reason_label=REASONS_BY_CODE[code].label if code in REASONS_BY_CODE else "Sin motivo (anterior a VRT-39)",
+            reason_label=REASONS_BY_CODE[code].label if code in REASONS_BY_CODE else "Sin motivo registrado",
             document_type=document_type,
             count=count,
         )

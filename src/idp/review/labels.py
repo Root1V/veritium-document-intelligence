@@ -14,6 +14,8 @@ from idp.domain.document_type_catalog import GENERIC, DocumentTypeDefinition
 from idp.domain.semantic import SemanticCatalog
 
 _PATH = re.compile(r"^(?P<field>\w+)(?:\[(?P<index>\d+)\]\.(?P<sub>\w+))?$")
+# What a finding between documents points at: 'titular.persona.dni', comma-separated.
+_ATTRIBUTE_PATH = re.compile(r"^(?P<role>\w+)\.(?P<attribute>\w+\.\w+)$")
 
 
 class FieldLabel(BaseModel):
@@ -27,6 +29,13 @@ def _humanize(name: str) -> str:
     return name.replace("_", " ").strip().capitalize()
 
 
+def _attribute_label(path: str, catalog: SemanticCatalog) -> str:
+    match = _ATTRIBUTE_PATH.match(path)
+    attribute = next((a for a in catalog.attributes if match and a.key == match.group("attribute")), None)
+    role = next((r for r in catalog.roles if match and r.key == match.group("role")), None)
+    return f"{attribute.name} del {role.name.lower()}" if attribute and role else path
+
+
 def describe_field(
     field_path: str,
     *,
@@ -35,6 +44,9 @@ def describe_field(
     catalog: SemanticCatalog | None,
     payload: dict | None,
 ) -> FieldLabel:
+    paths = field_path.split(",")
+    if catalog is not None and all(_ATTRIBUTE_PATH.match(p) for p in paths):
+        return FieldLabel(label=", ".join(_attribute_label(p, catalog) for p in paths))
     match = _PATH.match(field_path)
     if match is None:
         return FieldLabel(label=field_path)

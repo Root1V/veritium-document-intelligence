@@ -30,6 +30,7 @@ export function useTypeName(): (key: string | null | undefined) => string {
   return useCallback(
     (key) => {
       if (!key) return 'Sin clasificar'
+      if (key === 'generic') return 'Otro documento'
       return data?.registered.find((t) => t.name === key)?.display_name ?? key
     },
     [data],

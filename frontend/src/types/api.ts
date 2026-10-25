@@ -52,10 +52,6 @@ export interface BatchStatusResponse {
   documents: DocumentSummary[]
 }
 
-export interface BatchCreateResponse {
-  batch_id: string
-}
-
 export interface ValidationIssue {
   rule_id: string
   category: string
@@ -199,7 +195,9 @@ export interface DocumentTypeCatalogResponse {
 export interface AuditEntry {
   id: string
   document_id: string
+  document_filename?: string | null
   field_path: string
+  field_label?: string | null
   reviewer_identity: string
   original_value: { value: unknown }
   corrected_value: { value: unknown }
@@ -226,6 +224,7 @@ export interface ValidationIssueEntry {
   rule_id: string
   category: string
   field_path: string | null
+  field_label?: string | null
   severity: 'info' | 'warning' | 'error'
   message: string
   confidence: number

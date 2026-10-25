@@ -85,7 +85,7 @@ function NewBulkJob() {
           <li>Comprime todas las carpetas en un solo ZIP.</li>
         </ol>
         <p className="text-muted-foreground">
-          Opcional: agrega en el ZIP un <strong>manifiesto</strong> (Excel o CSV) para indicar, por expediente, otro perfil o los datos del proceso.
+          Opcional: agrega en el ZIP un <strong>manifiesto</strong> (Excel o CSV) para indicar, por expediente, otro proceso o sus datos.
           {profile && (
             <Button
               variant="link"
@@ -99,10 +99,10 @@ function NewBulkJob() {
         </p>
         <div className="flex flex-wrap items-end gap-2">
           <label className="flex flex-col gap-1">
-            <span className="text-xs text-muted-foreground">Perfil de proceso</span>
+            <span className="text-xs text-muted-foreground">Proceso</span>
             <Select value={profile} onValueChange={setProfile}>
               <SelectTrigger className="w-64">
-                <SelectValue placeholder="Elige el perfil…" />
+                <SelectValue placeholder="Elige el proceso…" />
               </SelectTrigger>
               <SelectContent>
                 {published.map((p) => (
@@ -223,6 +223,7 @@ export function BulkJobsPage() {
 export function BulkJobDetailPage() {
   const { jobId } = useParams<{ jobId: string }>()
   const { data: job, isLoading } = useBulkJob(jobId)
+  const { data: profiles } = useProcessProfiles()
   const navigate = useNavigate()
   if (isLoading || !job) return <Loader2 className="size-6 animate-spin text-muted-foreground" />
 
@@ -261,7 +262,7 @@ export function BulkJobDetailPage() {
         <TableHeader>
           <TableRow>
             <TableHead>Expediente</TableHead>
-            <TableHead>Perfil</TableHead>
+            <TableHead>Proceso</TableHead>
             <TableHead>Avance</TableHead>
             <TableHead>Resultado</TableHead>
           </TableRow>
@@ -274,7 +275,7 @@ export function BulkJobDetailPage() {
                   {c.external_ref ?? c.id.slice(0, 8)}
                 </Link>
               </TableCell>
-              <TableCell className="text-sm">{c.profile ?? '—'}</TableCell>
+              <TableCell className="text-sm">{(c.profile && profiles?.find((p) => p.key === c.profile)?.name) ?? c.profile ?? '—'}</TableCell>
               <TableCell>
                 <div className="flex flex-col gap-1">
                   <span className="text-sm">{c.progress.status_label}</span>

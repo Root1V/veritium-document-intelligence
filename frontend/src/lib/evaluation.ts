@@ -6,6 +6,14 @@ export function percent(rate: EvalRate | null | undefined): string {
   return `${Math.round(rate.accuracy * 100)}% (${rate.correct}/${rate.evaluated})`
 }
 
+const RUN_STATUS: Record<string, string> = { pending: 'en cola', running: 'corriendo', completed: 'terminada', failed: 'falló' }
+
+/** A run as a person reads it: when, and how it went. */
+export function runLabel(run: { status: string; created_at: string }): string {
+  const when = new Date(run.created_at).toLocaleString('es-PE', { dateStyle: 'medium', timeStyle: 'short' })
+  return `${when} · ${RUN_STATUS[run.status] ?? run.status}`
+}
+
 export function show(value: unknown): string {
   if (value === null || value === undefined || value === '') return '—'
   return typeof value === 'object' ? JSON.stringify(value) : String(value)

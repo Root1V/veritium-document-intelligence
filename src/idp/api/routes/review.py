@@ -26,15 +26,15 @@ from idp.api.disclosure import CaseMaskers, can_reveal
 from idp.auth.authenticate import Principal
 from idp.config import Settings
 from idp.domain.correction_reasons import CORRECTION_REASONS, REASONS_BY_CODE, CorrectionReason, ReasonCode
-from idp.domain.document_type_catalog import DocumentTypeCatalog
+from idp.domain.document_type_catalog import DocumentTypeCatalog, DocumentTypeDefinition
 from idp.domain.reprocess import ReprocessScope
 from idp.domain.semantic import SemanticCatalog
-from idp.persistence.models import Investigation, ReviewItem, User
+from idp.persistence.models import Document, Investigation, ReviewItem, User
 from idp.persistence.repositories import CaseRepository, CaseRunRepository, DocumentRepository, DocumentTypeRepository, ReviewRepository, SemanticCatalogRepository
 from idp.pipeline.case_evaluation import refresh_verdict
 from idp.pipeline.orchestrator import extraction_schema
 from idp.review.corrections import apply_correction
-from idp.review.labels import describe_field
+from idp.review.labels import FieldLabel, describe_field
 
 router = APIRouter(prefix="/review", tags=["review"], dependencies=[Depends(get_current_user)])
 
@@ -149,20 +149,31 @@ async def _suggestions(session: AsyncSession, document_ids: list[uuid.UUID]) -> 
     return out
 
 
-def _describe(item: ReviewItem, type_catalog: DocumentTypeCatalog, semantic: SemanticCatalog | None) -> ReviewItemResponse:
-    document = item.document
+def _definition(document: Document, type_catalog: DocumentTypeCatalog) -> DocumentTypeDefinition | None:
     extraction = document.extraction
-    definition = None
-    if document.document_type is not None and extraction is not None:
-        version = 1 if extraction.schema_version == "1.0" else int(extraction.schema_version)
-        definition = type_catalog.definition(document.document_type, version)
-    field = describe_field(
-        item.field_path,
+    if document.document_type is None or extraction is None:
+        return None
+    version = 1 if extraction.schema_version == "1.0" else int(extraction.schema_version)
+    return type_catalog.definition(document.document_type, version)
+
+
+def field_label(document: Document, field_path: str, type_catalog: DocumentTypeCatalog, semantic: SemanticCatalog | None) -> FieldLabel:
+    """A document's field said for a person; needs its extraction loaded."""
+    extraction = document.extraction
+    return describe_field(
+        field_path,
         document_type=document.document_type,
-        definition=definition,
+        definition=_definition(document, type_catalog),
         catalog=semantic,
         payload=extraction.payload if extraction is not None else None,
     )
+
+
+def _describe(item: ReviewItem, type_catalog: DocumentTypeCatalog, semantic: SemanticCatalog | None) -> ReviewItemResponse:
+    document = item.document
+    extraction = document.extraction
+    definition = _definition(document, type_catalog)
+    field = field_label(document, item.field_path, type_catalog, semantic)
     leaf = _leaf(extraction.payload if extraction is not None else None, item.field_path)
     finding = next(
         (i.message for i in document.active_validation_issues if i.field_path == item.field_path and i.severity in ("warning", "error")),

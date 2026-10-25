@@ -133,9 +133,9 @@ export function CalibrationPage() {
       ) : !detail ? (
         <Card>
           <CardContent className="py-6 text-sm text-muted-foreground">
-            Todavía no hay mediciones. Para tener una, corre una{' '}
+            Todavía no hay mediciones. Para tener una, corre un{' '}
             <Link to="/evaluation" className="underline">
-              suite de evaluación
+              conjunto de prueba
             </Link>{' '}
             con documentos reales y luego pulsa «Actualizar medición».
           </CardContent>
@@ -149,9 +149,9 @@ export function CalibrationPage() {
               <CircleAlert className="mt-0.5 size-4 shrink-0 text-amber-600" />
               <span>
                 Hay pocos datos para sacar conclusiones firmes: <strong>{total} comprobaciones</strong> en total. Recomendamos al menos{' '}
-                {detail.min_observations} por dato. Para tener más, corre una{' '}
+                {detail.min_observations} por dato. Para tener más, corre un{' '}
                 <Link to="/evaluation" className="underline">
-                  suite de evaluación
+                  conjunto de prueba
                 </Link>{' '}
                 con 20 a 30 documentos reales de cada tipo.
               </span>

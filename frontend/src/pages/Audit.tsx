@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { Loader2 } from 'lucide-react'
-import { useAuditLog, useCorrectionSummary, useDataAccessLog, useDocumentTypeCatalog } from '@/lib/queries'
+import { useAuditLog, useCorrectionSummary, useDataAccessLog } from '@/lib/queries'
+import { useTypeName } from '@/lib/labels'
 import { isAdmin } from '@/lib/auth'
 import { humanizeFieldName, formatValue } from '@/lib/extraction'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -70,15 +71,14 @@ function DataAccessLog() {
 
 function CorrectionSummary() {
   const { data: rows } = useCorrectionSummary()
-  const { data: types } = useDocumentTypeCatalog()
+  const typeName = useTypeName()
   if (!rows || rows.length === 0) return null
-  const typeName = Object.fromEntries((types?.registered ?? []).map((t) => [t.name, t.display_name]))
   const byReason = new Map<string, { label: string; total: number; types: string[] }>()
   for (const r of rows) {
     const key = r.reason_code ?? '—'
     const entry = byReason.get(key) ?? { label: r.reason_label, total: 0, types: [] }
     entry.total += r.count
-    entry.types.push(`${r.document_type ? (typeName[r.document_type] ?? r.document_type) : 'sin tipo'} (${r.count})`)
+    entry.types.push(`${typeName(r.document_type)} (${r.count})`)
     byReason.set(key, entry)
   }
   const total = rows.reduce((n, r) => n + r.count, 0)
@@ -129,7 +129,7 @@ export function AuditPage() {
                 <TableRow>
                   <TableHead>Fecha</TableHead>
                   <TableHead>Documento</TableHead>
-                  <TableHead>Campo</TableHead>
+                  <TableHead>Dato</TableHead>
                   <TableHead>Valor original</TableHead>
                   <TableHead>Valor corregido</TableHead>
                   <TableHead>Motivo</TableHead>
@@ -144,10 +144,10 @@ export function AuditPage() {
                     </TableCell>
                     <TableCell>
                       <Link to={`/documents/${entry.document_id}`} className="text-primary hover:underline">
-                        Ver documento
+                        {entry.document_filename ?? 'Ver documento'}
                       </Link>
                     </TableCell>
-                    <TableCell className="text-xs">{humanizeFieldName(entry.field_path)}</TableCell>
+                    <TableCell className="text-xs">{entry.field_label ?? humanizeFieldName(entry.field_path)}</TableCell>
                     <TableCell className="text-xs text-muted-foreground line-through decoration-red-400">
                       {formatValue(entry.original_value.value)}
                     </TableCell>

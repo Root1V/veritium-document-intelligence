@@ -11,7 +11,7 @@ function formatBytes(bytes: number): string {
 
 export function Dropzone({ files, onChange }: { files: File[]; onChange: (files: File[]) => void }) {
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    accept: { 'application/pdf': ['.pdf'] },
+    accept: { 'application/pdf': ['.pdf'], 'image/*': ['.png', '.jpg', '.jpeg', '.tif', '.tiff', '.webp'] },
     multiple: true,
     onDrop: (accepted) => onChange([...files, ...accepted]),
   })
@@ -27,7 +27,7 @@ export function Dropzone({ files, onChange }: { files: File[]; onChange: (files:
       >
         <input {...getInputProps()} />
         <UploadCloud className="size-8 text-muted-foreground" />
-        <p className="text-sm font-medium">Arrastra los documentos PDF aquí, o haz click para elegirlos</p>
+        <p className="text-sm font-medium">Arrastra los documentos aquí, o haz clic para elegirlos</p>
         <p className="text-xs text-muted-foreground">Puedes subir varios archivos a la vez</p>
       </div>
 
