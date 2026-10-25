@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Link, NavLink, useLocation } from 'react-router-dom'
 import { ChevronLeft } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -32,15 +32,44 @@ function SectionTabs({ pathname }: { pathname: string }) {
   )
 }
 
+// The menu folded to its icons is a per-person convenience, remembered in the browser.
+const COLLAPSED_KEY = 'idp_menu_collapsed'
+
+function storedCollapsed(): boolean {
+  try {
+    return localStorage.getItem(COLLAPSED_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
 export function AppShell({ children }: { children: ReactNode }) {
   const { pathname } = useLocation()
   const hub = hubOf(pathname)
-  // The assistant docks beside the page on wide screens instead of covering it.
+  const [collapsed, setCollapsed] = useState(storedCollapsed)
+  // The assistant docks beside the page only while the page keeps the ~1040px
+  // its widest layouts (xl) assume; on narrower screens it goes over the page,
+  // which then keeps its own layout instead of squeezing.
   const { open: assistantOpen } = useAssistant()
+
+  function toggle() {
+    setCollapsed(!collapsed)
+    try {
+      localStorage.setItem(COLLAPSED_KEY, collapsed ? '0' : '1')
+    } catch {
+      // without storage it is just not remembered
+    }
+  }
+
   return (
     <div className="flex min-h-svh w-full bg-background">
-      <Sidebar />
-      <div className={cn('flex min-w-0 flex-1 flex-col transition-[margin]', assistantOpen && 'lg:mr-[420px]')}>
+      <Sidebar collapsed={collapsed} onToggle={toggle} />
+      <div
+        className={cn(
+          'flex min-w-0 flex-1 flex-col transition-[margin]',
+          assistantOpen && (collapsed ? 'min-[1524px]:mr-[420px]' : 'min-[1700px]:mr-[420px]'),
+        )}
+      >
         <TopBar />
         <main className="flex-1 overflow-x-hidden px-8 py-6">
           {hub && (

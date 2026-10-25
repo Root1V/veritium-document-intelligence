@@ -130,4 +130,4 @@ Estados: `done` · `todo` · `blocked` (espera a otro equipo) · `superseded` (a
 | VRT-81 | Catálogo de datos y tipos de documento en palabras | done | Cada dato y mapeo por su nombre; tipos, comparaciones y clase de dato personal en español. |
 | VRT-82 | Datos de documentos sin tipo, nombrados en español | done | El modelo nombra cada dato como lo leería una persona, sin datos de nadie en el nombre. |
 | VRT-83 | Nuevo expediente por proceso y reportes en palabras | done | Subir elige el proceso y pide solo sus datos; observaciones, auditoría y evaluación sin jerga. |
-| VRT-84 | Asistente flotante y herramientas de IA en palabras | todo | El asistente acompaña en todas las páginas; herramientas, instrucciones y pruebas sin jerga. |
+| VRT-84 | Asistente flotante, menú plegable y herramientas de IA en palabras | todo | El asistente acompaña en todas las páginas; el menú se pliega a iconos; IA sin jerga. |

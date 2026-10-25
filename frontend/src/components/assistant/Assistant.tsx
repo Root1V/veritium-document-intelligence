@@ -166,7 +166,7 @@ function Panel({
   return (
     <aside
       aria-label="Asistente"
-      className="fixed inset-0 z-50 flex flex-col bg-background duration-200 animate-in slide-in-from-right sm:left-auto sm:w-[420px] sm:border-l sm:shadow-2xl lg:shadow-none"
+      className="fixed inset-0 z-50 flex flex-col bg-background duration-200 animate-in slide-in-from-right sm:left-auto sm:w-[420px] sm:border-l sm:shadow-2xl"
     >
       <header className="flex items-start gap-3 border-b px-4 py-3">
         <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
