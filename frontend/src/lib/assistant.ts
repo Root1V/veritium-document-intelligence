@@ -1,6 +1,6 @@
 import { createContext, useContext } from 'react'
 
-export const AssistantContext = createContext<{ openFor: (caseId: string) => void }>({ openFor: () => {} })
+export const AssistantContext = createContext<{ open: boolean; openFor: (caseId: string) => void }>({ open: false, openFor: () => {} })
 
-/** Opens the floating assistant on a case, from that case's page. */
+/** The floating assistant: whether its panel is open, and opening it on a case from that case's page. */
 export const useAssistant = () => useContext(AssistantContext)

@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils'
 import { Sidebar } from '@/components/layout/Sidebar'
 import { TopBar } from '@/components/layout/TopBar'
 import { TABS, hubOf } from '@/components/layout/navigation'
+import { useAssistant } from '@/lib/assistant'
 
 /** The lists of a section, side by side (VRT-73): only on the lists themselves, not on a record. */
 function SectionTabs({ pathname }: { pathname: string }) {
@@ -34,10 +35,12 @@ function SectionTabs({ pathname }: { pathname: string }) {
 export function AppShell({ children }: { children: ReactNode }) {
   const { pathname } = useLocation()
   const hub = hubOf(pathname)
+  // The assistant docks beside the page on wide screens instead of covering it.
+  const { open: assistantOpen } = useAssistant()
   return (
     <div className="flex min-h-svh w-full bg-background">
       <Sidebar />
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className={cn('flex min-w-0 flex-1 flex-col transition-[margin]', assistantOpen && 'lg:mr-[420px]')}>
         <TopBar />
         <main className="flex-1 overflow-x-hidden px-8 py-6">
           {hub && (
