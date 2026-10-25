@@ -134,5 +134,5 @@ Estados: `done` · `todo` · `blocked` (espera a otro equipo) · `superseded` (a
 | VRT-85 | Modo claro, oscuro o como el sistema | done | Cada persona elige la apariencia desde su menú, para trabajar de noche. |
 | VRT-86 | Primeros pasos con avance real | done | Cada paso se comprueba solo, muestra el avance y lleva al siguiente. |
 | VRT-87 | Procesos en palabras y un solo borrador | done | Tarjetas por proceso; editor con vista previa de cómo decide y borrador que se guarda en su sitio. |
-| VRT-88 | Tipos de documento en palabras | todo | Cada dato con su nombre en español, formato y significado; registrar un tipo en tres pasos. |
+| VRT-88 | Tipos de documento en palabras | done | Cada dato con su nombre en español, formato y significado; registrar un tipo en tres pasos. |
 | VRT-89 | Catálogo de datos en palabras | todo | Cada dato con su significado, privacidad y documentos que lo traen; se edita con un clic y un solo borrador. |
