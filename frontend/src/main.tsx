@@ -6,6 +6,7 @@ import './index.css'
 import './lib/pdfWorker'
 import App from './App.tsx'
 import { Toaster } from '@/components/ui/sonner'
+import { AssistantProvider } from '@/components/assistant/Assistant'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -20,7 +21,9 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
-        <App />
+        <AssistantProvider>
+          <App />
+        </AssistantProvider>
         <Toaster />
       </BrowserRouter>
     </QueryClientProvider>

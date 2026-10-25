@@ -171,7 +171,7 @@ function NewTest({ onStarted }: { onStarted: (id: string) => void }) {
   )
 }
 
-function Result({ id, onDeleted }: { id: string; onDeleted: () => void }) {
+function Result({ id, onDeleted, processName }: { id: string; onDeleted: () => void; processName: (key: string) => string }) {
   const { data: s } = useSimulation(id)
   const stop = useStopSimulation()
   const [showSame, setShowSame] = useState(false)
@@ -187,7 +187,7 @@ function Result({ id, onDeleted }: { id: string; onDeleted: () => void }) {
     <Card>
       <CardHeader>
         <CardTitle className="flex flex-wrap items-center gap-2">
-          {s.profile_key} · versión {s.profile_version}
+          {processName(s.profile_key)} · versión {s.profile_version}
           <Badge variant="outline">{s.kind === 'shadow' ? 'en sombra' : 'con expedientes pasados'}</Badge>
           {s.status === 'running' && s.kind === 'shadow' && <Badge>activa</Badge>}
           {s.status === 'stopped' && <Badge variant="outline">detenida</Badge>}
@@ -310,6 +310,8 @@ function Result({ id, onDeleted }: { id: string; onDeleted: () => void }) {
 
 export function SimulationsPage() {
   const { data: simulations, isLoading } = useSimulations()
+  const { data: profiles } = useProcessProfiles()
+  const processName = (key: string) => profiles?.find((p) => p.key === key)?.name ?? key
   const [picked, setPicked] = useState<string | undefined>()
   const shown = picked ?? simulations?.[0]?.id
   const others = useMemo(() => (simulations ?? []).slice(0, 12), [simulations])
@@ -335,11 +337,11 @@ export function SimulationsPage() {
           <div className="flex flex-wrap gap-2">
             {others.map((s) => (
               <Button key={s.id} size="sm" variant={s.id === shown ? 'secondary' : 'ghost'} onClick={() => setPicked(s.id)}>
-                {s.profile_key} v{s.profile_version} · {s.kind === 'shadow' ? 'sombra' : 'pasados'} · {date(s.created_at)}
+                {processName(s.profile_key)} v{s.profile_version} · {s.kind === 'shadow' ? 'sombra' : 'pasados'} · {date(s.created_at)}
               </Button>
             ))}
           </div>
-          {shown && <Result id={shown} onDeleted={() => setPicked(undefined)} />}
+          {shown && <Result id={shown} onDeleted={() => setPicked(undefined)} processName={processName} />}
         </>
       )}
     </div>

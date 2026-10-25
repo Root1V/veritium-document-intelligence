@@ -7,6 +7,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Bot, CheckCircle2, ChevronLeft, CircleAlert, CircleX, Download, Loader2, MessageSquareText, MoreHorizontal, RefreshCw, Search, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
+import { useAssistant } from '@/lib/assistant'
 import { InvestigationPanel } from '@/components/cases/InvestigationPanel'
 import { LensesCard } from '@/components/cases/LensesCard'
 import { ProgressFunnel } from '@/components/cases/ProgressFunnel'
@@ -235,6 +236,7 @@ function CaseHeader({ result, statusLabel, busy, onDeleted }: { result: CaseResu
   const processName = result.case.profile ? (profiles?.find((p) => p.key === result.case.profile?.key)?.name ?? result.case.profile.key) : 'Sin proceso'
   const remove = useDeleteAction({ path: `/v1/cases/${result.case.id}`, question: DELETE_CASE, askReason: true, onDone: onDeleted })
   const caseId = result.case.id
+  const assistant = useAssistant()
   const arrived = new Date(result.case.created_at).toLocaleString('es', { dateStyle: 'medium', timeStyle: 'short' })
   return (
     <div className="flex flex-col gap-2">
@@ -249,10 +251,8 @@ function CaseHeader({ result, statusLabel, busy, onDeleted }: { result: CaseResu
             {statusLabel && ` · ${statusLabel}`}
           </span>
         </div>
-        <Button asChild variant="outline" size="sm">
-          <Link to={`/asistente?case=${caseId}`}>
-            <Bot className="size-4" /> Preguntar al asistente
-          </Link>
+        <Button variant="outline" size="sm" onClick={() => assistant.openFor(caseId)}>
+          <Bot className="size-4" /> Preguntar al asistente
         </Button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

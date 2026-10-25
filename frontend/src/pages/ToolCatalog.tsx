@@ -30,7 +30,7 @@ const ROLE: Record<string, string> = {
 }
 const FILTERS = [
   { key: 'all', label: 'Todas' },
-  { key: 'mcp', label: 'Expuestas por MCP' },
+  { key: 'mcp', label: 'Para otros sistemas' },
   { key: 'internal', label: 'Internas' },
 ] as const
 
@@ -56,14 +56,14 @@ export function ToolCatalogPage() {
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Catálogo de tools</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Herramientas para agentes</h1>
           <p className="text-muted-foreground">
             Las herramientas que usan los agentes de Veritium y las que ofrece a otros sistemas. Cada una se define una sola vez: qué hace, si usa un
             modelo, cuánto cuesta y quién la puede usar.
           </p>
         </div>
-        <Button variant="outline" onClick={downloadDescriptors}>
-          <Download className="size-4" /> Descriptores MCP
+        <Button variant="outline" onClick={downloadDescriptors} title="Descriptores MCP, para conectar otro agente o sistema">
+          <Download className="size-4" /> Ficha técnica
         </Button>
       </div>
 
@@ -71,7 +71,7 @@ export function ToolCatalogPage() {
         <CardHeader>
           <CardTitle>Criterio</CardTitle>
           <CardDescription>
-            Se expone por MCP solo lo que otro agente o sistema necesita como operación de negocio. Los pasos internos (clasificar, extraer, leer
+            Se ofrece a otros sistemas (por MCP) solo lo que otro agente o sistema necesita como operación de negocio. Los pasos internos (clasificar, extraer, leer
             regiones de un documento) quedan dentro, para que nadie se salte el perfil del proceso ni el veredicto.
           </CardDescription>
         </CardHeader>
@@ -94,7 +94,7 @@ export function ToolCatalogPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Tool</TableHead>
+                  <TableHead>Herramienta</TableHead>
                   <TableHead>Ficha</TableHead>
                 </TableRow>
               </TableHeader>
@@ -109,10 +109,10 @@ export function ToolCatalogPage() {
                     <TableCell className="w-64 whitespace-normal">
                       <div className="flex flex-col items-start gap-1.5 text-sm">
                         <Badge variant={t.exposure === 'mcp' ? 'secondary' : 'outline'}>
-                          {t.exposure === 'mcp' ? 'Expuesta por MCP' : 'Interna'}
+                          {t.exposure === 'mcp' ? 'Para otros sistemas' : 'Interna'}
                         </Badge>
                         <span>
-                          {t.kind === 'model' ? 'Usa un modelo' : 'Determinista'} · {t.read_only ? 'solo lee' : 'crea o cambia algo'}
+                          {t.kind === 'model' ? 'Usa un modelo' : 'Sin modelo'} · {t.read_only ? 'solo lee' : 'crea o cambia algo'}
                         </span>
                         <span className="flex items-center gap-1.5">
                           <span className={cn('size-2 shrink-0 rounded-full', COST[t.cost].dot)} />

@@ -5,7 +5,6 @@ import type { LucideIcon } from 'lucide-react'
 import {
   BarChart3,
   BookOpen,
-  Bot,
   Building2,
   ClipboardCheck,
   Compass,
@@ -57,7 +56,6 @@ export const GROUPS: { label: string | null; sections: Section[] }[] = [
       { to: '/', label: 'Inicio', icon: House, match: [], end: true, show: () => true },
       { to: '/cases', label: 'Expedientes', icon: FolderOpen, match: ['/cases', '/documents', '/bulk', '/batches', '/upload'], show: () => true },
       { to: '/review', label: 'Revisar', icon: ClipboardCheck, match: ['/review', '/type-suggestions'], show: () => true },
-      { to: '/asistente', label: 'Asistente', icon: Bot, match: ['/asistente'], show: () => true },
     ],
   },
   {
@@ -116,7 +114,7 @@ export const SETTINGS: { label: string; pages: Page[] }[] = [
     label: 'Inteligencia artificial',
     pages: [
       { to: '/prompts', label: 'Instrucciones al modelo', description: 'Lo que se le pide al modelo en cada tarea, con sus versiones.', icon: MessageSquareText, show: () => canEditPrompts() || isAdmin() },
-      { to: '/tools', label: 'Catálogo de tools', description: 'Las capacidades que los agentes y sistemas pueden usar.', icon: Wrench },
+      { to: '/tools', label: 'Herramientas para agentes', description: 'Lo que los agentes de Veritium y otros sistemas pueden usar.', icon: Wrench },
     ],
   },
   {

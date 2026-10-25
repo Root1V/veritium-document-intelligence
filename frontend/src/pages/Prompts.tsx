@@ -15,7 +15,7 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { errorDetail } from '@/lib/apiErrors'
 import { canEditPrompts } from '@/lib/auth'
-import { percent } from '@/lib/evaluation'
+import { percent, runLabel } from '@/lib/evaluation'
 import { cn } from '@/lib/utils'
 import { diffLines } from '@/lib/textDiff'
 import {
@@ -40,8 +40,8 @@ const FILLED: Record<string, string> = {
   grounding: 'el significado de negocio de los campos, si está activado',
   types: 'los tipos de documento registrados',
   known_types: 'los tipos de documento registrados',
-  attributes: 'los atributos del catálogo semántico',
-  roles: 'los roles del catálogo semántico',
+  attributes: 'los datos del catálogo de datos',
+  roles: 'las personas del expediente (titular, cónyuge…)',
   area: 'el área (Riesgos o Legal)',
   instructions: 'el enfoque que definió el área',
   playbook: 'los puntos del playbook de Legal',
@@ -160,7 +160,7 @@ function DraftPanel({ prompt }: { prompt: PromptView }) {
               <Link to="/evaluation" className="underline">
                 Evaluación
               </Link>
-              , abre una suite y córrela marcando este borrador; compara el resultado con la corrida anterior.
+              , abre un conjunto de prueba y córrelo marcando este borrador; compara el resultado con la corrida anterior.
             </span>
           )}
           {draft.evaluations.map((e) => (
@@ -168,7 +168,8 @@ function DraftPanel({ prompt }: { prompt: PromptView }) {
               <Link to={`/evaluation/${e.suite_id}`} className="underline">
                 {e.suite_name}
               </Link>{' '}
-              · {date(e.created_at)} · {e.status === 'completed' ? `campos ${percent(e.fields)}` : e.status}
+              · {runLabel(e)}
+              {e.status === 'completed' && ` · datos acertados ${percent(e.fields)}`}
             </span>
           ))}
         </div>
