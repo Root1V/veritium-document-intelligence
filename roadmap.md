@@ -139,3 +139,4 @@ Estados: `done` · `todo` · `blocked` (espera a otro equipo) · `superseded` (a
 | VRT-90 | Reglas de validación en palabras | done | Reglas agrupadas por con qué comparan, interruptor en su sitio y regla nueva en tres preguntas. |
 | VRT-91 | Riesgos y Legal en palabras | done | Un bloque por área, lecturas en tarjetas con su importancia en colores, y crear o editar en un diálogo. |
 | VRT-92 | Probar cambios en palabras | done | Pruebas en una lista con su resultado en semáforo; cada una con cifras, hoy contra con el cambio, y nueva prueba en tres preguntas. |
+| VRT-93 | Instrucciones al modelo en palabras | todo | Lista por etapa con su estado, detalle en pestañas (texto, borrador, historial) y cambio propuesto en un diálogo que verifica lo obligatorio. |
