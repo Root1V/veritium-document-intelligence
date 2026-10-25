@@ -534,11 +534,25 @@ export function useSemanticCatalogVersions() {
   })
 }
 
+export function useCatalogVersion(version: number | undefined) {
+  return useQuery({
+    queryKey: ['semantic-catalog', 'version', version],
+    enabled: version !== undefined,
+    queryFn: async () => {
+      const { data } = await apiClient.get<CatalogVersionDetail>(`/v1/semantic-catalog/versions/${version}`)
+      return data
+    },
+  })
+}
+
+/** A new draft, or the pending one edited in place (VRT-89). */
 export function useCreateCatalogDraft() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async (catalog: SemanticCatalog) => {
-      const { data } = await apiClient.post<CatalogVersionDetail>('/v1/semantic-catalog/versions', catalog)
+    mutationFn: async ({ catalog, draft }: { catalog: SemanticCatalog; draft?: number }) => {
+      const { data } = draft
+        ? await apiClient.put<CatalogVersionDetail>(`/v1/semantic-catalog/versions/${draft}`, catalog)
+        : await apiClient.post<CatalogVersionDetail>('/v1/semantic-catalog/versions', catalog)
       return data
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['semantic-catalog'] }),

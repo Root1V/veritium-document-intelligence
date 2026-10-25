@@ -1,366 +1,502 @@
-import { useMemo, useState, type ReactNode } from 'react'
-import { Loader2, Pencil, Plus, Trash2 } from 'lucide-react'
+// The data catalog in words (VRT-34, VRT-89): each datum by its name, what
+// it means and which documents bring it, grouped by what it describes; the
+// same seen per document; the people of a case; the versions. The platform
+// team edits by clicking: changes gather in a draft, saved in place and
+// published from the bar at the bottom.
+import { useEffect, useState } from 'react'
+import { AlertTriangle, ArrowRight, FileText, Loader2, Pencil, Plus, Search, ShieldCheck } from 'lucide-react'
 import { toast } from 'sonner'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { DeleteButton } from '@/components/DeleteButton'
+import { SharedConfigNote } from '@/components/layout/SharedConfigNote'
+import { DatumDialog } from '@/components/semantic/DatumDialog'
+import { NamedDialog } from '@/components/semantic/NamedDialog'
 import { errorDetail } from '@/lib/apiErrors'
 import { isPlatformAdmin } from '@/lib/auth'
-import { DeleteButton } from '@/components/DeleteButton'
-import { useTypeName } from '@/lib/labels'
+import { COMPARISON, DATA_TYPE, PII, sourceLabel } from '@/lib/semanticCatalog'
 import {
+  useCatalogVersion,
   useCreateCatalogDraft,
   useDocumentTypeCatalog,
   useProcessProfiles,
+  useProfileLibrary,
   usePublishCatalogVersion,
   useSemanticCatalog,
   useSemanticCatalogVersions,
 } from '@/lib/queries'
-import type { DocumentTypeFieldInfo, FieldMapping, SemanticAttribute, SemanticCatalog } from '@/types/api'
-import { SharedConfigNote } from '@/components/layout/SharedConfigNote'
+import { cn } from '@/lib/utils'
+import type { SemanticAttribute, SemanticCatalog, SemanticEntity, SemanticRole } from '@/types/api'
 
-// --- a small editable table: read mode shows text, edit mode the editors ---
+const PREVIEW = 3
 
-interface Column<T> {
-  label: string
-  read: (row: T) => ReactNode
-  edit: (row: T, set: (row: T) => void) => ReactNode
-  /** Shown only while editing (its value is already part of another column when reading). */
-  editOnly?: boolean
+type Editing =
+  | { kind: 'datum'; attribute: SemanticAttribute | null; entity: string }
+  | { kind: 'entity'; item: SemanticEntity | null }
+  | { kind: 'role'; item: SemanticRole | null }
+
+interface Source {
+  doc: string
+  field: string
+  role: string | null
 }
 
-// What each setting means, for reading the catalog (VRT-81); editing keeps the stored values.
-const DATA_TYPE_LABEL: Record<string, string> = { string: 'Texto', number: 'Número', integer: 'Entero', date: 'Fecha', boolean: 'Sí / no' }
-const COMPARISON_LABEL: Record<string, string> = {
-  identifier: 'Identificador exacto',
-  person_name: 'Nombre de persona',
-  company_name: 'Nombre de empresa',
-  text: 'Texto',
-  number: 'Número',
-  date: 'Fecha',
-}
-
-function EditableTable<T>({
-  rows,
-  columns,
-  editing,
-  onChange,
-  blank,
-}: {
-  rows: T[]
-  columns: Column<T>[]
-  editing: boolean
-  onChange: (rows: T[]) => void
-  blank: () => T
-}) {
-  const shown = columns.filter((c) => editing || !c.editOnly)
+function DatumCard({ attribute, sources, usedBy, onOpen }: { attribute: SemanticAttribute; sources: Source[]; usedBy: string[]; onOpen?: () => void }) {
+  const [all, setAll] = useState(false)
+  const docs = new Set(sources.map((s) => s.doc)).size
+  const shown = all ? sources : sources.slice(0, PREVIEW)
   return (
-    <div className="flex flex-col gap-2">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            {shown.map((c) => (
-              <TableHead key={c.label}>{c.label}</TableHead>
-            ))}
-            {editing && <TableHead className="w-10" />}
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {rows.map((row, i) => (
-            <TableRow key={i}>
-              {shown.map((c) => (
-                <TableCell key={c.label} className="align-top text-sm">
-                  {editing ? c.edit(row, (next) => onChange(rows.map((r, j) => (j === i ? next : r)))) : c.read(row)}
-                </TableCell>
-              ))}
-              {editing && (
-                <TableCell className="align-top">
-                  <Button variant="ghost" size="icon" onClick={() => onChange(rows.filter((_, j) => j !== i))} aria-label="Quitar">
-                    <Trash2 className="size-4" />
-                  </Button>
-                </TableCell>
+    <Card className={cn('flex flex-col', onOpen && 'group cursor-pointer transition hover:border-primary/40 hover:shadow-sm')} onClick={onOpen}>
+      <CardContent className="flex flex-1 flex-col gap-3 p-5">
+        <div className="flex items-start justify-between gap-2">
+          <span className="font-semibold group-hover:underline">{attribute.name}</span>
+          {attribute.pii_class !== 'none' && (
+            <span className={cn('shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium', PII[attribute.pii_class].className)}>{PII[attribute.pii_class].label}</span>
+          )}
+        </div>
+        <p className="text-sm text-muted-foreground">{attribute.definition}</p>
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+          <span>{DATA_TYPE[attribute.data_type]}</span>
+          <span>·</span>
+          <span>
+            Se compara: {COMPARISON[attribute.comparison].toLowerCase()}
+            {attribute.tolerance ? ` (±${+(attribute.tolerance * 100).toFixed(2)}%)` : ''}
+          </span>
+          {attribute.format_cel && (
+            <span className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-400" title={attribute.format_cel}>
+              <ShieldCheck className="size-3.5" /> Formato verificado
+            </span>
+          )}
+        </div>
+        <div className="mt-auto flex flex-col gap-1.5 border-t pt-3">
+          {sources.length ? (
+            <>
+              <span className="text-xs font-medium text-muted-foreground">{docs === 1 ? 'Lo trae 1 documento' : `Lo traen ${docs} documentos`}</span>
+              <ul className="flex flex-col gap-1 text-sm">
+                {shown.map((s, i) => (
+                  <li key={i} className="flex items-start gap-1.5">
+                    <FileText className="mt-0.5 size-3.5 shrink-0 text-primary" />
+                    <span>
+                      <span className="font-medium">{s.doc}</span>
+                      <span className="text-muted-foreground">
+                        {' '}
+                        · {s.field}
+                        {s.role && ` (${s.role})`}
+                      </span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              {sources.length > PREVIEW && (
+                <button
+                  type="button"
+                  className="self-start text-xs text-primary hover:underline"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setAll(!all)
+                  }}
+                >
+                  {all ? 'Ver menos' : `y ${sources.length - PREVIEW} más`}
+                </button>
               )}
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-      {editing && (
-        <Button variant="outline" size="sm" className="self-start" onClick={() => onChange([...rows, blank()])}>
-          <Plus className="size-3.5" /> Agregar
-        </Button>
+            </>
+          ) : (
+            <span className="inline-flex items-center gap-1.5 text-xs text-amber-700 dark:text-amber-400">
+              <AlertTriangle className="size-3.5" /> Ningún documento lo trae todavía
+            </span>
+          )}
+          {usedBy.length > 0 && <span className="text-xs text-muted-foreground">Lo usan: {usedBy.join(', ')}</span>}
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+function NewCard({ label, onClick, className }: { label: string; onClick: () => void; className?: string }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        'flex min-h-32 flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed p-6 text-sm text-muted-foreground transition hover:border-primary/40 hover:text-foreground',
+        className,
       )}
-    </div>
+    >
+      <Plus className="size-5" />
+      {label}
+    </button>
   )
-}
-
-function text<T>(get: (row: T) => string, set: (row: T, value: string) => T, mono = false): Column<T>['edit'] {
-  return (row, onSet) => <Input value={get(row)} onChange={(e) => onSet(set(row, e.target.value))} className={mono ? 'font-mono text-xs' : 'text-xs'} />
-}
-
-function choice<T>(options: readonly string[], get: (row: T) => string, set: (row: T, value: string) => T): Column<T>['edit'] {
-  return (row, onSet) => (
-    <Select value={get(row)} onValueChange={(v) => onSet(set(row, v))}>
-      <SelectTrigger className="h-8 text-xs">
-        <SelectValue placeholder="—" />
-      </SelectTrigger>
-      <SelectContent>
-        {options.map((o) => (
-          <SelectItem key={o} value={o}>
-            {o}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
-  )
-}
-
-function fieldPaths(fields: DocumentTypeFieldInfo[]): string[] {
-  return fields.flatMap((f) => (f.items ? f.items.map((i) => `${f.name}[0].${i.name}`) : [f.name]))
-}
-
-const joinPath = (p: string | string[]) => (Array.isArray(p) ? p.join(' + ') : p)
-const splitPath = (v: string): string | string[] => {
-  const parts = v.split('+').map((s) => s.trim()).filter(Boolean)
-  return parts.length > 1 ? parts : (parts[0] ?? '')
 }
 
 export function SemanticCatalogPage() {
+  const admin = isPlatformAdmin()
   const { data: active, isLoading } = useSemanticCatalog()
   const { data: versions } = useSemanticCatalogVersions()
-  const { data: types } = useDocumentTypeCatalog()
-  const typeName = useTypeName()
+  const pendingDraft = versions?.find((v) => v.status === 'draft' && v.version > (active?.version ?? 0))
+  const { data: pendingDetail } = useCatalogVersion(admin ? pendingDraft?.version : undefined)
+  const { data: typeCatalog } = useDocumentTypeCatalog()
+  const { data: library } = useProfileLibrary(undefined)
   const { data: profiles } = useProcessProfiles()
   const createDraft = useCreateCatalogDraft()
   const publish = usePublishCatalogVersion()
-  const [draft, setDraft] = useState<SemanticCatalog | undefined>()
-  const editing = draft !== undefined
-  const catalog = draft ?? active?.catalog
-  const pendingDraft = versions?.find((v) => v.status === 'draft' && v.version > (active?.version ?? 0))
+  const [edits, setEdits] = useState<SemanticCatalog | undefined>()
+  const [editing, setEditing] = useState<Editing | null>(null)
+  const [query, setQuery] = useState('')
+  const [group, setGroup] = useState<string | null>(null)
 
-  const pathsByType = useMemo(
-    () => Object.fromEntries((types?.registered ?? []).map((t) => [t.name, fieldPaths(t.fields)])),
-    [types],
-  )
+  useEffect(() => {
+    if (!edits) return
+    const warn = (e: BeforeUnloadEvent) => e.preventDefault()
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [edits])
 
-  if (isLoading || !catalog) {
+  // The platform team works on the pending draft; everyone else reads what is published.
+  const base = admin && pendingDetail ? pendingDetail.catalog : active?.catalog
+  const catalog = edits ?? base
+  if (isLoading || !catalog || (admin && pendingDraft && !pendingDetail)) {
     return <Loader2 className="size-5 animate-spin text-muted-foreground" />
   }
-  const set = (patch: Partial<SemanticCatalog>) => setDraft({ ...catalog, ...patch })
-  const attributeKeys = catalog.attributes.map((a) => a.key)
-  const roleKeys = catalog.roles.map((r) => r.key)
-  const attributeName = (key: string) => catalog.attributes.find((a) => a.key === key)?.name ?? key
-  const roleName = (key: string) => catalog.roles.find((r) => r.key === key)?.name ?? key
 
-  function save() {
-    if (!draft) return
-    createDraft.mutate(draft, {
-      onSuccess: (row) => {
-        toast.success(`Borrador v${row.version} guardado. Publícalo para que lo usen los expedientes nuevos.`)
-        setDraft(undefined)
+  const types = typeCatalog?.registered ?? []
+  const typeOf = (key: string) => types.find((t) => t.name === key)
+  const roleName = (key: string) => catalog.roles.find((r) => r.key === key)?.name ?? key
+  const attributeName = (key: string) => catalog.attributes.find((a) => a.key === key)?.name ?? key
+  const processName = (key: string) => profiles?.find((p) => p.key === key)?.name ?? key
+  const usedBy = (attribute: string) => (library?.attributes.find((a) => a.key === attribute)?.used_by ?? []).map(processName)
+  const sourcesOf = (attribute: string): Source[] =>
+    catalog.mappings
+      .filter((m) => m.attribute === attribute)
+      .map((m) => ({
+        doc: typeOf(m.document_type)?.display_name ?? m.document_type,
+        field: sourceLabel(typeOf(m.document_type), m.field_path),
+        role: m.role === 'titular' ? null : roleName(m.role),
+      }))
+  const apply = (next: SemanticCatalog) => {
+    setEdits(next)
+    setEditing(null)
+  }
+  const open = (e: Editing) => admin && setEditing(e)
+
+  const words = query.toLowerCase().split(/\s+/).filter(Boolean)
+  const matches = (a: SemanticAttribute) =>
+    words.every((w) =>
+      `${a.name} ${a.definition} ${a.key} ${sourcesOf(a.key)
+        .map((s) => `${s.doc} ${s.field}`)
+        .join(' ')}`
+        .toLowerCase()
+        .includes(w),
+    )
+  const orphans = catalog.attributes.filter((a) => !catalog.mappings.some((m) => m.attribute === a.key)).length
+  const byType = types
+    .map((t) => ({ type: t, mappings: catalog.mappings.filter((m) => m.document_type === t.name) }))
+    .sort((a, b) => a.type.display_name.localeCompare(b.type.display_name))
+
+  function save(then?: (version: number) => void) {
+    createDraft.mutate(
+      { catalog: edits!, draft: pendingDraft?.version },
+      {
+        onSuccess: (row) => {
+          setEdits(undefined)
+          if (then) then(row.version)
+          else toast.success(`Borrador v${row.version} guardado. Publícalo cuando esté listo.`)
+        },
+        onError: (error) => toast.error(errorDetail(error)),
       },
-      onError: (error) => toast.error(errorDetail(error)),
-    })
+    )
   }
 
   function publishVersion(version: number) {
     publish.mutate(version, {
-      onSuccess: () => toast.success(`Catálogo v${version} publicado.`),
+      onSuccess: () => toast.success(`Catálogo v${version} publicado. Cada proceso lo adopta al publicar su próxima versión.`),
       onError: (error) => toast.error(errorDetail(error)),
     })
   }
 
-  const attributeColumns: Column<SemanticAttribute>[] = [
-    {
-      label: 'Dato',
-      read: (a) => (
-        <span className="flex flex-col">
-          {a.name}
-          <code className="text-[11px] text-muted-foreground">{a.key}</code>
-        </span>
-      ),
-      edit: text((a) => a.key, (a, v) => ({ ...a, key: v }), true),
-    },
-    { label: 'Nombre', read: () => null, edit: text((a) => a.name, (a, v) => ({ ...a, name: v })), editOnly: true },
-    { label: 'Definición', read: (a) => <span className="text-muted-foreground">{a.definition}</span>, edit: text((a) => a.definition, (a, v) => ({ ...a, definition: v })) },
-    { label: 'Tipo', read: (a) => DATA_TYPE_LABEL[a.data_type] ?? a.data_type, edit: choice(['string', 'number', 'integer', 'date', 'boolean'], (a) => a.data_type, (a, v) => ({ ...a, data_type: v as SemanticAttribute['data_type'] })) },
-    {
-      label: 'Comparación',
-      read: (a) => (COMPARISON_LABEL[a.comparison] ?? a.comparison) + (a.tolerance ? ` ±${a.tolerance * 100}%` : ''),
-      edit: choice(['identifier', 'person_name', 'company_name', 'text', 'number', 'date'], (a) => a.comparison, (a, v) => ({ ...a, comparison: v as SemanticAttribute['comparison'] })),
-    },
-    {
-      label: 'Formato',
-      read: (a) => (a.format_cel ? <span title={a.format_cel}>Se valida</span> : <span className="text-muted-foreground">—</span>),
-      edit: text((a) => a.format_cel ?? '', (a, v) => ({ ...a, format_cel: v.trim() ? v : null }), true),
-    },
-    {
-      label: 'Dato personal',
-      read: (a) => (a.pii_class === 'none' ? '—' : <Badge variant={a.pii_class === 'sensitive' ? 'destructive' : 'secondary'}>{a.pii_class === 'sensitive' ? 'Sensible' : 'Personal'}</Badge>),
-      edit: choice(['none', 'personal', 'sensitive'], (a) => a.pii_class, (a, v) => ({ ...a, pii_class: v as SemanticAttribute['pii_class'] })),
-    },
-  ]
-
-  const mappingColumns: Column<FieldMapping>[] = [
-    {
-      label: 'Tipo de documento',
-      read: (m) => typeName(m.document_type),
-      edit: choice(Object.keys(pathsByType), (m) => m.document_type, (m, v) => ({ ...m, document_type: v, field_path: '' })),
-    },
-    {
-      label: 'Campo(s)',
-      read: (m) => <code className="text-xs text-muted-foreground">{joinPath(m.field_path)}</code>,
-      edit: (m, onSet) => (
-        <>
-          <Input
-            list={`paths-${m.document_type}`}
-            value={joinPath(m.field_path)}
-            onChange={(e) => onSet({ ...m, field_path: splitPath(e.target.value) })}
-            placeholder="campo, o campo_a + campo_b para concatenar"
-            className="font-mono text-xs"
-          />
-          <datalist id={`paths-${m.document_type}`}>
-            {(pathsByType[m.document_type] ?? []).map((p) => (
-              <option key={p} value={p} />
-            ))}
-          </datalist>
-        </>
-      ),
-    },
-    { label: 'Dato', read: (m) => <Badge variant="secondary">{attributeName(m.attribute)}</Badge>, edit: choice(attributeKeys, (m) => m.attribute, (m, v) => ({ ...m, attribute: v })) },
-    { label: 'De quién', read: (m) => roleName(m.role), edit: choice(roleKeys, (m) => m.role, (m, v) => ({ ...m, role: v })) },
-  ]
-
-  const keyNameDefinition = <T extends { key: string; name: string; definition: string }>(): Column<T>[] => [
-    { label: 'Clave', read: (r) => <code className="text-xs">{r.key}</code>, edit: text((r) => r.key, (r, v) => ({ ...r, key: v }), true) },
-    { label: 'Nombre', read: (r) => r.name, edit: text((r) => r.name, (r, v) => ({ ...r, name: v })) },
-    { label: 'Definición', read: (r) => <span className="text-muted-foreground">{r.definition}</span>, edit: text((r) => r.definition, (r, v) => ({ ...r, definition: v })) },
-  ]
-
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
+        <div className="max-w-3xl">
           <h1 className="text-2xl font-semibold tracking-tight">Catálogo de datos</h1>
           <p className="text-muted-foreground">
-            Qué significa cada dato, venga del documento que venga, y de qué campo de cada tipo de documento sale. Cada proceso usa
-            una versión del catálogo; una versión nueva le llega cuando se publica una versión del proceso que la adopta.
+            El diccionario de Veritium: qué significa cada dato y de qué documentos sale. Con él compara un mismo dato entre documentos, y las reglas y
+            procesos se escriben una sola vez para todos.
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <Badge variant="outline">publicado v{active?.version}</Badge>
-          {isPlatformAdmin() && !editing && (
-            <Button onClick={() => setDraft(structuredClone(active!.catalog))}>
-              <Pencil className="size-4" /> Editar
-            </Button>
-          )}
-          {editing && (
-            <>
-              <Button variant="outline" onClick={() => setDraft(undefined)}>
-                Descartar
-              </Button>
-              <Button onClick={save} disabled={createDraft.isPending}>
-                {createDraft.isPending && <Loader2 className="size-4 animate-spin" />}
-                Guardar borrador
-              </Button>
-            </>
-          )}
+        <div className="flex flex-wrap items-center gap-2 text-xs font-medium">
+          <span className="rounded-full bg-emerald-500/10 px-2.5 py-1 text-emerald-700 dark:text-emerald-400">Publicado v{active?.version}</span>
+          {admin && pendingDraft && <span className="rounded-full bg-amber-500/10 px-2.5 py-1 text-amber-700 dark:text-amber-400">Editando borrador v{pendingDraft.version}</span>}
         </div>
       </div>
-      <SharedConfigNote show={!isPlatformAdmin()} />
+      <SharedConfigNote show={!admin} />
 
-      {pendingDraft && !editing && (
-        <Card className="border-amber-300 bg-amber-50 dark:bg-amber-950/30">
-          <CardContent className="flex flex-wrap items-center justify-between gap-3 pt-6 text-sm">
-            <span>
-              Hay un borrador <strong>v{pendingDraft.version}</strong> sin publicar ({pendingDraft.created_by}).
-            </span>
-            {isPlatformAdmin() && (
-              <span className="flex items-center gap-2">
-                <DeleteButton
-                  label="Descartar borrador"
-                  path={`/v1/semantic-catalog/versions/${pendingDraft.version}`}
-                  question={`Se eliminará para siempre el borrador v${pendingDraft.version} del catálogo semántico.`}
-                />
-                <Button size="sm" onClick={() => publishVersion(pendingDraft.version)} disabled={publish.isPending}>
-                  Publicar v{pendingDraft.version}
-                </Button>
-              </span>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      <Tabs defaultValue="mappings">
+      <Tabs defaultValue="data">
         <TabsList>
-          <TabsTrigger value="mappings">De dónde sale cada dato ({catalog.mappings.length})</TabsTrigger>
-          <TabsTrigger value="attributes">Datos ({catalog.attributes.length})</TabsTrigger>
-          <TabsTrigger value="entities">Entidades ({catalog.entities.length})</TabsTrigger>
+          <TabsTrigger value="data">Datos ({catalog.attributes.length})</TabsTrigger>
+          <TabsTrigger value="documents">Por documento</TabsTrigger>
           <TabsTrigger value="roles">Personas del expediente ({catalog.roles.length})</TabsTrigger>
           <TabsTrigger value="versions">Versiones</TabsTrigger>
         </TabsList>
-        <TabsContent value="mappings">
-          <EditableTable
-            rows={catalog.mappings}
-            columns={mappingColumns}
-            editing={editing}
-            onChange={(mappings) => set({ mappings })}
-            blank={(): FieldMapping => ({ document_type: '', field_path: '', attribute: '', role: '' })}
-          />
-        </TabsContent>
-        <TabsContent value="attributes">
-          <EditableTable
-            rows={catalog.attributes}
-            columns={attributeColumns}
-            editing={editing}
-            onChange={(attributes) => set({ attributes })}
-            blank={(): SemanticAttribute => ({ key: '', name: '', definition: '', data_type: 'string', comparison: 'text', pii_class: 'personal' })} // private until someone says otherwise (VRT-58)
-          />
-        </TabsContent>
-        <TabsContent value="entities">
-          <EditableTable rows={catalog.entities} columns={keyNameDefinition()} editing={editing} onChange={(entities) => set({ entities })} blank={() => ({ key: '', name: '', definition: '' })} />
-        </TabsContent>
-        <TabsContent value="roles">
-          <EditableTable rows={catalog.roles} columns={keyNameDefinition()} editing={editing} onChange={(roles) => set({ roles })} blank={() => ({ key: '', name: '', definition: '' })} />
-        </TabsContent>
-        <TabsContent value="versions">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Versión</TableHead>
-                <TableHead>Estado</TableHead>
-                <TableHead>Creada por</TableHead>
-                <TableHead>Publicada</TableHead>
-                <TableHead>Perfiles que la usan</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {(versions ?? []).map((v) => (
-                <TableRow key={v.version}>
-                  <TableCell>v{v.version}</TableCell>
-                  <TableCell>
-                    <Badge variant={v.status === 'published' ? 'secondary' : 'outline'}>{v.status}</Badge>
-                  </TableCell>
-                  <TableCell className="text-sm">{v.created_by}</TableCell>
-                  <TableCell className="text-sm">{v.published_at ? new Date(v.published_at).toLocaleString() : '—'}</TableCell>
-                  <TableCell className="text-sm">
-                    {(profiles ?? [])
-                      .filter((p) => p.versions.find((pv) => pv.version === p.active_version)?.semantic_catalog_version === v.version)
-                      .map((p) => (
-                        <Badge key={p.key} variant="outline" className="mr-1">
-                          {p.key}
-                        </Badge>
-                      ))}
-                  </TableCell>
-                </TableRow>
+
+        <TabsContent value="data" className="mt-4 flex flex-col gap-8">
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="relative w-full max-w-sm">
+              <Search className="absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Busca un dato o un documento, p. ej. «DNI»" className="pl-8" />
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {[{ key: null, name: 'Todos', count: catalog.attributes.length }, ...catalog.entities.map((e) => ({ key: e.key, name: e.name, count: catalog.attributes.filter((a) => a.key.startsWith(`${e.key}.`)).length }))].map((g) => (
+                <button
+                  key={g.key ?? 'all'}
+                  type="button"
+                  onClick={() => setGroup(g.key)}
+                  className={cn('rounded-full border px-3 py-1 text-sm transition', group === g.key ? 'border-primary bg-primary/10 font-medium text-primary' : 'text-muted-foreground hover:text-foreground')}
+                >
+                  {g.name} <span className="opacity-70">{g.count}</span>
+                </button>
               ))}
-            </TableBody>
-          </Table>
+            </div>
+            {orphans > 0 && (
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 px-2.5 py-1 text-xs font-medium text-amber-700 dark:text-amber-400">
+                <AlertTriangle className="size-3.5" /> {orphans === 1 ? '1 dato sin documento' : `${orphans} datos sin documento`}
+              </span>
+            )}
+          </div>
+
+          {catalog.entities
+            .filter((e) => !group || e.key === group)
+            .map((entity) => {
+              const data = catalog.attributes.filter((a) => a.key.startsWith(`${entity.key}.`) && matches(a))
+              if (words.length && !data.length) return null
+              return (
+                <section key={entity.key} className="flex flex-col gap-3">
+                  <div className="flex flex-wrap items-baseline gap-x-2">
+                    <h2 className="text-lg font-semibold">{entity.name}</h2>
+                    <span className="text-sm text-muted-foreground">{data.length === 1 ? '1 dato' : `${data.length} datos`}</span>
+                    {admin && (
+                      <Button variant="ghost" size="icon" className="size-7 self-center text-muted-foreground" onClick={() => open({ kind: 'entity', item: entity })} aria-label={`Editar ${entity.name}`}>
+                        <Pencil className="size-3.5" />
+                      </Button>
+                    )}
+                    <p className="w-full text-sm text-muted-foreground">{entity.definition}</p>
+                  </div>
+                  <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
+                    {data.map((a) => (
+                      <DatumCard
+                        key={a.key}
+                        attribute={a}
+                        sources={sourcesOf(a.key)}
+                        usedBy={usedBy(a.key)}
+                        onOpen={admin ? () => open({ kind: 'datum', attribute: a, entity: entity.key }) : undefined}
+                      />
+                    ))}
+                    {admin && !words.length && <NewCard label={`Nuevo dato de ${entity.name}`} onClick={() => open({ kind: 'datum', attribute: null, entity: entity.key })} />}
+                  </div>
+                </section>
+              )
+            })}
+          {words.length > 0 && !catalog.attributes.some(matches) && <p className="text-sm text-muted-foreground">Ningún dato coincide con «{query}».</p>}
+          {admin && !group && !words.length && (
+            <Button variant="outline" className="self-start" onClick={() => open({ kind: 'entity', item: null })}>
+              <Plus className="size-4" /> Nuevo grupo de datos
+            </Button>
+          )}
+        </TabsContent>
+
+        <TabsContent value="documents" className="mt-4 flex flex-col gap-4">
+          <p className="max-w-3xl text-sm text-muted-foreground">Qué datos del catálogo aporta cada tipo de documento, y de qué campo sale cada uno.</p>
+          <div className="grid gap-4 lg:grid-cols-2 2xl:grid-cols-3">
+            {byType
+              .filter((t) => t.mappings.length)
+              .map(({ type, mappings }) => (
+                <Card key={type.name}>
+                  <CardContent className="flex flex-col gap-3 p-5">
+                    <div className="flex items-start gap-3">
+                      <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                        <FileText className="size-4" />
+                      </span>
+                      <div className="flex flex-col">
+                        <span className="font-semibold">{type.display_name}</span>
+                        <span className="text-xs text-muted-foreground">{mappings.length === 1 ? 'Aporta 1 dato' : `Aporta ${mappings.length} datos`}</span>
+                      </div>
+                    </div>
+                    <ul className="flex flex-col divide-y rounded-lg border text-sm">
+                      {mappings.map((m, i) => {
+                        const attribute = catalog.attributes.find((a) => a.key === m.attribute)
+                        return (
+                          <li key={i}>
+                            <button
+                              type="button"
+                              disabled={!admin || !attribute}
+                              onClick={() => attribute && open({ kind: 'datum', attribute, entity: attribute.key.split('.')[0] })}
+                              className="flex w-full flex-wrap items-center gap-x-2 gap-y-1 px-3 py-2 text-left enabled:hover:bg-muted/50"
+                            >
+                              <span className="text-muted-foreground">{sourceLabel(type, m.field_path)}</span>
+                              <ArrowRight className="size-3.5 shrink-0 text-muted-foreground" />
+                              <span className="rounded-md bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">{attributeName(m.attribute)}</span>
+                              {m.role !== 'titular' && <span className="text-xs text-muted-foreground">de {roleName(m.role).toLowerCase()}</span>}
+                            </button>
+                          </li>
+                        )
+                      })}
+                    </ul>
+                  </CardContent>
+                </Card>
+              ))}
+          </div>
+          {byType.some((t) => !t.mappings.length) && (
+            <p className="text-sm text-muted-foreground">
+              Aún sin datos en el catálogo:{' '}
+              {byType
+                .filter((t) => !t.mappings.length)
+                .map((t) => t.type.display_name)
+                .join(', ')}
+              . Sus datos se leen igual, pero no se comparan con otros documentos.
+            </p>
+          )}
+        </TabsContent>
+
+        <TabsContent value="roles" className="mt-4 flex flex-col gap-4">
+          <p className="max-w-3xl text-sm text-muted-foreground">
+            De quién es cada dato en un expediente. Así Veritium no confunde el DNI del titular con el de su cónyuge o su aval.
+          </p>
+          <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
+            {catalog.roles.map((r) => {
+              const count = catalog.mappings.filter((m) => m.role === r.key).length
+              return (
+                <Card key={r.key} className={cn(admin && 'group cursor-pointer transition hover:border-primary/40 hover:shadow-sm')} onClick={() => open({ kind: 'role', item: r })}>
+                  <CardContent className="flex flex-col gap-2 p-5">
+                    <span className="font-semibold group-hover:underline">{r.name}</span>
+                    <p className="text-sm text-muted-foreground">{r.definition}</p>
+                    <span className="text-xs text-muted-foreground">{count === 0 ? 'Ningún documento trae datos suyos todavía' : count === 1 ? '1 dato de documentos es suyo' : `${count} datos de documentos son suyos`}</span>
+                  </CardContent>
+                </Card>
+              )
+            })}
+            {admin && <NewCard label="Nueva persona del expediente" onClick={() => open({ kind: 'role', item: null })} />}
+          </div>
+        </TabsContent>
+
+        <TabsContent value="versions" className="mt-4 flex flex-col gap-4">
+          <p className="max-w-3xl text-sm text-muted-foreground">
+            Cada proceso usa una versión del catálogo y adopta la nueva cuando se publica una versión del proceso. Así un cambio aquí nunca altera un
+            expediente en curso.
+          </p>
+          <Card>
+            <CardContent className="divide-y p-0">
+              {(versions ?? []).map((v) => {
+                const users = (profiles ?? []).filter((p) => p.versions.find((pv) => pv.version === p.active_version)?.semantic_catalog_version === v.version)
+                return (
+                  <div key={v.version} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-5 py-3 text-sm">
+                    <span className="w-10 font-semibold">v{v.version}</span>
+                    <span
+                      className={cn(
+                        'rounded-full px-2 py-0.5 text-xs font-medium',
+                        v.status === 'draft'
+                          ? 'bg-amber-500/10 text-amber-700 dark:text-amber-400'
+                          : v.version === active?.version
+                            ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400'
+                            : 'bg-muted text-muted-foreground',
+                      )}
+                    >
+                      {v.status === 'draft' ? 'Borrador' : v.version === active?.version ? 'Vigente' : 'Anterior'}
+                    </span>
+                    <span className="text-muted-foreground">
+                      {v.published_at ? `Publicada el ${new Date(v.published_at).toLocaleDateString()} por ${v.published_by}` : `Creada por ${v.created_by}`}
+                    </span>
+                    <span className="ml-auto text-xs text-muted-foreground">{users.length ? `La usan: ${users.map((p) => p.name).join(', ')}` : 'Ningún proceso la usa'}</span>
+                  </div>
+                )
+              })}
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
+
+      {admin && (edits || pendingDraft) && (
+        <div className="sticky bottom-4 z-20 mr-16 flex flex-wrap items-center gap-3 rounded-xl border bg-background/95 px-4 py-3 shadow-lg backdrop-blur">
+          <span className="text-sm">
+            {edits ? (
+              <span className="font-medium">Tienes cambios sin guardar.</span>
+            ) : (
+              <>
+                <span className="font-medium">Borrador v{pendingDraft!.version} sin publicar.</span>{' '}
+                <span className="text-muted-foreground">Los procesos siguen usando la v{active?.version}.</span>
+              </>
+            )}
+          </span>
+          <div className="ml-auto flex flex-wrap gap-2">
+            {edits ? (
+              <>
+                <Button variant="ghost" onClick={() => setEdits(undefined)} disabled={createDraft.isPending}>
+                  Descartar cambios
+                </Button>
+                <Button variant="outline" onClick={() => save()} disabled={createDraft.isPending}>
+                  {createDraft.isPending && <Loader2 className="size-4 animate-spin" />} Guardar borrador
+                </Button>
+                <Button onClick={() => save(publishVersion)} disabled={createDraft.isPending || publish.isPending}>
+                  Publicar
+                </Button>
+              </>
+            ) : (
+              <>
+                <DeleteButton
+                  label="Descartar borrador"
+                  path={`/v1/semantic-catalog/versions/${pendingDraft!.version}`}
+                  question={`Se eliminará para siempre el borrador v${pendingDraft!.version} del catálogo. Lo publicado no cambia.`}
+                />
+                <Button onClick={() => publishVersion(pendingDraft!.version)} disabled={publish.isPending}>
+                  {publish.isPending && <Loader2 className="size-4 animate-spin" />} Publicar v{pendingDraft!.version}
+                </Button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {editing?.kind === 'datum' && (
+        <DatumDialog
+          catalog={catalog}
+          attribute={editing.attribute}
+          entity={editing.entity}
+          types={types}
+          usedBy={editing.attribute ? usedBy(editing.attribute.key) : []}
+          onApply={apply}
+          onClose={() => setEditing(null)}
+        />
+      )}
+      {editing?.kind === 'entity' && (
+        <NamedDialog
+          title={editing.item ? editing.item.name : 'Nuevo grupo de datos'}
+          hint="Un grupo reúne los datos de una misma cosa: una persona, su empleador, su ingreso, el crédito."
+          item={editing.item}
+          taken={catalog.entities.map((e) => e.key)}
+          inUse={(() => {
+            const n = editing.item ? catalog.attributes.filter((a) => a.key.startsWith(`${editing.item!.key}.`)).length : 0
+            return n ? `Tiene ${n} datos: quítalos antes de quitar el grupo.` : null
+          })()}
+          onApply={(e) => apply({ ...catalog, entities: editing.item ? catalog.entities.map((x) => (x.key === e.key ? e : x)) : [...catalog.entities, e] })}
+          onRemove={() => apply({ ...catalog, entities: catalog.entities.filter((x) => x.key !== editing.item!.key) })}
+          onClose={() => setEditing(null)}
+        />
+      )}
+      {editing?.kind === 'role' && (
+        <NamedDialog
+          title={editing.item ? editing.item.name : 'Nueva persona del expediente'}
+          hint="Quién es, en el expediente, la persona a la que pertenece un dato: titular, cónyuge, aval…"
+          item={editing.item}
+          taken={catalog.roles.map((r) => r.key)}
+          inUse={(() => {
+            const n = editing.item ? catalog.mappings.filter((m) => m.role === editing.item!.key).length : 0
+            return n ? `${n} datos de documentos son suyos: cámbialos antes de quitarla.` : null
+          })()}
+          onApply={(r) => apply({ ...catalog, roles: editing.item ? catalog.roles.map((x) => (x.key === r.key ? r : x)) : [...catalog.roles, r] })}
+          onRemove={() => apply({ ...catalog, roles: catalog.roles.filter((x) => x.key !== editing.item!.key) })}
+          onClose={() => setEditing(null)}
+        />
+      )}
     </div>
   )
 }

@@ -926,6 +926,14 @@ class SemanticCatalogRepository:
         await self._session.refresh(row)
         return row
 
+    async def update_draft(self, row: SemanticCatalogVersion, catalog: SemanticCatalog) -> SemanticCatalogVersion:
+        """A draft is edited in place (VRT-89), so saving twice doesn't pile up versions."""
+        row.definition = catalog.model_dump(mode="json")
+        row.content_hash = catalog.content_hash()
+        await self._session.commit()
+        await self._session.refresh(row)
+        return row
+
     async def publish(self, row: SemanticCatalogVersion, *, published_by: str) -> SemanticCatalogVersion:
         row.status = "published"
         row.published_by = published_by

@@ -5,6 +5,7 @@ GET  /v1/semantic-catalog/versions              all versions (summary)
 GET  /v1/semantic-catalog/versions/{version}    one version, with its catalog
 POST /v1/semantic-catalog/versions              new draft (admin); the catalog is validated on the way in (422 if inconsistent),
                                                 and its mappings against the published document types (400)
+PUT  /v1/semantic-catalog/versions/{version}            a draft, edited in place (admin; VRT-89)
 POST /v1/semantic-catalog/versions/{version}/publish   draft -> published (admin)
 DELETE /v1/semantic-catalog/versions/{version}          a draft, for good (admin; VRT-72)
 
@@ -112,6 +113,25 @@ async def create_catalog_draft(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=errors)
     row = await SemanticCatalogRepository(session).create_draft(catalog, created_by=user.email)
     return _detail(row)
+
+
+@router.put("/versions/{version}", response_model=CatalogVersionDetail)
+async def update_catalog_draft(
+    version: int,
+    catalog: SemanticCatalog,
+    session: AsyncSession = Depends(get_db_session),
+    _: User = Depends(require_platform("admin")),
+) -> CatalogVersionDetail:
+    repo = SemanticCatalogRepository(session)
+    row = await repo.get_version(version)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="catalog version not found")
+    if row.status != "draft":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"version {version} is already {row.status}; published versions are immutable")
+    errors = mapping_errors(catalog, await DocumentTypeRepository(session).load_catalog())
+    if errors:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=errors)
+    return _detail(await repo.update_draft(row, catalog))
 
 
 @router.post("/versions/{version}/publish", response_model=CatalogVersionDetail)
