@@ -82,13 +82,13 @@ export function TypeDetail({ type, catalog, usedBy, onClose }: {
             ))}
         </div>
 
-        <div className="-mx-6 min-h-0 flex-1 overflow-y-auto border-y">
+        <div className="min-h-0 flex-1 overflow-y-auto rounded-lg border">
           <table className="w-full text-sm">
-            <thead className="sticky top-0 z-10 bg-background text-xs text-muted-foreground">
-              <tr className="border-b">
-                <th className="px-6 py-2 text-left font-medium">Dato</th>
+            <thead className="sticky top-0 z-10 bg-muted text-xs text-muted-foreground">
+              <tr>
+                <th className="px-4 py-2 text-left font-medium">Dato</th>
                 <th className="px-3 py-2 text-left font-medium">Formato</th>
-                <th className="px-6 py-2 text-left font-medium">Significado</th>
+                <th className="px-4 py-2 text-left font-medium">Significado</th>
               </tr>
             </thead>
             <tbody>
@@ -96,7 +96,7 @@ export function TypeDetail({ type, catalog, usedBy, onClose }: {
                 const meaning = meaningOf(catalog, type.name, path)
                 return (
                   <tr key={path} className="border-b align-top last:border-0">
-                    <td className={cn('px-6 py-2.5', depth && 'pl-10')}>
+                    <td className={cn('px-4 py-2.5', depth && 'pl-8')}>
                       <div className="flex items-start gap-1.5">
                         {depth === 1 && <CornerDownRight className="mt-1 size-3.5 shrink-0 text-muted-foreground" />}
                         <div className="flex min-w-0 flex-col gap-0.5">
@@ -118,7 +118,7 @@ export function TypeDetail({ type, catalog, usedBy, onClose }: {
                       </div>
                     </td>
                     <td className="px-3 py-2.5 text-xs whitespace-nowrap text-muted-foreground">{formatOf(field)}</td>
-                    <td className="px-6 py-2.5 text-xs">{meaning ? <span className="rounded-md bg-primary/10 px-2 py-0.5 text-primary">{meaning}</span> : <span className="text-muted-foreground">—</span>}</td>
+                    <td className="px-4 py-2.5 text-xs">{meaning ? <span className="rounded-md bg-primary/10 px-2 py-0.5 text-primary">{meaning}</span> : <span className="text-muted-foreground">—</span>}</td>
                   </tr>
                 )
               })}

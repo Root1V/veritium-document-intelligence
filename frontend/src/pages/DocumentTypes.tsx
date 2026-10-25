@@ -56,7 +56,7 @@ function TypeCard({ type, catalog, usedBy, onOpen }: { type: DocumentTypeInfo; c
 
         <div className="flex flex-wrap gap-1.5">
           {type.fields.slice(0, PREVIEW).map((f) => (
-            <span key={f.name} className="rounded-md border px-2 py-0.5 text-xs text-muted-foreground">
+            <span key={f.name} className="rounded-md bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
               {fieldName(f)}
             </span>
           ))}

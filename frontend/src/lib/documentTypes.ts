@@ -15,7 +15,7 @@ export const FORMAT: Record<FieldSpecType, string> = {
 }
 
 // The options some built-in types read, as values in English.
-const OPTION: Record<string, string> = { earning: 'ingreso', deduction: 'descuento' }
+const OPTION: Record<string, string> = { earning: 'ingreso', deduction: 'descuento', loan: 'préstamo', credit_card: 'tarjeta de crédito' }
 
 /** The catalog answers with 'str', 'list[Item]' or 'A | B' for the options. */
 export function formatOf(field: DocumentTypeFieldInfo): string {
