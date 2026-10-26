@@ -1,171 +1,93 @@
-// Business units (VRT-57), for the platform team (VRT-71): register a unit — blank, or with the example processes — rename it, or delete one without cases (VRT-72). Who
-// works in each one, and with which role, comes from the corporate identity
-// provider's groups — the page lists the ones to create there.
+// Business units (VRT-57, VRT-101), for the platform team (VRT-71): one card
+// per unit with how many people work in it — none is said in amber, since
+// nobody gets in until its groups exist in the corporate account. Creating,
+// renaming and deleting (VRT-72) go through a dialog; the groups stay folded.
 import { useState } from 'react'
-import { Copy, Loader2, Pencil } from 'lucide-react'
-import { toast } from 'sonner'
+import { Building2, Loader2, Pencil, Plus } from 'lucide-react'
+import { Groups, UnitDialog } from '@/components/units/UnitDialog'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { errorDetail } from '@/lib/apiErrors'
-import { useBusinessUnitAction, useBusinessUnits } from '@/lib/queries'
-import { DeleteButton } from '@/components/DeleteButton'
+import { getUnit } from '@/lib/auth'
+import { useBusinessUnits } from '@/lib/queries'
+import { cn } from '@/lib/utils'
+import type { BusinessUnitView } from '@/types/api'
 
-const ROLE_LABEL: Record<string, string> = { admin: 'Admin', operador: 'Operador', visor: 'Visor', especialista_ia: 'Especialista IA' }
-
-/** "Banca Corporativa" → "banca-corporativa": what goes in the groups. */
-const toKey = (name: string) =>
-  name
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 63)
+function UnitCard({ unit, current, onOpen }: { unit: BusinessUnitView; current: boolean; onOpen: () => void }) {
+  return (
+    <div className="flex flex-col gap-4 rounded-xl border bg-card p-5">
+      <div className="flex items-start justify-between gap-3">
+        <button type="button" onClick={onOpen} className="group flex min-w-0 items-start gap-3 text-left">
+          <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+            <Building2 className="size-5" />
+          </span>
+          <span className="flex min-w-0 flex-col">
+            <span className="flex flex-wrap items-center gap-2">
+              <span className="truncate font-semibold group-hover:underline">{unit.name}</span>
+              {current && <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">Estás aquí</span>}
+            </span>
+            <span className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
+              <span className={cn('size-2 shrink-0 rounded-full', unit.people ? 'bg-emerald-500' : 'bg-amber-500')} />
+              {unit.people === 0 ? 'Nadie entra todavía' : unit.people === 1 ? '1 persona' : `${unit.people} personas`}
+            </span>
+          </span>
+        </button>
+        <Button size="icon" variant="ghost" aria-label={`Editar ${unit.name}`} onClick={onOpen}>
+          <Pencil className="size-4" />
+        </Button>
+      </div>
+      <details className="mt-auto border-t pt-3 text-sm">
+        <summary className="cursor-pointer text-xs text-muted-foreground select-none hover:text-foreground">
+          {unit.people ? 'Grupos en la cuenta corporativa' : 'Crea sus grupos en la cuenta corporativa para dar acceso'}
+        </summary>
+        <div className="mt-2">
+          <Groups unit={unit} />
+        </div>
+      </details>
+    </div>
+  )
+}
 
 export function BusinessUnitsPage() {
-  const { data: units, isLoading } = useBusinessUnits()
-  const action = useBusinessUnitAction()
-  const [name, setName] = useState('')
-  const [key, setKey] = useState('')
-  const [keyTouched, setKeyTouched] = useState(false)
-  const [examples, setExamples] = useState(false)
-  const copy = (text: string) => navigator.clipboard.writeText(text).then(() => toast.success('Copiado.'))
-  const shownKey = keyTouched ? key : toKey(name)
+  const { data: units, isLoading, isError } = useBusinessUnits()
+  const [open, setOpen] = useState<{ unit: BusinessUnitView | null } | null>(null)
+  const here = getUnit()
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Unidades de negocio</h1>
-        <p className="text-muted-foreground">
-          Cada unidad ve solo sus expedientes, procesos, sistemas conectados y revisiones. Quién trabaja en cada una, y con qué rol, se define
-          en la cuenta corporativa: agrega a las personas a los grupos de la unidad.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="max-w-3xl">
+          <h1 className="text-2xl font-semibold tracking-tight">Unidades de negocio</h1>
+          <p className="text-muted-foreground">
+            Cada unidad ve solo sus expedientes, procesos, sistemas conectados y revisiones. Quién trabaja en cada una, y con qué rol, se define en la cuenta
+            corporativa: la persona entra al grupo de la unidad y su rol se aplica en su siguiente ingreso.
+          </p>
+        </div>
+        <Button onClick={() => setOpen({ unit: null })}>
+          <Plus className="size-4" /> Nueva unidad
+        </Button>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Nueva unidad</CardTitle>
-          <CardDescription>
-            Empieza en blanco: solo el proceso interno «Ad-hoc», que usa la carga directa. Nadie entra hasta que tenga un grupo de la unidad.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-wrap items-end gap-2">
-          <label className="flex flex-col gap-1">
-            <span className="text-xs text-muted-foreground">Nombre</span>
-            <Input placeholder="p. ej. Banca Corporativa" value={name} onChange={(e) => setName(e.target.value)} className="w-64" />
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-xs text-muted-foreground">Identificador (va en los grupos; no cambia)</span>
-            <Input
-              placeholder="banca-corporativa"
-              value={shownKey}
-              onChange={(e) => {
-                setKeyTouched(true)
-                setKey(e.target.value)
-              }}
-              className="w-56 font-mono"
-            />
-          </label>
-          <label className="flex items-center gap-2 self-center text-sm">
-            <input type="checkbox" checked={examples} onChange={(e) => setExamples(e.target.checked)} />
-            Incluir procesos de ejemplo
-          </label>
-          <Button
-            disabled={name.trim().length < 2 || !shownKey || action.isPending}
-            onClick={() =>
-              action.mutate(
-                { kind: 'create', key: shownKey, name: name.trim(), examples },
-                {
-                  onSuccess: (u) => {
-                    toast.success(`Unidad «${u.name}» creada. Ahora crea sus grupos en la cuenta corporativa.`)
-                    setName('')
-                    setKey('')
-                    setKeyTouched(false)
-                    setExamples(false)
-                  },
-                  onError: (e) => toast.error(errorDetail(e)),
-                },
-              )
-            }
+      {isLoading ? (
+        <Loader2 className="size-5 animate-spin text-muted-foreground" />
+      ) : isError ? (
+        <p className="text-sm text-muted-foreground">No se pudieron cargar las unidades: el servidor de Veritium no responde.</p>
+      ) : (
+        <div className="grid gap-4 lg:grid-cols-2 2xl:grid-cols-3">
+          {(units ?? []).map((u) => (
+            <UnitCard key={u.key} unit={u} current={u.key === here} onOpen={() => setOpen({ unit: u })} />
+          ))}
+          <button
+            type="button"
+            onClick={() => setOpen({ unit: null })}
+            className="flex min-h-36 flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed p-6 text-center text-sm text-muted-foreground transition hover:border-primary/40 hover:text-foreground"
           >
-            {action.isPending && <Loader2 className="size-4 animate-spin" />} Crear unidad
-          </Button>
-        </CardContent>
-      </Card>
+            <Plus className="size-5" />
+            <span className="font-medium">Nueva unidad</span>
+            <span className="text-xs">En blanco o con procesos de ejemplo.</span>
+          </button>
+        </div>
+      )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Unidades</CardTitle>
-          <CardDescription>
-            Para dar acceso, agrega a la persona al grupo de la unidad con el rol que corresponde en el proveedor de identidad (en desarrollo,
-            Keycloak). El cambio se aplica en su siguiente ingreso.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <Loader2 className="size-5 animate-spin text-muted-foreground" />
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Unidad</TableHead>
-                  <TableHead>Personas</TableHead>
-                  <TableHead>Grupos en la cuenta corporativa</TableHead>
-                  <TableHead />
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {(units ?? []).map((u) => (
-                  <TableRow key={u.key}>
-                    <TableCell>
-                      <div className="font-medium">{u.name}</div>
-                      <code className="text-xs text-muted-foreground">{u.key}</code>
-                    </TableCell>
-                    <TableCell className="text-sm">{u.people}</TableCell>
-                    <TableCell>
-                      <div className="flex flex-col gap-1">
-                        {u.groups.map((g) => (
-                          <div key={g} className="flex items-center gap-2 text-xs">
-                            <span className="w-24 text-muted-foreground">{ROLE_LABEL[g.split(':').pop() ?? ''] ?? ''}</span>
-                            <code>{g}</code>
-                            <button type="button" aria-label={`Copiar ${g}`} onClick={() => copy(g)} className="text-muted-foreground hover:text-foreground">
-                              <Copy className="size-3" />
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-1">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={action.isPending}
-                          onClick={() => {
-                            const next = prompt(`Nuevo nombre para «${u.name}»`, u.name)?.trim()
-                            if (next && next !== u.name)
-                              action.mutate({ kind: 'rename', key: u.key, name: next }, { onSuccess: () => toast.success('Nombre actualizado.'), onError: (e) => toast.error(errorDetail(e)) })
-                          }}
-                        >
-                          <Pencil className="size-3.5" /> Renombrar
-                        </Button>
-                        <DeleteButton
-                          iconOnly
-                          label="Eliminar unidad"
-                          path={`/v1/tenants/${u.key}`}
-                          question={`¿Eliminar la unidad «${u.name}»? Solo se puede si no tiene expedientes: se borran sus procesos, sistemas conectados y accesos.`}
-                        />
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+      {open && <UnitDialog key={open.unit?.key ?? 'new'} unit={open.unit} onClose={() => setOpen(null)} />}
     </div>
   )
 }
