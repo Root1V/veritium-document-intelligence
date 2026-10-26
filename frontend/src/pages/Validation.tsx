@@ -3,15 +3,21 @@
 // by case. A finding between documents is said once, with every document it
 // was seen in, instead of once per document; the data that do not match are
 // one table per case — each datum, and what each document says — instead of
-// the consistency rule's run-on sentences. The rule behind it stays folded.
+// the consistency rule's run-on sentences. Each finding says what to do with
+// it (VRT-105): review it here — correct the datum or confirm it — or ask the
+// AI to look into it; its state shows once done. The rule stays folded.
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { AlertCircle, AlertTriangle, FileText, FolderOpen, Info, Loader2, type LucideIcon } from 'lucide-react'
+import { AlertCircle, AlertTriangle, CircleCheck, FileText, FolderOpen, Info, Loader2, Sparkles, type LucideIcon } from 'lucide-react'
+import { toast } from 'sonner'
+import { ReviewDialog } from '@/components/validation/ReviewDialog'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { errorDetail } from '@/lib/apiErrors'
+import { canExecute } from '@/lib/auth'
 import { formatValue, humanizeFieldName } from '@/lib/extraction'
 import { useTypeName } from '@/lib/labels'
-import { useCaseResult, useDocumentTypeCatalog, useSemanticCatalog, useValidationLog } from '@/lib/queries'
+import { useCaseResult, useDocumentTypeCatalog, useInvestigate, useSemanticCatalog, useValidationLog } from '@/lib/queries'
 import { cn } from '@/lib/utils'
 import type { ValidationIssueEntry } from '@/types/api'
 
@@ -46,6 +52,7 @@ const HINT: Record<Severity, string> = {
 /** One finding of a case, with every document it was seen in. */
 interface Finding {
   issue: ValidationIssueEntry
+  issues: ValidationIssueEntry[] // one per document it was seen in
   documents: { id: string; name: string }[]
 }
 
@@ -54,7 +61,8 @@ function groupByCase(issues: ValidationIssueEntry[]) {
   for (const issue of issues) {
     const group = cases.get(issue.batch_id) ?? { id: issue.batch_id, ref: issue.case_ref, at: issue.created_at, findings: new Map<string, Finding>() }
     const key = `${issue.rule_id}|${issue.message}`
-    const finding = group.findings.get(key) ?? { issue, documents: [] }
+    const finding = group.findings.get(key) ?? { issue, issues: [], documents: [] }
+    finding.issues.push(issue)
     if (issue.document_id && !finding.documents.some((d) => d.id === issue.document_id))
       finding.documents.push({ id: issue.document_id, name: issue.document_filename ?? 'documento' })
     group.findings.set(key, finding)
@@ -63,7 +71,76 @@ function groupByCase(issues: ValidationIssueEntry[]) {
   return [...cases.values()].map((c) => ({ ...c, findings: [...c.findings.values()].sort((a, b) => SEVERITIES.indexOf(a.issue.severity) - SEVERITIES.indexOf(b.issue.severity)) }))
 }
 
-function FindingRow({ finding }: { finding: Finding }) {
+/** What the AI said, or that it is on it (VRT-66). */
+function AiAnswer({ issues }: { issues: ValidationIssueEntry[] }) {
+  // Of the times it was asked: the one under way, else the one that answered.
+  const rank = { running: 0, done: 1, failed: 2 } as const
+  const investigation = issues
+    .map((i) => i.investigation)
+    .filter((i) => !!i)
+    .sort((a, b) => rank[a.status] - rank[b.status])[0]
+  if (!investigation) return null
+  if (investigation.status === 'running')
+    return (
+      <p className="inline-flex items-center gap-1.5 text-xs text-sky-700 dark:text-sky-300">
+        <Loader2 className="size-3 animate-spin" /> La IA lo está investigando…
+      </p>
+    )
+  if (investigation.status === 'failed') return <p className="text-xs text-muted-foreground">La IA no pudo investigarlo esta vez.</p>
+  return (
+    <p className="rounded-md border border-sky-500/30 bg-sky-500/5 px-2 py-1 text-xs">
+      <span className="font-medium text-sky-700 dark:text-sky-300">La IA: </span>
+      {investigation.diagnosis}
+      {investigation.action_label && <span className="font-medium"> → {investigation.action_label}</span>}
+    </p>
+  )
+}
+
+/** Review it here, or ask the AI; once reviewed, how it ended. */
+function Actions({ issues, caseId, onReview }: { issues: ValidationIssueEntry[]; caseId: string; onReview: (issue: ValidationIssueEntry) => void }) {
+  const investigate = useInvestigate(caseId)
+  const pending = issues.filter((i) => i.review_status === 'pending')
+  const reviewed = issues.filter((i) => i.review_status === 'resolved' || i.review_status === 'dismissed')
+  const asked = issues.some((i) => i.investigation && i.investigation.status !== 'failed')
+  const may = canExecute()
+  if (!pending.length && !reviewed.length) return null
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {pending.length ? (
+        <>
+          <span className="rounded bg-amber-500/10 px-1.5 py-0.5 text-xs font-medium text-amber-700 dark:text-amber-300">Por revisar</span>
+          {may && (
+            <Button size="sm" className="h-7" onClick={() => onReview(pending[0])}>
+              Revisar
+            </Button>
+          )}
+          {may && !asked && (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 text-sky-700 dark:text-sky-300"
+              disabled={investigate.isPending}
+              onClick={() =>
+                investigate.mutate(pending[0].id, {
+                  onSuccess: () => toast.success('La IA lo está investigando: su diagnóstico aparece aquí en un momento.'),
+                  onError: (e) => toast.error(errorDetail(e)),
+                })
+              }
+            >
+              <Sparkles className="size-3.5" /> Pedir a la IA
+            </Button>
+          )}
+        </>
+      ) : (
+        <span className="inline-flex items-center gap-1 rounded bg-emerald-500/10 px-1.5 py-0.5 text-xs font-medium text-emerald-700 dark:text-emerald-300">
+          <CircleCheck className="size-3" /> {reviewed.some((i) => i.review_status === 'resolved') ? 'Corregida' : 'Confirmada sin cambios'}
+        </span>
+      )}
+    </div>
+  )
+}
+
+function FindingRow({ finding, onReview }: { finding: Finding; onReview: (issue: ValidationIssueEntry) => void }) {
   const { issue } = finding
   const meta = SEVERITY[issue.severity]
   const Icon = meta.icon
@@ -91,6 +168,8 @@ function FindingRow({ finding }: { finding: Finding }) {
             <code>{issue.rule_id}</code> · {issue.explanation}
           </p>
         )}
+        <AiAnswer issues={finding.issues} />
+        <Actions issues={finding.issues} caseId={issue.batch_id} onReview={onReview} />
       </div>
     </div>
   )
@@ -98,7 +177,7 @@ function FindingRow({ finding }: { finding: Finding }) {
 
 /** The data of a case that its documents state differently: each datum,
  * and every value with the documents that say it. */
-function DataThatDoNotMatch({ caseId, findings, turn, onDone }: { caseId: string; findings: Finding[]; turn: boolean; onDone: () => void }) {
+function DataThatDoNotMatch({ caseId, findings, turn, onDone, onReview }: { caseId: string; findings: Finding[]; turn: boolean; onDone: () => void; onReview: (issue: ValidationIssueEntry) => void }) {
   // Asked for a few at a time: every case asking at once kept the API busy (VRT-104).
   const { data: result, isLoading, isFetched } = useCaseResult(turn ? caseId : undefined)
   useEffect(() => {
@@ -106,12 +185,17 @@ function DataThatDoNotMatch({ caseId, findings, turn, onDone }: { caseId: string
   }, [isFetched]) // eslint-disable-line react-hooks/exhaustive-deps
   const { data: semantic } = useSemanticCatalog()
   const typeName = useTypeName()
+  const investigate = useInvestigate(caseId)
+  const issues = findings.flatMap((f) => f.issues)
+  // The finding naming the most data is the one to look into.
+  const widest = [...issues].sort((a, b) => b.message.length - a.message.length)[0]
+  const asked = issues.some((i) => i.investigation && i.investigation.status !== 'failed')
   const conflicts = Object.values(result?.entities ?? {})
     .flatMap((entities) => Object.values(entities).flatMap((attrs) => Object.values(attrs)))
     .filter((a) => a.status === 'conflict')
   if (!turn || isLoading) return <Loader2 className="mx-4 my-3 size-4 animate-spin text-muted-foreground" />
   // A case read again since: its findings say it as they were.
-  if (!conflicts.length) return <>{findings.map((f) => <FindingRow key={`${f.issue.rule_id}|${f.issue.message}`} finding={f} />)}</>
+  if (!conflicts.length) return <>{findings.map((f) => <FindingRow key={`${f.issue.rule_id}|${f.issue.message}`} finding={f} onReview={onReview} />)}</>
   const label = (role: string, attribute: string) => {
     const name = semantic?.catalog.attributes.find((a) => a.key === attribute)?.name ?? humanizeFieldName(attribute.split('.').pop() ?? attribute)
     const who = semantic?.catalog.roles.find((r) => r.key === role)?.name ?? role
@@ -144,6 +228,28 @@ function DataThatDoNotMatch({ caseId, findings, turn, onDone }: { caseId: string
             )
           })}
         </dl>
+        <AiAnswer issues={issues} />
+        <div className="flex flex-wrap items-center gap-1.5">
+          {canExecute() && !asked && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-sky-700 dark:text-sky-300"
+              disabled={investigate.isPending}
+              onClick={() =>
+                investigate.mutate(widest.id, {
+                  onSuccess: () => toast.success('La IA está buscando qué documento tiene el valor correcto.'),
+                  onError: (e) => toast.error(errorDetail(e)),
+                })
+              }
+            >
+              <Sparkles className="size-3.5" /> Pedir a la IA cuál es el correcto
+            </Button>
+          )}
+          <Button size="sm" variant="ghost" className="h-7" asChild>
+            <Link to={`/cases/${caseId}`}>Ver los documentos</Link>
+          </Button>
+        </div>
       </div>
     </div>
   )
@@ -171,13 +277,16 @@ export function ValidationPage() {
   const [severity, setSeverity] = useState<Severity | null>(null)
   const [documentType, setDocumentType] = useState(ALL)
   const [limit, setLimit] = useState(STEP)
+  const [pendingOnly, setPendingOnly] = useState(false)
+  const [reviewing, setReviewing] = useState<ValidationIssueEntry | null>(null)
   const { data: catalog } = useDocumentTypeCatalog()
   const scope = { category: category ?? undefined, document_type: documentType === ALL ? undefined : documentType }
   const { data, isLoading, isFetching, isError } = useValidationLog({ ...scope, severity: severity ?? undefined, limit })
-  const groups = groupByCase(data?.issues ?? [])
+  const groups = groupByCase((data?.issues ?? []).filter((i) => !pendingOnly || i.review_status === 'pending'))
   const [done, setDone] = useState(0)
   const withConflicts = groups.filter((g) => g.findings.some((f) => f.issue.rule_id === CONSISTENCY)).map((g) => g.id)
-  const filtered = category || severity || documentType !== ALL
+  const filtered = category || severity || documentType !== ALL || pendingOnly
+  const pendingCount = (data?.issues ?? []).filter((i) => i.review_status === 'pending').length
 
   const reset = <T,>(set: (v: T) => void) => (v: T) => (set(v), setLimit(STEP))
 
@@ -194,7 +303,29 @@ export function ValidationPage() {
         ))}
       </div>
 
+      <ol className="grid gap-2 rounded-xl border bg-muted/40 p-3 text-sm sm:grid-cols-3">
+        {[
+          ['Revisa', 'Abre la observación y mira el dato en el documento.'],
+          ['Corrige o confirma', 'Corrige si se leyó mal; si el documento de verdad dice eso, confírmalo con el motivo.'],
+          ['¿Dudas?', 'Pide a la IA que lo investigue: deja un diagnóstico con su evidencia, y tú decides.'],
+        ].map(([title, text], i) => (
+          <li key={title} className="flex items-start gap-2">
+            <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">{i + 1}</span>
+            <span>
+              <span className="font-medium">{title}.</span> <span className="text-muted-foreground">{text}</span>
+            </span>
+          </li>
+        ))}
+      </ol>
+
       <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setPendingOnly(!pendingOnly)}
+          className={cn('rounded-full border px-3 py-1 text-xs font-medium transition', pendingOnly ? 'border-amber-500 bg-amber-500 text-white' : 'border-amber-500/50 bg-card text-amber-700 hover:border-amber-500 dark:text-amber-300')}
+        >
+          Por revisar {pendingCount > 0 && <span className="opacity-80">{pendingCount}</span>}
+        </button>
         {Object.entries(CATEGORY).map(([key, label]) => (
           <button
             key={key}
@@ -220,7 +351,7 @@ export function ValidationPage() {
           </SelectContent>
         </Select>
         {filtered && (
-          <Button size="sm" variant="ghost" onClick={() => (setCategory(null), setSeverity(null), setDocumentType(ALL), setLimit(STEP))}>
+          <Button size="sm" variant="ghost" onClick={() => (setCategory(null), setSeverity(null), setDocumentType(ALL), setPendingOnly(false), setLimit(STEP))}>
             Ver todas
           </Button>
         )}
@@ -261,12 +392,13 @@ export function ValidationPage() {
                       findings={g.findings.filter((f) => f.issue.rule_id === CONSISTENCY)}
                       turn={withConflicts.indexOf(g.id) < done + IN_FLIGHT}
                       onDone={() => setDone((n) => n + 1)}
+                      onReview={setReviewing}
                     />
                   )}
                   {g.findings
                     .filter((f) => f.issue.rule_id !== CONSISTENCY)
                     .map((f) => (
-                      <FindingRow key={`${f.issue.rule_id}|${f.issue.message}`} finding={f} />
+                      <FindingRow key={`${f.issue.rule_id}|${f.issue.message}`} finding={f} onReview={setReviewing} />
                     ))}
                 </div>
               </section>
@@ -279,6 +411,7 @@ export function ValidationPage() {
           )}
         </div>
       )}
+      {reviewing?.review_item_id && <ReviewDialog reviewItemId={reviewing.review_item_id} finding={reviewing.message} onClose={() => setReviewing(null)} />}
     </div>
   )
 }

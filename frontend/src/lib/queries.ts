@@ -620,6 +620,8 @@ export function useValidationLog(filters: ValidationLogFilters = {}) {
       return data
     },
     placeholderData: keepPreviousData,
+    // While the AI looks into a finding, its answer is on the way.
+    refetchInterval: (query) => (query.state.data?.issues.some((i) => i.investigation?.status === 'running') ? 4_000 : false),
   })
 }
 

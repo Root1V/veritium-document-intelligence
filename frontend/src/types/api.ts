@@ -234,6 +234,10 @@ export interface ValidationIssueEntry {
   confidence_method: string
   explanation: string
   created_at: string
+  // What can be done with it (VRT-105).
+  review_item_id?: string | null
+  review_status?: 'pending' | 'resolved' | 'dismissed' | null
+  investigation?: { id: string; status: 'running' | 'done' | 'failed'; diagnosis: string | null; action_label: string | null; outcome: string } | null
 }
 
 export interface ValidationLogResponse {

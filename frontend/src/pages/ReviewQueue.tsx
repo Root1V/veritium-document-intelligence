@@ -20,7 +20,7 @@ const REASON_LABEL: Record<string, string> = {
   investigation: 'Sugerencia del investigador',
 }
 
-function ReviewRow({ item }: { item: ReviewItem }) {
+export function ReviewRow({ item }: { item: ReviewItem }) {
   const submitCorrection = useSubmitCorrection()
   const dismissItem = useDismissReviewItem()
   const { data: reasons } = useCorrectionReasons()

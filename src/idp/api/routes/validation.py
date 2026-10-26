@@ -19,7 +19,8 @@ from idp.api.deps import get_current_user, get_db_session, get_principal
 from idp.api.disclosure import CaseMaskers
 from idp.auth.authenticate import Principal
 from idp.api.routes.review import field_label
-from idp.persistence.models import Case
+from idp.persistence.models import Case, Investigation, ReviewItem
+from idp.pipeline.investigation import ACTION_LABEL
 from idp.persistence.repositories import DocumentTypeRepository, SemanticCatalogRepository, ValidationRepository
 
 router = APIRouter(prefix="/validation", tags=["validation"], dependencies=[Depends(get_current_user)])
@@ -42,6 +43,20 @@ class ValidationIssueResponse(BaseModel):
     confidence_method: str
     explanation: str
     created_at: datetime
+    # What can be done with it (VRT-105): its item in the review queue, and what the AI said.
+    review_item_id: uuid.UUID | None = None
+    review_status: str | None = None  # pending | resolved | dismissed
+    investigation: IssueInvestigation | None = None
+
+
+class IssueInvestigation(BaseModel):
+    """The latest time the AI looked into this finding (VRT-66)."""
+
+    id: uuid.UUID
+    status: str  # running | done | failed
+    diagnosis: str | None
+    action_label: str | None
+    outcome: str  # pending | accepted | overridden | dismissed
 
 
 class ValidationLogResponse(BaseModel):
@@ -68,6 +83,15 @@ async def list_validation_issues(
     loaded = await SemanticCatalogRepository(session).load_active()
     semantic = loaded[0] if loaded is not None else None
     refs = dict((await session.execute(select(Case.id, Case.external_ref).where(Case.id.in_({r.case_id for r in rows})))).tuples().all())
+    reviews = {
+        (r.document_id, r.field_path): r
+        for r in await session.scalars(
+            select(ReviewItem).where(ReviewItem.reason == "validation_issue", ReviewItem.document_id.in_({r.document_id for r in rows if r.document_id}))
+        )
+    }
+    investigations: dict[uuid.UUID, Investigation] = {}
+    for inv in await session.scalars(select(Investigation).where(Investigation.validation_issue_id.in_({r.id for r in rows})).order_by(Investigation.created_at)):
+        investigations[inv.validation_issue_id] = inv  # the latest wins
     issues = []
     for row in rows:
         issue = ValidationIssueResponse(
@@ -87,6 +111,13 @@ async def list_validation_issues(
             confidence_method=row.confidence_method,
             explanation=row.explanation,
             created_at=row.created_at,
+            review_item_id=(review := reviews.get((row.document_id, row.field_path))) and review.id,
+            review_status=review.status if review else None,
+            investigation=IssueInvestigation(
+                id=inv.id, status=inv.status, diagnosis=inv.diagnosis, action_label=ACTION_LABEL.get(inv.action or "", inv.action), outcome=inv.outcome
+            )
+            if (inv := investigations.get(row.id))
+            else None,
         )
         issues.append(ValidationIssueResponse.model_validate((await maskers(row.case_id)).json(issue.model_dump(mode="json"))))
     return ValidationLogResponse(total=total, issues=issues)
