@@ -7,6 +7,8 @@ meaning of each field, from the semantic catalog."""
 
 from __future__ import annotations
 
+import re
+
 from pydantic import BaseModel
 from synaptum import PromptTemplate
 
@@ -88,6 +90,34 @@ def _shown(text: str) -> str:
     return text if len(text) <= _SHOWN else text[:_SHOWN] + "…"
 
 
+_MRZ = re.compile(r"[A-Z0-9<]{25,}")
+
+
+def _linked_pages(parsed: ParsedDocument) -> str:
+    """Which record each back page belongs to (VRT-103): a page whose
+    machine-readable line (MRZ) starts with a document number printed on
+    another page is that document's. Said to the agent as a fact, so a scan of
+    several ID cards with the backs in another order is not paired by page."""
+    printed: dict[str, int] = {}  # a number printed outside an MRZ → its page
+    for b in parsed.blocks:
+        if "<" not in b.text:
+            for number in re.findall(r"\d{6,}", b.text.replace(" ", "")):
+                printed.setdefault(number, b.page)
+    links: dict[int, tuple[str, int]] = {}
+    for b in parsed.blocks:
+        line = b.text.replace(" ", "")
+        if b.page in links or "<" not in line or not _MRZ.fullmatch(line):
+            continue
+        for number, page in printed.items():
+            if page != b.page and 0 <= line.find(number) <= 5:  # TD1 puts it first, or after the type and country
+                links[b.page] = (number, page)
+                break
+    if not links:
+        return ""
+    lines = "\n".join(f"- page {p} belongs to the record numbered {n} (printed on page {front})" for p, (n, front) in sorted(links.items()))
+    return f"\n\nPages tied to a record by their machine-readable line (fact, checked by the platform):\n{lines}"
+
+
 def build_system_prompt(
     hint: str, schema_cls: type[BaseModel], parsed: ParsedDocument, grounding: dict[str, str] | None = None, *, self_check: bool = False
 ) -> PromptTemplate:
@@ -97,7 +127,7 @@ def build_system_prompt(
     # A layout box without text tells the agent nothing; a table or figure does (it can be read visually).
     regions = "\n".join(
         f"- region_id={b.region_id} type={b.block_type} page={b.page} ocr_text={_shown(b.text)!r}" for b in parsed.blocks if b.text or b.block_type != "text"
-    )
+    ) + _linked_pages(parsed)
     meaning = ""
     if grounding:
         lines = "\n".join(f"- {field}: {text}" for field, text in grounding.items())

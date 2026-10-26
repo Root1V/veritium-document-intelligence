@@ -145,3 +145,4 @@ Estados: `done` · `todo` · `blocked` (espera a otro equipo) · `superseded` (a
 | VRT-96 | Personas en palabras | done | Fichas por rol con lo que puede hacer, personas en tarjetas por rol, cambiar el rol sin borrar y agregar en un diálogo claro. |
 | VRT-97 | Sistemas conectados en palabras | done | Cada sistema en una tarjeta con su estado en semáforo y «último uso hace…»; conectar en un diálogo de dos pasos; sin acceso y guía técnica plegados. |
 | VRT-98 | Ajuste de las instrucciones de extracción en inglés | todo | Valor limpio sin restos del OCR, totales copiados y en positivo, varias personas por número y no por página, y contar las filas de cada lista. |
+| VRT-103 | Reversos de documentos de identidad ligados por su número | todo | La plataforma dice al modelo a qué carné pertenece cada reverso, leyendo el número de su línea con «<», en vez de dejarlo adivinar por el orden. |
