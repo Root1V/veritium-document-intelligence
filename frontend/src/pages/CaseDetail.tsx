@@ -3,23 +3,26 @@
 // where each piece of it came from — every source, document and finding
 // opens the evidence viewer on its page with its box. Each of them can be
 // reprocessed on its own as a new run (VRT-40), and the result exported (VRT-41).
+// VRT-110: the decision says what to do in one line, with how many things
+// are behind it; the data are told by their business names, grouped by
+// person, the ones the documents state differently first, each value with
+// the documents that say it; findings without codes; the rest folded.
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { Bot, CheckCircle2, ChevronLeft, CircleAlert, CircleX, Download, Loader2, MessageSquareText, MoreHorizontal, RefreshCw, Search, Trash2 } from 'lucide-react'
+import { AlertTriangle, Bot, CheckCircle2, ChevronLeft, CircleAlert, CircleX, Download, FileText, Info, Loader2, MessageSquareText, MoreHorizontal, RefreshCw, Search, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAssistant } from '@/lib/assistant'
 import { InvestigationPanel } from '@/components/cases/InvestigationPanel'
 import { LensesCard } from '@/components/cases/LensesCard'
 import { ProgressFunnel } from '@/components/cases/ProgressFunnel'
 import { EvidenceViewer } from '@/components/documents/EvidenceViewer'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { errorDetail } from '@/lib/apiErrors'
 import { canExecute, isAISpecialist, isAdmin } from '@/lib/auth'
-import { DeleteButton, useDeleteAction } from '@/components/DeleteButton'
+import { useDeleteAction } from '@/components/DeleteButton'
 import { cn } from '@/lib/utils'
 import { StatusBadge } from '@/components/StatusBadge'
 import { DELETE_CASE } from '@/pages/Cases'
@@ -32,10 +35,11 @@ import {
   useInvestigate,
   useProcessProfiles,
   useReprocessCase,
+  useSemanticCatalog,
   useWaiveCondition,
   type CaseExportFormat,
 } from '@/lib/queries'
-import type { CaseCondition, CaseResult, ReprocessScope } from '@/types/api'
+import type { CaseCondition, CaseFinding, CaseResult, ReprocessScope, ResolvedAttribute } from '@/types/api'
 import { PersonalDataBar } from '@/components/cases/PersonalDataBar'
 
 interface Evidence {
@@ -45,51 +49,52 @@ interface Evidence {
   label: string
 }
 
-const STATUS_LABEL = { consistent: 'coincide', conflict: 'conflicto', single_source: 'una fuente' } as const
+// The rule that compares each datum across the case's documents (VRT-23): shown as the data that do not match.
+const CONSISTENCY = 'semantic.attribute_consistency'
 
 function show(value: unknown): string {
   if (value === null || value === undefined) return '—'
   return typeof value === 'object' ? JSON.stringify(value) : String(value)
 }
 
-function ConditionRow({ caseId, condition }: { caseId: string; condition: CaseCondition }) {
+function ConditionRow({ caseId, condition, what }: { caseId: string; condition: CaseCondition; what: string }) {
   const waive = useWaiveCondition()
   const [reason, setReason] = useState('')
   const [open, setOpen] = useState(false)
+  const missing = condition.status === 'open'
   return (
-    <div className="flex flex-col gap-2 rounded-md border p-3 text-sm">
+    <div className="flex flex-col gap-2 px-4 py-2.5 text-sm">
       <div className="flex flex-wrap items-center gap-2">
-        {condition.status === 'open' ? <CircleAlert className="size-4 text-amber-600" /> : <CheckCircle2 className="size-4 text-emerald-600" />}
-        <span className="font-medium">{condition.label}</span>
-        <Badge variant={condition.status === 'open' ? 'destructive' : 'secondary'}>{condition.status === 'open' ? 'falta' : condition.status === 'waived' ? 'dispensada' : 'cumplida'}</Badge>
-        <span className="text-xs text-muted-foreground">
-          {condition.kind === 'missing_evidence' ? `evidencia: ${(condition.attributes ?? []).join(', ')} (${condition.role})` : condition.document_type}
+        {missing ? <CircleX className="size-4 shrink-0 text-red-600" /> : <CheckCircle2 className="size-4 shrink-0 text-emerald-600" />}
+        <span className="flex min-w-0 flex-1 flex-col">
+          <span className="font-medium">{condition.label}</span>
+          <span className="text-xs text-muted-foreground">
+            {missing ? 'Falta' : condition.status === 'waived' ? `Dispensado por ${condition.waived_by}: ${condition.waived_reason}` : 'Cumplido'} · {what}
+          </span>
         </span>
-        {condition.status === 'open' && canExecute() && !open && (
-          <Button size="sm" variant="ghost" className="ml-auto" onClick={() => setOpen(true)}>
+        {missing && canExecute() && !open && (
+          <Button size="sm" variant="ghost" className="h-7" onClick={() => setOpen(true)}>
             Dispensar
           </Button>
         )}
       </div>
-      {condition.status === 'waived' && (
-        <span className="text-xs text-muted-foreground">
-          Dispensada por {condition.waived_by}: {condition.waived_reason}
-        </span>
-      )}
       {open && (
-        <div className="flex gap-2">
-          <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Motivo (queda auditado)" className="h-8 text-xs" />
+        <div className="flex gap-2 pl-6">
+          <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Por qué se dispensa (queda en la auditoría)" className="h-8 text-xs" />
           <Button
             size="sm"
             disabled={reason.trim().length < 3 || waive.isPending}
             onClick={() =>
               waive.mutate(
                 { caseId, conditionId: condition.id, reason },
-                { onSuccess: () => toast.success('Requisito dispensado; el veredicto se recalculó.'), onError: (e) => toast.error(errorDetail(e)) },
+                { onSuccess: () => toast.success('Requisito dispensado; la decisión se recalculó.'), onError: (e) => toast.error(errorDetail(e)) },
               )
             }
           >
             Confirmar
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => setOpen(false)}>
+            Cancelar
           </Button>
         </div>
       )}
@@ -108,7 +113,7 @@ function runLabel(run: NonNullable<CaseResult['run']>): string {
 }
 
 /** Starts a reprocess run for one scope; re-extraction asks first (it calls the model again). */
-function ReprocessButton({ caseId, scope, label, busy }: { caseId: string; scope: ReprocessScope; label: string; busy: boolean }) {
+function ReprocessButton({ caseId, scope, label, busy, iconOnly = false }: { caseId: string; scope: ReprocessScope; label: string; busy: boolean; iconOnly?: boolean }) {
   const reprocess = useReprocessCase()
   const [asking, setAsking] = useState(false)
   if (!canExecute()) return null
@@ -142,11 +147,12 @@ function ReprocessButton({ caseId, scope, label, busy }: { caseId: string; scope
       variant="ghost"
       className="h-6 px-2 text-xs"
       disabled={busy || reprocess.isPending}
-      title={busy ? 'Hay una corrida en curso' : undefined}
+      title={busy ? 'Hay una corrida en curso' : label}
+      aria-label={label}
       onClick={() => (reextracts ? setAsking(true) : start())}
     >
       <RefreshCw className="size-3" />
-      {label}
+      {!iconOnly && label}
     </Button>
   )
 }
@@ -163,33 +169,39 @@ function VerdictBanner({
   decision,
   busy,
   reasons,
+  summary,
   runError,
 }: {
   decision: CaseResult['verdict']['decision'] | null
   busy: boolean
   reasons: { decision: CaseResult['verdict']['decision']; message: string; count: number }[]
+  summary: string[]
   runError: string | null
 }) {
   const look = busy || !decision ? VERDICT_LOOK.pending : VERDICT_LOOK[decision]
   const { Icon } = look
   return (
-    <div className={cn('flex flex-col gap-3 rounded-lg border p-4 sm:flex-row sm:items-start', look.className)}>
+    <div className={cn('flex flex-col gap-3 rounded-xl border p-4 sm:flex-row sm:items-start', look.className)}>
       <Icon className={cn('size-6 shrink-0', busy && 'animate-spin')} aria-hidden />
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         <span className="text-base font-semibold">{look.title}</span>
         <span className="text-sm opacity-90">{look.next}</span>
+        {!busy && summary.length > 0 && <span className="text-sm font-medium">{summary.join(' · ')}</span>}
         {!busy && reasons.length > 0 && (
-          <ul className="mt-1 flex flex-col gap-0.5 text-sm">
-            {reasons.map((r) => (
-              <li key={`${r.decision}|${r.message}`} className="flex gap-2">
-                <span aria-hidden>•</span>
-                <span>
-                  {r.message}
-                  {r.count > 1 && <span className="opacity-70"> (×{r.count})</span>}
-                </span>
-              </li>
-            ))}
-          </ul>
+          <details className="text-sm">
+            <summary className="w-fit cursor-pointer opacity-80 select-none hover:opacity-100">Ver los motivos ({reasons.length})</summary>
+            <ul className="mt-1 flex flex-col gap-0.5">
+              {reasons.map((r) => (
+                <li key={`${r.decision}|${r.message}`} className="flex gap-2">
+                  <span aria-hidden>•</span>
+                  <span>
+                    {r.message}
+                    {r.count > 1 && <span className="opacity-70"> (×{r.count})</span>}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </details>
         )}
         {runError && <span className="text-sm text-destructive">La última corrida falló: {runError}</span>}
       </div>
@@ -212,7 +224,7 @@ const VERDICT_LOOK = {
   human_review: {
     Icon: CircleAlert,
     title: 'Necesita revisión humana',
-    next: 'Revisa los campos y observaciones de abajo; el veredicto se actualiza al corregir.',
+    next: 'Revisa lo de abajo: al corregir, la decisión se vuelve a calcular sola.',
     className: 'border-amber-300 bg-amber-50 text-amber-900 dark:bg-amber-950/30 dark:text-amber-200',
   },
   return_to_client: {
@@ -316,6 +328,93 @@ function CaseHeader({ result, statusLabel, busy, onDeleted }: { result: CaseResu
   )
 }
 
+/** What the case says, by person (VRT-110): the data its documents state
+ * differently first — each value with the documents that say it — then the
+ * rest, one line each. Every source opens the document where it is. */
+function CaseData({
+  result,
+  typeName,
+  busy,
+  onEvidence,
+}: {
+  result: CaseResult
+  typeName: Record<string, string>
+  busy: boolean
+  onEvidence: (e: Evidence) => void
+}) {
+  const { data: semantic } = useSemanticCatalog()
+  const attrName = (key: string) => semantic?.catalog.attributes.find((a) => a.key === key)?.name ?? key.split('.').pop()!.replace(/_/g, ' ')
+  const roleName = (key: string) => semantic?.catalog.roles.find((r) => r.key === key)?.name ?? key
+  const roles = Object.entries(result.entities).map(([role, entities]) => {
+    const attrs = Object.values(entities).flatMap((a) => Object.values(a))
+    return { role, attrs: [...attrs.filter((a) => a.status === 'conflict'), ...attrs.filter((a) => a.status !== 'conflict')] }
+  })
+  roles.sort((a, b) => Number(b.attrs.some((x) => x.status === 'conflict')) - Number(a.attrs.some((x) => x.status === 'conflict')))
+  const docOf = (s: ResolvedAttribute['sources'][number]) => typeName[s.document_type] ?? s.document_type
+  const open = (s: ResolvedAttribute['sources'][number]) =>
+    onEvidence({ documentId: s.document_id, page: s.page ?? 0, bbox: s.bbox, label: `${docOf(s)}${s.page !== null ? ` · pág. ${s.page + 1}` : ''}` })
+
+  if (!roles.length) return null
+  return (
+    <section className="flex flex-col gap-3">
+      <h2 className="font-semibold">Datos del expediente</h2>
+      {roles.map(({ role, attrs }) => (
+        <div key={role} className="overflow-hidden rounded-xl border bg-card">
+          <div className="border-b bg-muted/40 px-4 py-2 text-sm font-semibold">{roleName(role)}</div>
+          <div className="flex flex-col divide-y">
+            {attrs.map((a) => {
+              const conflict = a.status === 'conflict'
+              const byValue = new Map<string, ResolvedAttribute['sources']>()
+              for (const src of a.sources) byValue.set(show(src.value), [...(byValue.get(show(src.value)) ?? []), src])
+              return (
+                <div key={a.attribute} className={cn('group flex flex-wrap items-start gap-x-3 gap-y-1 px-4 py-2 text-sm', conflict && 'bg-red-500/5')}>
+                  <span className="w-48 shrink-0 text-muted-foreground">{attrName(a.attribute)}</span>
+                  {conflict ? (
+                    <span className="flex min-w-0 flex-1 flex-col gap-1">
+                      <span className="inline-flex items-center gap-1 text-xs font-medium text-red-700 dark:text-red-400">
+                        <AlertTriangle className="size-3" /> No coincide entre documentos
+                      </span>
+                      <span className="flex flex-wrap gap-1">
+                        {[...byValue.entries()].map(([value, sources]) => (
+                          <button
+                            key={value}
+                            type="button"
+                            onClick={() => open(sources[0])}
+                            className="inline-flex items-baseline gap-1.5 rounded border bg-background px-1.5 leading-6 hover:border-primary/40"
+                          >
+                            <span className="font-semibold">{value}</span>
+                            <span className="text-xs text-muted-foreground">{sources.map(docOf).join(', ')}</span>
+                          </button>
+                        ))}
+                      </span>
+                    </span>
+                  ) : (
+                    <span className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2">
+                      <span className="font-medium">{show(a.value)}</span>
+                      <span className="flex flex-wrap gap-x-1.5 text-xs text-muted-foreground">
+                        {a.status === 'consistent' && <span className="text-emerald-700 dark:text-emerald-400">✓ coincide en</span>}
+                        {a.sources.map((src, i) => (
+                          <button key={i} type="button" onClick={() => open(src)} className="hover:text-foreground hover:underline">
+                            {docOf(src)}
+                            {i < a.sources.length - 1 && ','}
+                          </button>
+                        ))}
+                      </span>
+                    </span>
+                  )}
+                  <span className="opacity-0 transition group-hover:opacity-100">
+                    <ReprocessButton caseId={result.case.id} scope={{ kind: 'attribute', attribute: a.attribute }} label="Volver a evaluar este dato" busy={busy} iconOnly />
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      ))}
+    </section>
+  )
+}
+
 /** Where a field of a document's extraction is: its envelope's page and box. */
 function fieldEvidence(result: CaseResult, documentId: string, fieldPath: string | null): Evidence | null {
   const doc = result.documents.find((d) => d.id === documentId)
@@ -357,6 +456,28 @@ export function CaseDetailPage() {
     return d ? `${d.document_type ? (typeName[d.document_type] ?? d.document_type) : 'Sin clasificar'} — ${d.filename}` : '—'
   }
   const busy = result.run?.status === 'pending' || result.run?.status === 'running'
+  // A finding seen in several documents is said once, with all of them; the data that do not match are in «Datos del expediente».
+  const findings = Object.values(
+    result.findings
+      .filter((f) => f.rule_id !== CONSISTENCY)
+      .reduce<Record<string, { finding: CaseFinding; documents: string[] }>>((acc, f) => {
+        const k = `${f.rule_id}|${f.message}`
+        acc[k] ??= { finding: f, documents: [] }
+        if (f.document_id && !acc[k].documents.includes(f.document_id)) acc[k].documents.push(f.document_id)
+        return acc
+      }, {}),
+  )
+  const conflicts = Object.values(result.entities).flatMap((e) => Object.values(e).flatMap((a) => Object.values(a))).filter((a) => a.status === 'conflict').length
+  const missing = result.conditions.filter((c) => c.status === 'open').length
+  const toReview = result.documents.filter((d) => d.needs_review).length
+  const todo = [
+    missing && (missing === 1 ? '1 requisito sin cumplir' : `${missing} requisitos sin cumplir`),
+    conflicts && (conflicts === 1 ? '1 dato no coincide entre documentos' : `${conflicts} datos no coinciden entre documentos`),
+    findings.length && (findings.length === 1 ? '1 observación' : `${findings.length} observaciones`),
+    toReview && (toReview === 1 ? '1 documento con datos por revisar' : `${toReview} documentos con datos por revisar`),
+  ].filter(Boolean) as string[]
+  const conditionWhat = (c: CaseCondition) =>
+    c.kind === 'missing_evidence' ? `Lo prueba cualquier documento con ${(c.attributes ?? []).join(', ').replace(/[a-z_]+\./g, '').replace(/_/g, ' ')}` : c.document_type ? (typeName[c.document_type] ?? c.document_type) : ''
   const investigationOf = Object.fromEntries((investigations ?? []).filter((i) => i.validation_issue_id).map((i) => [i.validation_issue_id!, i]))
   const investigating = (investigations ?? []).some((i) => i.status === 'running')
   const canInvestigate = canExecute() || isAISpecialist()
@@ -375,7 +496,7 @@ export function CaseDetailPage() {
         />
       )}
 
-      <VerdictBanner decision={decision} busy={busy} reasons={reasons} runError={result.run?.error ?? null} />
+      <VerdictBanner decision={decision} busy={busy} reasons={reasons} summary={todo} runError={result.run?.error ?? null} />
 
       {summary && (busy || summary.progress.failed_documents > 0) && (
         <Card>
@@ -388,68 +509,24 @@ export function CaseDetailPage() {
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,560px)]">
         <div className="flex min-w-0 flex-col gap-4">
           {result.conditions.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Requisitos del perfil</CardTitle>
-              </CardHeader>
-              <CardContent className="flex flex-col gap-2">
+            <section className="flex flex-col gap-2">
+              <h2 className="font-semibold">Lo que pide el proceso</h2>
+              <div className="flex flex-col divide-y overflow-hidden rounded-xl border bg-card">
                 {result.conditions.map((c) => (
-                  <ConditionRow key={c.id} caseId={result.case.id} condition={c} />
+                  <ConditionRow key={c.id} caseId={result.case.id} condition={c} what={conditionWhat(c)} />
                 ))}
-              </CardContent>
-            </Card>
+              </div>
+            </section>
           )}
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Lo que dice el expediente</CardTitle>
-              <CardDescription>Cada atributo consolidado entre documentos; haz clic en una fuente para ver de dónde sale.</CardDescription>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-4">
-              {Object.keys(result.entities).length === 0 && <span className="text-sm text-muted-foreground">Sin atributos del catálogo semántico en este expediente.</span>}
-              {Object.entries(result.entities).map(([role, entities]) => (
-                <div key={role} className="flex flex-col gap-1">
-                  <span className="text-sm font-semibold capitalize">{role}</span>
-                  {Object.values(entities).flatMap((attrs) =>
-                    Object.values(attrs).map((a) => (
-                      <div key={`${role}.${a.attribute}`} className="flex flex-wrap items-center gap-2 border-b py-1.5 text-sm last:border-0">
-                        <code className="min-w-48 text-xs">{a.attribute}</code>
-                        <span className="font-medium">{show(a.value)}</span>
-                        <Badge variant={a.status === 'conflict' ? 'destructive' : 'outline'} className="text-[10px]">
-                          {STATUS_LABEL[a.status]}
-                        </Badge>
-                        {a.status === 'conflict' && <span className="text-xs text-destructive">valores: {a.distinct_values.map(show).join(' / ')}</span>}
-                        <ReprocessButton caseId={result.case.id} scope={{ kind: 'attribute', attribute: a.attribute }} label="Re-evaluar" busy={busy} />
-                        <span className="flex flex-wrap gap-1">
-                          {a.sources.map((s, i) => (
-                            <Button
-                              key={i}
-                              size="sm"
-                              variant="ghost"
-                              className="h-6 px-2 text-xs"
-                              onClick={() => setEvidence({ documentId: s.document_id, page: s.page ?? 0, bbox: s.bbox, label: `${s.document_type} · ${s.field_path}` })}
-                            >
-                              {typeName[s.document_type] ?? s.document_type}
-                              {s.page !== null && ` p.${s.page + 1}`}
-                            </Button>
-                          ))}
-                        </span>
-                      </div>
-                    )),
-                  )}
-                </div>
-              ))}
-            </CardContent>
-          </Card>
+          <CaseData result={result} typeName={typeName} busy={busy} onEvidence={setEvidence} />
 
-          <LensesCard caseId={result.case.id} onEvidence={(e) => setEvidence({ documentId: e.document_id, page: e.page, bbox: e.bbox, label: `${e.document_name} · pág. ${e.page + 1}` })} />
-
-          {result.findings.length > 0 && (
-            <Card>
-              <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-2">
-                <div>
-                  <CardTitle>Hallazgos ({result.findings.length})</CardTitle>
-                  <CardDescription>Un agente puede investigar cada uno y dejarte un diagnóstico con evidencia; no decide por ti.</CardDescription>
+          {findings.length > 0 && (
+            <section className="flex flex-col gap-2">
+              <div className="flex flex-wrap items-end justify-between gap-2">
+                <div className="flex flex-col">
+                  <h2 className="font-semibold">Observaciones</h2>
+                  <span className="text-xs text-muted-foreground">La IA puede investigar cada una y dejarte un diagnóstico con evidencia; no decide por ti.</span>
                 </div>
                 {canInvestigate && (
                   <Button
@@ -458,89 +535,91 @@ export function CaseDetailPage() {
                     disabled={investigate.isPending || investigating}
                     onClick={() => investigate.mutate(undefined, { onError: (e) => toast.error(errorDetail(e)) })}
                   >
-                    {investigating ? <Loader2 className="size-3.5 animate-spin" /> : <Search className="size-3.5" />} Investigar hallazgos
+                    {investigating ? <Loader2 className="size-3.5 animate-spin" /> : <Search className="size-3.5" />} Investigar todas
                   </Button>
                 )}
-              </CardHeader>
-              <CardContent className="flex flex-col gap-2 text-sm">
-                {result.findings.map((f, i) => (
-                  <div key={i} className="flex flex-col gap-2 rounded-md border p-2">
-                    <div className="flex items-start gap-2 hover:bg-muted/50">
-                    <button
-                      type="button"
-                      className="flex flex-1 flex-col items-start gap-0.5 text-left"
-                      onClick={() => f.document_id && setEvidence(fieldEvidence(result, f.document_id, f.field_path))}
-                    >
-                      <span className="flex items-center gap-2">
-                        <Badge variant={f.severity === 'error' ? 'destructive' : 'outline'} className="text-[10px]">
-                          {f.severity}
-                        </Badge>
-                        <code className="text-xs">{f.rule_id}</code>
-                      </span>
-                      <span className="whitespace-pre-line">{f.message}</span>
-                      {f.document_id && <span className="text-xs text-muted-foreground">{docName(f.document_id)}</span>}
-                    </button>
-                    <ReprocessButton caseId={result.case.id} scope={{ kind: 'rule', rule_id: f.rule_id }} label="Re-evaluar regla" busy={busy} />
-                    {canInvestigate && !investigationOf[f.id] && (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        disabled={investigate.isPending}
-                        onClick={() => investigate.mutate(f.id, { onError: (e) => toast.error(errorDetail(e)) })}
-                      >
-                        Investigar
-                      </Button>
-                    )}
+              </div>
+              <div className="flex flex-col divide-y overflow-hidden rounded-xl border bg-card">
+                {findings.map(({ finding: f, documents }) => {
+                  const Icon = f.severity === 'error' ? CircleAlert : f.severity === 'warning' ? AlertTriangle : Info
+                  return (
+                    <div key={f.id} className="group flex flex-col gap-2 px-4 py-2.5 text-sm">
+                      <div className="flex items-start gap-2.5">
+                        <Icon
+                          className={cn('mt-0.5 size-4 shrink-0', f.severity === 'error' ? 'text-red-600' : f.severity === 'warning' ? 'text-amber-600' : 'text-muted-foreground')}
+                          aria-label={f.severity}
+                        />
+                        <span className="flex min-w-0 flex-1 flex-col gap-0.5" title={f.rule_id}>
+                          <span className="whitespace-pre-line">{f.message}</span>
+                          <span className="flex flex-wrap gap-x-2 text-xs">
+                            {documents.map((id) => (
+                              <button key={id} type="button" className="inline-flex items-center gap-1 text-primary hover:underline" onClick={() => setEvidence(fieldEvidence(result, id, f.field_path))}>
+                                <FileText className="size-3" /> {docName(id)}
+                              </button>
+                            ))}
+                          </span>
+                        </span>
+                        <span className="flex shrink-0 items-center gap-1">
+                          {canInvestigate && !investigationOf[f.id] && (
+                            <Button size="sm" variant="ghost" className="h-7 text-sky-700 dark:text-sky-300" disabled={investigate.isPending} onClick={() => investigate.mutate(f.id, { onError: (e) => toast.error(errorDetail(e)) })}>
+                              Investigar
+                            </Button>
+                          )}
+                          <span className="opacity-0 transition group-hover:opacity-100">
+                            <ReprocessButton caseId={result.case.id} scope={{ kind: 'rule', rule_id: f.rule_id }} label="Volver a evaluar esta regla" busy={busy} iconOnly />
+                          </span>
+                        </span>
+                      </div>
+                      {investigationOf[f.id] && (
+                        <InvestigationPanel
+                          investigation={investigationOf[f.id]}
+                          onRetry={canInvestigate ? () => investigate.mutate(f.id, { onError: (e) => toast.error(errorDetail(e)) }) : undefined}
+                          onEvidence={(documentId, page) => setEvidence({ documentId, page, bbox: null, label: `${docName(documentId)} · pág. ${page + 1}` })}
+                        />
+                      )}
                     </div>
-                    {investigationOf[f.id] && (
-                      <InvestigationPanel
-                        investigation={investigationOf[f.id]}
-                        onRetry={canInvestigate ? () => investigate.mutate(f.id, { onError: (e) => toast.error(errorDetail(e)) }) : undefined}
-                        onEvidence={(documentId, page) => setEvidence({ documentId, page, bbox: null, label: `${docName(documentId)} · pág. ${page + 1}` })}
-                      />
-                    )}
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
+                  )
+                })}
+              </div>
+            </section>
           )}
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Documentos ({result.documents.length})</CardTitle>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-1 text-sm">
-              {result.documents.map((d) => (
-                <div key={d.id} className="flex flex-wrap items-center gap-2 rounded-md p-1.5 hover:bg-muted/50">
-                  <button
-                    type="button"
-                    className="flex flex-wrap items-center gap-2 text-left"
-                    onClick={() => setEvidence({ documentId: d.id, page: d.page_start ?? 0, bbox: null, label: d.filename })}
-                  >
-                    <span className="font-medium">{d.document_type ? (typeName[d.document_type] ?? d.document_type) : 'Sin clasificar'}</span>
-                    <span className="text-xs text-muted-foreground">{d.filename}</span>
+          <LensesCard caseId={result.case.id} onEvidence={(e) => setEvidence({ documentId: e.document_id, page: e.page, bbox: e.bbox, label: `${e.document_name} · pág. ${e.page + 1}` })} />
+
+          <section className="flex flex-col gap-2">
+            <h2 className="font-semibold">Documentos ({result.documents.length})</h2>
+            <div className="flex flex-col divide-y overflow-hidden rounded-xl border bg-card">
+              {result.documents.map((d) => {
+                const active = selected?.documentId === d.id
+                return (
+                  <div key={d.id} className={cn('group flex items-center gap-3 px-4 py-2 text-sm', active && 'bg-primary/5')}>
+                    <button
+                      type="button"
+                      className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                      onClick={() => setEvidence({ documentId: d.id, page: d.page_start ?? 0, bbox: null, label: d.filename })}
+                    >
+                      <FileText className="size-4 shrink-0 text-muted-foreground" />
+                      <span className="flex min-w-0 flex-col">
+                        <span className="font-medium">{d.document_type ? (typeName[d.document_type] ?? d.document_type) : 'Sin clasificar'}</span>
+                        <span className="truncate text-xs text-muted-foreground">{d.filename}</span>
+                      </span>
+                    </button>
                     <StatusBadge status={d.needs_review ? 'needs_review' : d.status} />
-                  </button>
-                  <span className="ml-auto flex items-center gap-2">
-                    {!d.parent_document_id && !segmented.has(d.id) && (
-                      <ReprocessButton caseId={result.case.id} scope={{ kind: 'document', document_id: d.id }} label="Re-extraer" busy={busy} />
-                    )}
-                    <Link to={`/documents/${d.id}`} className="text-xs underline">
-                      campos
-                    </Link>
-                    {isAdmin() && !summary?.personal_data?.removed_at && (
-                      <DeleteButton
-                        iconOnly
-                        path={`/documents/${d.id}`}
-                        label="Eliminar documento"
-                        question="Se eliminará para siempre este documento con su archivo y lo leído de él, y el expediente se volverá a evaluar sin él."
-                      />
-                    )}
-                  </span>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
+                    <span className="flex items-center gap-1">
+                      {!d.parent_document_id && !segmented.has(d.id) && (
+                        <span className="opacity-0 transition group-hover:opacity-100">
+                          <ReprocessButton caseId={result.case.id} scope={{ kind: 'document', document_id: d.id }} label="Volver a leer este documento" busy={busy} iconOnly />
+                        </span>
+                      )}
+                      <Button size="sm" variant="ghost" className="h-7" asChild>
+                        <Link to={`/documents/${d.id}`}>Ver datos</Link>
+                      </Button>
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+          </section>
         </div>
 
         <div className="min-w-0" ref={viewerRef}>
