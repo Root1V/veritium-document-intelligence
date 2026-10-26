@@ -76,7 +76,7 @@ def create_app() -> FastAPI:
         # Spans are batched and exported on a timer: flush, or the last requests' spans are lost.
         trace.get_tracer_provider().force_flush()  # type: ignore[union-attr]
 
-    app = FastAPI(title="Veritium", version="0.3.0", lifespan=lifespan)
+    app = FastAPI(title="Veritium", version="0.4.0", lifespan=lifespan)
 
     # The API starts without its models (VRT-90); what needs one says so instead of failing blind.
     @app.exception_handler(ModelResolutionError)
