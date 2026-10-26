@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { Loader2, Pencil, Plus, Sparkles, X } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { CircleCheck, Loader2, Pencil, Plus, Sparkles, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { useResolveTypeSuggestion, useTypeSuggestions, useUpdateTypeSuggestion } from '@/lib/queries'
 import { canExecute } from '@/lib/auth'
@@ -13,6 +14,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import type { SuggestedFieldType, TypeSuggestion } from '@/types/api'
 
 const FIELD_TYPES: SuggestedFieldType[] = ['str', 'int', 'float', 'bool', 'list']
+// Each kind of datum as a person says it (VRT-108).
+const FIELD_TYPE_LABEL: Record<string, string> = { str: 'texto', int: 'número entero', float: 'número', bool: 'sí / no', list: 'lista' }
 
 // SuggestedField (the GET response shape) types field_type as plain
 // `string` since it's read-only there; editing needs the narrower literal
@@ -109,6 +112,22 @@ function SuggestionCard({ suggestion, canResolve }: { suggestion: TypeSuggestion
         <CardDescription>{suggestion.rationale}</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
+        {!isEditing ? (
+          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+            {suggestion.fields.map((field) => (
+              <div key={field.name} className="flex flex-col gap-0.5 rounded-lg border bg-background px-3 py-2">
+                <span className="flex items-baseline justify-between gap-2 text-sm">
+                  <span className="font-medium">{field.name.replace(/_/g, ' ')}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {FIELD_TYPE_LABEL[field.field_type] ?? field.field_type}
+                    {field.required && ' · obligatorio'}
+                  </span>
+                </span>
+                {field.description && <span className="text-xs text-muted-foreground">{field.description}</span>}
+              </div>
+            ))}
+          </div>
+        ) : (
         <div className="overflow-x-auto rounded-lg border">
           <Table>
             <TableHeader>
@@ -116,13 +135,12 @@ function SuggestionCard({ suggestion, canResolve }: { suggestion: TypeSuggestion
                 <TableHead>Campo</TableHead>
                 <TableHead>Tipo</TableHead>
                 <TableHead>Descripción</TableHead>
-                <TableHead>Requerido</TableHead>
-                {isEditing && <TableHead className="w-8" />}
+                <TableHead>Obligatorio</TableHead>
+                <TableHead className="w-8" />
               </TableRow>
             </TableHeader>
             <TableBody>
-              {(isEditing ? fields : suggestion.fields).map((field, index) =>
-                isEditing ? (
+              {fields.map((field, index) => (
                   <TableRow key={index}>
                     <TableCell>
                       <Input
@@ -133,13 +151,13 @@ function SuggestionCard({ suggestion, canResolve }: { suggestion: TypeSuggestion
                     </TableCell>
                     <TableCell>
                       <Select value={field.field_type} onValueChange={(v) => updateField(index, { field_type: v as SuggestedFieldType })}>
-                        <SelectTrigger className="h-8 w-24 text-xs">
+                        <SelectTrigger className="h-8 w-32 text-xs">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
                           {FIELD_TYPES.map((t) => (
                             <SelectItem key={t} value={t}>
-                              {t}
+                              {FIELD_TYPE_LABEL[t]}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -162,18 +180,11 @@ function SuggestionCard({ suggestion, canResolve }: { suggestion: TypeSuggestion
                       </Button>
                     </TableCell>
                   </TableRow>
-                ) : (
-                  <TableRow key={field.name}>
-                    <TableCell className="font-mono text-xs">{field.name}</TableCell>
-                    <TableCell className="text-xs text-muted-foreground">{field.field_type}</TableCell>
-                    <TableCell className="text-xs">{field.description}</TableCell>
-                    <TableCell>{field.required ? 'Sí' : 'No'}</TableCell>
-                  </TableRow>
-                ),
-              )}
+              ))}
             </TableBody>
           </Table>
         </div>
+        )}
 
         {isEditing && (
           <div className="flex flex-col gap-2">
@@ -238,10 +249,9 @@ export function TypeSuggestionsPage() {
     <div className="flex flex-col gap-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Tipos de documento nuevos</h1>
-        <p className="text-muted-foreground">
-          Cuando llega un documento que no se parece a ningún tipo conocido, Veritium propone uno nuevo con sus datos. Puedes
-          ajustar el nombre y los campos antes de decidir. Al aceptarlo queda listo para que el equipo de plataforma lo registre
-          en Tipos de documento.
+        <p className="max-w-3xl text-muted-foreground">
+          Documentos que no se parecen a ningún tipo conocido: Veritium propone un tipo nuevo con sus datos. Ajústalo si hace falta y acéptalo; el equipo de
+          plataforma lo registra después en Tipos de documento.
         </p>
       </div>
 
@@ -250,7 +260,17 @@ export function TypeSuggestionsPage() {
           <Loader2 className="size-6 animate-spin text-muted-foreground" />
         </div>
       ) : !suggestions || suggestions.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No hay sugerencias pendientes.</p>
+        <div className="flex flex-col items-center gap-2 rounded-xl border-2 border-dashed py-14 text-center">
+          <CircleCheck className="size-10 text-emerald-600" />
+          <span className="text-lg font-medium">Ninguna propuesta pendiente</span>
+          <span className="max-w-md text-sm text-muted-foreground">
+            Aparecen aquí cuando llega un documento que no se parece a ningún tipo conocido. Los tipos ya registrados están en{' '}
+            <Link to="/document-types" className="text-primary hover:underline">
+              Tipos de documento
+            </Link>
+            .
+          </span>
+        </div>
       ) : (
         <div className="flex flex-col gap-4">
           {suggestions.map((suggestion) => (

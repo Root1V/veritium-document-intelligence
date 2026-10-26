@@ -7,7 +7,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { useReviewQueue } from '@/lib/queries'
-import { ReviewRow } from '@/pages/ReviewQueue'
+import { ReviewRow } from '@/components/review/ReviewRow'
 
 export function ReviewDialog({ reviewItemId, finding, onClose }: { reviewItemId: string; finding: string; onClose: () => void }) {
   const { data: queue, isLoading } = useReviewQueue()
@@ -31,11 +31,9 @@ export function ReviewDialog({ reviewItemId, finding, onClose }: { reviewItemId:
             <Loader2 className="size-5 animate-spin text-muted-foreground" />
           ) : item ? (
             <>
-              <p className="text-sm text-muted-foreground">
-                Si el documento se leyó mal, <strong className="text-foreground">corrige</strong> el dato. Si el documento de verdad dice eso,{' '}
-                <strong className="text-foreground">descarta la observación</strong> diciendo por qué. Las dos quedan en la auditoría.
-              </p>
-              <ReviewRow item={item} />
+              <div className="rounded-lg border">
+                <ReviewRow item={item} />
+              </div>
             </>
           ) : (
             <div className="flex flex-col items-center gap-3 py-6 text-center">

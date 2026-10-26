@@ -154,3 +154,4 @@ Estados: `done` · `todo` · `blocked` (espera a otro equipo) · `superseded` (a
 | VRT-105 | Qué hacer con cada observación | done | Lista de expedientes y el elegido al lado; cada observación dice si está por revisar, y se revisa ahí mismo o se pide a la IA. |
 | VRT-106 | Confiabilidad de la lectura en palabras | done | Estado de la medición y su uso arriba, cuánto se sobreestima el sistema, y los datos en un tablero de semáforo de tres columnas. |
 | VRT-107 | Evaluación en palabras | todo | Conjuntos en tarjetas con su resultado en semáforo, crear y correr en diálogos, y cada conjunto con su historial de corridas y la elegida al lado. |
+| VRT-108 | Revisar en palabras | todo | Expedientes en lista y el elegido al lado; cada dato con lo leído, su motivo en semáforo, la sugerencia de la IA, «Corregir» o «Es correcto». |
