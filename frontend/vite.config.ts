@@ -13,6 +13,9 @@ export default defineConfig({
   },
   server: {
     port: 5180,
+    // /etc/hosts names (veritium.lab) so the keychain keeps each project's
+    // credentials apart instead of pooling them under localhost.
+    allowedHosts: ['.lab'],
     proxy: {
       // Backend runs on :8010 in this project's convention (see
       // scripts/*.py, README) — 8000/5173 defaults collide with other
