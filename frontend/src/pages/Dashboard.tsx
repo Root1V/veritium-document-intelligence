@@ -23,7 +23,7 @@ import {
   TrendingUp,
   type LucideIcon,
 } from 'lucide-react'
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { Area, AreaChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { Button } from '@/components/ui/button'
 import { getUserName, getUserRole, isPlatformAdmin } from '@/lib/auth'
 import { useTypeName } from '@/lib/labels'
@@ -87,12 +87,13 @@ function Delta({ c, better, format }: { c: Comparison; better: 'up' | 'down' | '
   )
 }
 
-function Tile({ label, value, children, tone }: { label: string; value: string; children?: ReactNode; tone?: 'warn' | 'bad' }) {
+function Tile({ label, value, children, tone, trend, color = 'var(--series-1)' }: { label: string; value: string; children?: ReactNode; tone?: 'warn' | 'bad'; trend?: number[]; color?: string }) {
   return (
     <div className={cn('flex flex-col gap-1 rounded-xl border bg-card p-4', tone === 'warn' && 'border-amber-500/40 bg-amber-500/5', tone === 'bad' && 'border-red-500/40 bg-red-500/5')}>
       <span className="text-sm text-muted-foreground">{label}</span>
       <span className="text-3xl font-semibold tracking-tight tabular-nums">{value}</span>
       {children}
+      {trend && <Sparkline values={trend} color={color} />}
     </div>
   )
 }
@@ -109,35 +110,75 @@ function Panel({ title, hint, children, className }: { title: string; hint?: str
   )
 }
 
-function Legend() {
+/** A one-line trend for a tile: no axes, just its shape. */
+function Sparkline({ values, color }: { values: number[]; color: string }) {
+  if (values.every((v) => v === 0)) return null
+  const id = `spark-${color.replace(/[^a-z0-9]/gi, '')}`
   return (
-    <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-      {DECISIONS.map((d) => (
-        <span key={d.key} className="inline-flex items-center gap-1.5">
-          <span className="size-2.5 rounded-sm" style={{ background: d.color }} />
-          {d.label}
-        </span>
-      ))}
+    <div className="h-9">
+      <ResponsiveContainer width="100%" height="100%">
+        <AreaChart data={values.map((v, i) => ({ i, v }))} margin={{ top: 2, right: 0, bottom: 0, left: 0 }}>
+          <defs>
+            <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={color} stopOpacity={0.35} />
+              <stop offset="100%" stopColor={color} stopOpacity={0} />
+            </linearGradient>
+          </defs>
+          <Area type="monotone" dataKey="v" stroke={color} strokeWidth={2} fill={`url(#${id})`} isAnimationActive={false} dot={false} />
+        </AreaChart>
+      </ResponsiveContainer>
     </div>
   )
 }
 
-/** A 100% bar of decisions with a 2px gap between segments; each segment says itself on hover. */
-function DecisionBar({ counts, height = 'h-3' }: { counts: Record<DecisionKey, number>; height?: string }) {
+/** A ring of decisions with its total in the middle; each slice says itself on hover. */
+function DecisionRing({ counts, size, label }: { counts: Record<DecisionKey, number>; size: number; label?: string }) {
   const total = sum(counts)
+  const slices = DECISIONS.filter((d) => counts[d.key]).map((d) => ({ name: d.label, value: counts[d.key], color: d.color }))
   return (
-    <div className={cn('flex gap-0.5 overflow-hidden rounded-full bg-muted', height)}>
-      {DECISIONS.filter((d) => counts[d.key]).map((d) => (
-        <span
-          key={d.key}
-          className="h-full first:rounded-l-full last:rounded-r-full"
-          style={{ width: `${(100 * counts[d.key]) / Math.max(total, 1)}%`, background: d.color }}
-          title={`${d.label}: ${counts[d.key]} (${pct(counts[d.key] / Math.max(total, 1))})`}
-        />
-      ))}
+    <div className="relative shrink-0" style={{ width: size, height: size }}>
+      <ResponsiveContainer width="100%" height="100%">
+        <PieChart>
+          <Pie data={slices} dataKey="value" innerRadius="70%" outerRadius="100%" paddingAngle={slices.length > 1 ? 2 : 0} stroke="none" isAnimationActive={false}>
+            {slices.map((sl) => (
+              <Cell key={sl.name} fill={sl.color} />
+            ))}
+          </Pie>
+          <Tooltip content={<RingTip total={total} />} />
+        </PieChart>
+      </ResponsiveContainer>
+      <span className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+        <span className={cn('font-semibold tabular-nums', size > 100 ? 'text-2xl' : 'text-sm')}>{total}</span>
+        {label && <span className="text-[10px] text-muted-foreground">{label}</span>}
+      </span>
     </div>
   )
 }
+
+function RingTip({ active, payload, total }: { active?: boolean; payload?: { name: string; value: number; payload: { color: string } }[]; total: number }) {
+  if (!active || !payload?.length) return null
+  const p = payload[0]
+  return (
+    <div className="rounded-lg border bg-popover px-2.5 py-1.5 text-xs text-popover-foreground shadow-sm">
+      <span className="inline-flex items-center gap-1.5">
+        <span className="size-2 rounded-full" style={{ background: p.payload.color }} /> {p.name}: <strong>{p.value}</strong> ({pct(p.value / Math.max(total, 1))})
+      </span>
+    </div>
+  )
+}
+
+/** One share as a ring: how much of a whole, at a glance. */
+function PercentRing({ value, color, size = 44 }: { value: number; color: string; size?: number }) {
+  const r = (size - 6) / 2
+  const c = 2 * Math.PI * r
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="shrink-0 -rotate-90" aria-hidden>
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--muted)" strokeWidth={5} />
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color} strokeWidth={5} strokeLinecap="round" strokeDasharray={`${c * Math.min(value, 1)} ${c}`} />
+    </svg>
+  )
+}
+
 
 interface Insight {
   tone: 'good' | 'warn' | 'bad' | 'info'
@@ -338,76 +379,134 @@ function Attention({ items }: { items: AttentionItem[] }) {
   )
 }
 
-function Charts({ data, typeName }: { data: Overview; typeName: (k: string | null) => string }) {
-  const daily = data.daily.map((d) => ({
-    ...d,
-    label: new Date(`${d.day}T12:00:00`).toLocaleDateString('es', data.days > 7 ? { day: 'numeric', month: 'short' } : { weekday: 'short', day: 'numeric' }),
+// Lines cross: identity takes the first three categorical slots, validated all-pairs in light and dark.
+const SERIES = [
+  { key: 'received', label: 'Recibidos', color: 'var(--series-1)' },
+  { key: 'pending', label: 'Pendientes (revisión o cliente)', color: 'var(--series-2)' },
+  { key: 'continued', label: 'Continuar', color: 'var(--series-3)' },
+] as const
+type SeriesKey = (typeof SERIES)[number]['key']
+
+function TrendTip({ active, label, payload }: { active?: boolean; label?: string; payload?: { dataKey: string; value: number; color: string; name: string }[] }) {
+  if (!active || !payload?.length) return null
+  return (
+    <div className="flex flex-col gap-1 rounded-lg border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-md">
+      <span className="font-medium">{label}</span>
+      {payload.map((p) => (
+        <span key={p.dataKey} className="flex items-center justify-between gap-4">
+          <span className="inline-flex items-center gap-1.5">
+            <span className="size-2 rounded-full" style={{ background: p.color }} /> {p.name}
+          </span>
+          <strong className="tabular-nums">{p.value}</strong>
+        </span>
+      ))}
+    </div>
+  )
+}
+
+/** Cases per day as smooth lines, one per series, on one scale; a crosshair says the day's values. */
+function Trend({ data }: { data: Overview }) {
+  const [hidden, setHidden] = useState<SeriesKey[]>([])
+  const rows = data.daily.map((d) => ({
+    label: new Date(`${d.day}T12:00:00`).toLocaleDateString('es', { day: 'numeric', month: 'short' }),
+    received: d.continued + d.human_review + d.return_to_client + d.in_progress,
+    pending: d.human_review + d.return_to_client,
+    continued: d.continued,
   }))
+  const shown = SERIES.filter((s) => !hidden.includes(s.key))
+  return (
+    <Panel title="Tendencia" hint={`Por día de llegada, en los últimos ${data.days} días: cuántos llegaron, cuántos siguen pendientes y cuántos continuaron. Pasa el cursor para ver cada día.`}>
+      <div className="flex flex-wrap gap-2">
+        {SERIES.map((s) => {
+          const on = !hidden.includes(s.key)
+          return (
+            <button
+              key={s.key}
+              type="button"
+              aria-pressed={on}
+              onClick={() => setHidden(on ? [...hidden, s.key] : hidden.filter((k) => k !== s.key))}
+              className={cn('inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition', on ? 'bg-card' : 'opacity-50')}
+            >
+              <span className="size-2 rounded-full" style={{ background: s.color }} /> {s.label}
+            </button>
+          )
+        })}
+      </div>
+      <div className="h-64">
+        <ResponsiveContainer width="100%" height="100%">
+          <AreaChart data={rows} margin={{ left: -20, right: 8, top: 8 }}>
+            <defs>
+              {SERIES.map((s) => (
+                <linearGradient key={s.key} id={`trend-${s.key}`} x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={s.color} stopOpacity={0.25} />
+                  <stop offset="100%" stopColor={s.color} stopOpacity={0} />
+                </linearGradient>
+              ))}
+            </defs>
+            <CartesianGrid vertical={false} stroke="var(--border)" strokeDasharray="3 3" />
+            <XAxis dataKey="label" tickLine={false} axisLine={false} fontSize={11} interval="preserveStartEnd" minTickGap={24} />
+            <YAxis allowDecimals={false} tickLine={false} axisLine={false} fontSize={11} />
+            <Tooltip content={<TrendTip />} cursor={{ stroke: 'var(--muted-foreground)', strokeWidth: 1 }} />
+            {shown.map((s) => (
+              <Area
+                key={s.key}
+                type="monotone"
+                dataKey={s.key}
+                name={s.label}
+                stroke={s.color}
+                strokeWidth={2}
+                fill={`url(#trend-${s.key})`}
+                dot={false}
+                activeDot={{ r: 4, strokeWidth: 2, stroke: 'var(--card)' }}
+                isAnimationActive={false}
+              />
+            ))}
+          </AreaChart>
+        </ResponsiveContainer>
+      </div>
+    </Panel>
+  )
+}
+
+function Charts({ data, typeName }: { data: Overview; typeName: (k: string | null) => string }) {
   const totals = data.daily.reduce<Record<DecisionKey, number>>(
     (acc, d) => ({ continued: acc.continued + d.continued, human_review: acc.human_review + d.human_review, return_to_client: acc.return_to_client + d.return_to_client, in_progress: acc.in_progress + d.in_progress }),
     { continued: 0, human_review: 0, return_to_client: 0, in_progress: 0 },
   )
   const total = sum(totals)
-  const tooltipStyle = { borderRadius: 8, border: '1px solid var(--border)', background: 'var(--popover)', color: 'var(--popover-foreground)', fontSize: 12 }
-  const maxReason = data.reasons[0]?.count ?? 1
-  const maxAge = Math.max(1, ...data.backlog.map((b) => b.count))
+  const types = [...data.by_document_type].sort((a, b) => (b.needs_review + b.failed) / b.documents - (a.needs_review + a.failed) / a.documents).slice(0, 6)
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-5">
-        <Panel title="Expedientes por día" hint="Los que llegaron cada día, según su decisión de hoy." className="xl:col-span-3">
-          <Legend />
-          <div className="h-56">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={daily} margin={{ left: -20, right: 8 }} barCategoryGap="20%">
-                <CartesianGrid vertical={false} stroke="var(--border)" />
-                <XAxis dataKey="label" tickLine={false} axisLine={false} fontSize={11} interval="preserveStartEnd" minTickGap={16} />
-                <YAxis allowDecimals={false} tickLine={false} axisLine={false} fontSize={11} />
-                <Tooltip contentStyle={tooltipStyle} cursor={{ fill: 'var(--muted)', opacity: 0.5 }} />
-                {DECISIONS.map((d, i) => (
-                  <Bar
-                    key={d.key}
-                    dataKey={d.key}
-                    name={d.label}
-                    stackId="a"
-                    fill={d.color}
-                    stroke="var(--card)"
-                    strokeWidth={1}
-                    maxBarSize={24}
-                    radius={i === DECISIONS.length - 1 ? [4, 4, 0, 0] : undefined}
-                  />
-                ))}
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </Panel>
-
-        <Panel title="Cómo terminan" hint={`Los ${total} expedientes del periodo, y por canal.`} className="xl:col-span-2">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+        <div className="xl:col-span-2">
+          <Trend data={data} />
+        </div>
+        <Panel title="Cómo terminan" hint={`Los ${total} expedientes del periodo, y por canal.`}>
           {total === 0 ? (
             <p className="text-sm text-muted-foreground">Ningún expediente en el periodo.</p>
           ) : (
             <>
-              <DecisionBar counts={totals} height="h-4" />
-              <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
-                {DECISIONS.map((d) => (
-                  <span key={d.key} className="flex items-baseline justify-between gap-2 text-sm">
-                    <span className="inline-flex items-center gap-1.5 text-muted-foreground">
-                      <span className="size-2.5 rounded-sm" style={{ background: d.color }} /> {d.label}
+              <div className="flex items-center gap-4">
+                <DecisionRing counts={totals} size={120} label="expedientes" />
+                <div className="flex flex-1 flex-col gap-1.5">
+                  {DECISIONS.map((d) => (
+                    <span key={d.key} className="flex items-baseline justify-between gap-2 text-sm">
+                      <span className="inline-flex items-center gap-1.5 text-muted-foreground">
+                        <span className="size-2.5 rounded-full" style={{ background: d.color }} /> {d.label}
+                      </span>
+                      <span className="tabular-nums">
+                        <strong>{totals[d.key]}</strong> <span className="text-xs text-muted-foreground">{pct(totals[d.key] / total)}</span>
+                      </span>
                     </span>
-                    <span className="tabular-nums">
-                      <strong>{totals[d.key]}</strong> <span className="text-xs text-muted-foreground">{pct(totals[d.key] / total)}</span>
-                    </span>
-                  </span>
-                ))}
+                  ))}
+                </div>
               </div>
-              <div className="flex flex-col gap-2 border-t pt-3">
+              <div className="grid grid-cols-3 gap-2 border-t pt-3">
                 {data.by_channel.map((c) => (
-                  <div key={c.channel} className="flex flex-col gap-1">
-                    <span className="flex items-baseline justify-between text-xs">
-                      <span className="font-medium">{CHANNEL_LABEL[c.channel] ?? c.channel}</span>
-                      <span className="text-muted-foreground tabular-nums">{sum(c)}</span>
-                    </span>
-                    <DecisionBar counts={c} height="h-2" />
+                  <div key={c.channel} className="flex flex-col items-center gap-1">
+                    <DecisionRing counts={c} size={56} />
+                    <span className="text-center text-xs text-muted-foreground">{CHANNEL_LABEL[c.channel] ?? c.channel}</span>
                   </div>
                 ))}
               </div>
@@ -421,17 +520,47 @@ function Charts({ data, typeName }: { data: Overview; typeName: (k: string | nul
           {data.reasons.length === 0 ? (
             <p className="text-sm text-muted-foreground">Ningún expediente del periodo quedó pendiente.</p>
           ) : (
-            <ul className="flex flex-col gap-2.5">
-              {data.reasons.map((r) => {
+            <ol className="flex flex-col divide-y">
+              {data.reasons.map((r, i) => {
                 const d = r.decision === 'return_to_client' ? DECISIONS[2] : DECISIONS[1]
                 return (
-                  <li key={`${r.decision}-${r.label}`} className="flex flex-col gap-1" title={`${r.label} · ${d.label}: ${r.count}`}>
-                    <span className="flex items-baseline justify-between gap-3 text-sm">
-                      <span className="min-w-0 truncate">{r.label}</span>
-                      <span className="shrink-0 tabular-nums text-muted-foreground">{r.count}</span>
+                  <li key={`${r.decision}-${r.label}`} className="flex items-center gap-3 py-2 text-sm">
+                    <span className="w-4 shrink-0 text-xs text-muted-foreground tabular-nums">{i + 1}</span>
+                    <span className="size-2 shrink-0 rounded-full" style={{ background: d.color }} title={d.label} />
+                    <span className="min-w-0 flex-1 truncate" title={r.label}>
+                      {r.label}
                     </span>
-                    <span className="h-2 rounded-full bg-muted">
-                      <span className="block h-2 rounded-full" style={{ width: `${(r.count / maxReason) * 100}%`, background: d.color }} />
+                    <span className="shrink-0 font-semibold tabular-nums">{r.count}</span>
+                  </li>
+                )
+              })}
+            </ol>
+          )}
+        </Panel>
+
+        <Panel title="Documentos que más revisión piden" hint="Qué parte de cada tipo necesitó a una persona o no se pudo leer.">
+          {types.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Ningún documento en el periodo.</p>
+          ) : (
+            <ul className="flex flex-col gap-2">
+              {types.map((t) => {
+                const share = (t.needs_review + t.failed) / t.documents
+                const color = share >= 0.5 ? DECISIONS[2].color : share >= 0.15 ? DECISIONS[1].color : DECISIONS[0].color
+                return (
+                  <li
+                    key={t.document_type ?? 'none'}
+                    className="flex items-center gap-2.5"
+                    title={`${typeName(t.document_type)}: ${t.documents} documentos · ${t.needs_review} con revisión · ${t.failed} sin leer`}
+                  >
+                    <span className="relative flex items-center justify-center">
+                      <PercentRing value={share} color={color} size={40} />
+                      <span className="absolute text-[10px] font-semibold tabular-nums">{Math.round(share * 100)}%</span>
+                    </span>
+                    <span className="flex min-w-0 flex-col">
+                      <span className="truncate text-sm">{typeName(t.document_type)}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {t.needs_review + t.failed} de {t.documents}
+                      </span>
                     </span>
                   </li>
                 )
@@ -440,61 +569,15 @@ function Charts({ data, typeName }: { data: Overview; typeName: (k: string | nul
           )}
         </Panel>
 
-        <Panel title="Documentos que más revisión piden" hint="De cada tipo: cuántos necesitaron a una persona y cuántos no se pudieron leer.">
-          {data.by_document_type.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Ningún documento en el periodo.</p>
-          ) : (
-            <ul className="flex flex-col gap-2.5">
-              {[...data.by_document_type]
-                .sort((a, b) => (b.needs_review + b.failed) / b.documents - (a.needs_review + a.failed) / a.documents)
-                .slice(0, 6)
-                .map((t) => {
-                  const ok = t.documents - t.needs_review - t.failed
-                  return (
-                    <li key={t.document_type ?? 'none'} className="flex flex-col gap-1" title={`${typeName(t.document_type)}: ${t.documents} documentos · ${t.needs_review} con revisión · ${t.failed} sin leer`}>
-                      <span className="flex items-baseline justify-between gap-3 text-sm">
-                        <span className="min-w-0 truncate">{typeName(t.document_type)}</span>
-                        <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-                          {t.needs_review + t.failed} de {t.documents}
-                        </span>
-                      </span>
-                      <span className="flex h-2 gap-0.5 overflow-hidden rounded-full bg-muted">
-                        {t.failed > 0 && <span className="h-full" style={{ width: `${(100 * t.failed) / t.documents}%`, background: DECISIONS[2].color }} />}
-                        {t.needs_review > 0 && <span className="h-full" style={{ width: `${(100 * t.needs_review) / t.documents}%`, background: DECISIONS[1].color }} />}
-                        {ok > 0 && <span className="h-full" style={{ width: `${(100 * ok) / t.documents}%`, background: DECISIONS[0].color }} />}
-                      </span>
-                    </li>
-                  )
-                })}
-              <li className="flex flex-wrap gap-x-3 pt-1 text-xs text-muted-foreground">
-                <span className="inline-flex items-center gap-1.5">
-                  <span className="size-2.5 rounded-sm" style={{ background: DECISIONS[0].color }} /> Pasó solo
-                </span>
-                <span className="inline-flex items-center gap-1.5">
-                  <span className="size-2.5 rounded-sm" style={{ background: DECISIONS[1].color }} /> Necesitó revisión
-                </span>
-                <span className="inline-flex items-center gap-1.5">
-                  <span className="size-2.5 rounded-sm" style={{ background: DECISIONS[2].color }} /> No se pudo leer
-                </span>
-              </li>
-            </ul>
-          )}
-        </Panel>
-
         <Panel title="Cuánto espera la cola de revisión" hint={`Los ${data.pending_review} datos que esperan a una persona, por antigüedad.`}>
-          <ul className="flex flex-col gap-2.5">
+          <div className="grid grid-cols-2 gap-3">
             {data.backlog.map((b, i) => (
-              <li key={b.label} className="flex flex-col gap-1" title={`${b.label}: ${b.count}`}>
-                <span className="flex items-baseline justify-between gap-3 text-sm">
-                  <span>{b.label}</span>
-                  <span className={cn('tabular-nums', i === 3 && b.count > 0 ? 'font-semibold text-red-700 dark:text-red-400' : 'text-muted-foreground')}>{b.count}</span>
-                </span>
-                <span className="h-2 rounded-full bg-muted">
-                  <span className="block h-2 rounded-full" style={{ width: `${(b.count / maxAge) * 100}%`, background: AGE_RAMP[i] }} />
-                </span>
-              </li>
+              <div key={b.label} className="flex flex-col gap-0.5 rounded-lg border-l-4 bg-muted/40 px-3 py-2" style={{ borderLeftColor: AGE_RAMP[i] }}>
+                <span className={cn('text-2xl font-semibold tabular-nums', i === 3 && b.count > 0 && 'text-red-700 dark:text-red-400')}>{b.count}</span>
+                <span className="text-xs text-muted-foreground">{b.label}</span>
+              </div>
             ))}
-          </ul>
+          </div>
           {data.pending_review > 0 && (
             <Link to="/review" className="inline-flex w-fit items-center gap-1 text-sm text-primary hover:underline">
               Ir a la cola <ArrowRight className="size-3.5" />
@@ -505,6 +588,7 @@ function Charts({ data, typeName }: { data: Overview; typeName: (k: string | nul
     </div>
   )
 }
+
 
 function Summary({ data }: { data: Overview }) {
   const parts = [
@@ -533,7 +617,8 @@ export function DashboardPage() {
   }
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="viz-root flex flex-col gap-6">
+      <style>{`.viz-root{--series-1:#2a78d6;--series-2:#eb6834;--series-3:#1baf7a}.dark .viz-root{--series-1:#3987e5;--series-2:#d95926;--series-3:#199e70}`}</style>
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">{greeting()}</h1>
@@ -562,10 +647,10 @@ export function DashboardPage() {
 
       {supervises ? (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <Tile label="Expedientes recibidos" value={String(data.received.value ?? 0)}>
+          <Tile label="Expedientes recibidos" value={String(data.received.value ?? 0)} trend={data.daily.map((d) => d.continued + d.human_review + d.return_to_client + d.in_progress)}>
             <Delta c={data.received} better="none" format={(d) => String(Math.round(d))} />
           </Tile>
-          <Tile label="Resueltos sin intervención" value={pct(data.straight_through.value)}>
+          <Tile label="Resueltos sin intervención" value={pct(data.straight_through.value)} trend={data.daily.map((d) => d.continued)} color="var(--series-3)">
             <span className="text-xs text-muted-foreground">de {data.decided} con decisión</span>
             <Delta c={data.straight_through} better="up" format={(d) => `${Math.round(d * 100)} pts`} />
           </Tile>
