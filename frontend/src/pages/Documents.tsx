@@ -3,17 +3,16 @@
 // real way to work the full corpus by status, type, process or
 // needs_review, and to search it (VRT-59): by a DNI or a name even misread,
 // or by what a document is about. Each result says where it matched —
-// never what it says.
+// never what it says. The state is a row of buttons and each document one
+// line; it is deleted from inside it (VRT-109).
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { ChevronLeft, ChevronRight, FileText, Loader2, Search } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import { useDocumentList, useDocumentTypeCatalog, useProcessProfiles } from '@/lib/queries'
 import type { SearchMatch } from '@/types/api'
-import { DeleteButton } from '@/components/DeleteButton'
 import { StatusBadge } from '@/components/StatusBadge'
 import { documentStatus, useTypeName } from '@/lib/labels'
-import { isAdmin } from '@/lib/auth'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -88,11 +87,25 @@ export function DocumentsPage() {
     <div className="flex flex-col gap-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Documentos</h1>
-        <p className="text-muted-foreground">Todos los documentos recibidos ({total}). Busca por DNI, nombre o de qué trata, o filtra por estado, tipo y proceso.</p>
+        <p className="text-muted-foreground">Todos los documentos recibidos. Busca por DNI, nombre o de qué trata, o filtra por estado, tipo y proceso.</p>
+      </div>
+
+      <div className="flex flex-wrap gap-2" role="group" aria-label="Estado">
+        {[ALL, ...STATUS_OPTIONS].map((key) => (
+          <button
+            key={key}
+            type="button"
+            aria-pressed={status === key}
+            onClick={() => resetAndSet(setStatus)(key)}
+            className={cn('rounded-full border px-3 py-1 text-xs font-medium transition', status === key ? 'border-primary bg-primary text-primary-foreground' : 'bg-card hover:border-primary/40')}
+          >
+            {key === ALL ? 'Todos' : documentStatus(key).label}
+          </button>
+        ))}
       </div>
 
       <div className="flex flex-wrap gap-3">
-        <div className="relative w-96">
+        <div className="relative w-full sm:w-96">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             placeholder="Buscar por DNI, nombre o de qué trata el documento..."
@@ -101,20 +114,6 @@ export function DocumentsPage() {
             onChange={(e) => setSearchInput(e.target.value)}
           />
         </div>
-
-        <Select value={status} onValueChange={resetAndSet(setStatus)}>
-          <SelectTrigger className="w-48">
-            <SelectValue placeholder="Estado" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={ALL}>Todos los estados</SelectItem>
-            {STATUS_OPTIONS.map((s) => (
-              <SelectItem key={s} value={s}>
-                {documentStatus(s).label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
 
         <Select value={documentType} onValueChange={resetAndSet(setDocumentType)}>
           <SelectTrigger className="w-56">
@@ -153,69 +152,37 @@ export function DocumentsPage() {
         </div>
       ) : (
         <>
-          <div className="overflow-x-auto rounded-lg border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Documento</TableHead>
-                  <TableHead>Tipo</TableHead>
-                  <TableHead>Expediente</TableHead>
-                  <TableHead>Estado</TableHead>
-                  <TableHead>Llegó</TableHead>
-                  {isAdmin() && <TableHead className="w-10" />}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {documents.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={6} className="text-center text-sm text-muted-foreground">
-                      Sin documentos que coincidan con los filtros.
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  documents.map((doc) => (
-                    <TableRow key={doc.id} className={isFetching ? 'opacity-60' : undefined}>
-                      <TableCell>
-                        <Link to={`/documents/${doc.id}`} className="flex items-center gap-2 hover:underline">
-                          <FileText className="size-4 shrink-0 text-muted-foreground" />
-                          <span className="truncate">{doc.original_filename}</span>
-                        </Link>
-                        {doc.match && <span className="mt-0.5 block pl-6 text-xs text-muted-foreground">{matchLabel(doc.match)}</span>}
-                      </TableCell>
-                      <TableCell>
-                        <span className="text-sm">{typeName(doc.document_type)}</span>
-                      </TableCell>
-                      <TableCell>
-                        <Link to={`/cases/${doc.batch_id}`} className="text-sm hover:underline">
-                          {doc.case_ref ?? doc.batch_id.slice(0, 8)}
-                        </Link>
-                      </TableCell>
-                      <TableCell>
-                        <StatusBadge status={doc.needs_review ? 'needs_review' : doc.status} />
-                      </TableCell>
-                      <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
-                        {doc.created_at ? new Date(doc.created_at).toLocaleDateString('es', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
-                      </TableCell>
-                      {isAdmin() && (
-                        <TableCell>
-                          <DeleteButton
-                            iconOnly
-                            label="Eliminar documento"
-                            path={`/documents/${doc.id}`}
-                            question="Se eliminará para siempre este documento con su archivo y lo leído de él, y su expediente se volverá a evaluar sin él."
-                          />
-                        </TableCell>
-                      )}
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </div>
+          {documents.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Ningún documento coincide con los filtros.</p>
+          ) : (
+            <div className={cn('flex flex-col overflow-hidden rounded-xl border bg-card', isFetching && 'opacity-60')}>
+              {documents.map((doc) => (
+                <div key={doc.id} className="flex items-center gap-3 border-b px-4 py-2.5 last:border-0 hover:bg-muted/50">
+                  <FileText className="size-4 shrink-0 text-muted-foreground" />
+                  <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                    <Link to={`/documents/${doc.id}`} className="truncate font-medium hover:underline">
+                      {doc.original_filename}
+                    </Link>
+                    <span className="flex flex-wrap gap-x-1.5 text-xs text-muted-foreground">
+                      {typeName(doc.document_type)} ·
+                      <Link to={`/cases/${doc.batch_id}`} className="text-primary hover:underline">
+                        {doc.case_ref ?? `Expediente ${doc.batch_id.slice(0, 8)}`}
+                      </Link>
+                      {doc.match && <span>· {matchLabel(doc.match)}</span>}
+                    </span>
+                  </span>
+                  <StatusBadge status={doc.needs_review ? 'needs_review' : doc.status} />
+                  <span className="hidden w-24 shrink-0 text-right text-xs text-muted-foreground sm:block">
+                    {doc.created_at ? new Date(doc.created_at).toLocaleDateString('es-PE', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
 
           <div className="flex items-center justify-between">
             <span className="text-xs text-muted-foreground">
-              Página {page} de {totalPages}
+              {total} documentos · página {page} de {totalPages}
             </span>
             <div className="flex gap-2">
               <Button variant="outline" size="icon" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}>

@@ -375,7 +375,7 @@ export function useCases() {
   return useQuery({
     queryKey: ['cases'],
     queryFn: async () => {
-      const { data } = await apiClient.get<CaseListItem[]>('/v1/cases')
+      const { data } = await apiClient.get<CaseListItem[]>('/v1/cases', { params: { limit: 200 } })
       return data
     },
     // Faster while a case is moving through its steps (VRT-64).
