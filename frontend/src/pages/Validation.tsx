@@ -69,7 +69,7 @@ function FindingRow({ finding }: { finding: Finding }) {
   const field = issue.field_label ?? (issue.field_path ? humanizeFieldName(issue.field_path) : null)
   const [technical, setTechnical] = useState(false)
   return (
-    <div className="flex items-start gap-2.5 px-4 py-2.5">
+    <div className="flex items-start gap-2.5 px-4 py-2">
       <Icon className={cn('mt-0.5 size-4 shrink-0', meta.text)} aria-label={meta.label} />
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         <p className="text-sm whitespace-pre-line">{issue.message}</p>
@@ -113,11 +113,11 @@ function DataThatDoNotMatch({ caseId, findings }: { caseId: string; findings: Fi
     return `${name} del ${who.toLowerCase()}`
   }
   return (
-    <div className="flex items-start gap-2.5 px-4 py-2.5">
+    <div className="flex items-start gap-2.5 px-4 py-2">
       <AlertCircle className="mt-0.5 size-4 shrink-0 text-red-600 dark:text-red-400" aria-label="error" />
       <div className="flex min-w-0 flex-1 flex-col gap-1.5">
         <p className="text-sm">No coinciden entre documentos:</p>
-        <dl className="flex flex-col gap-1 text-sm">
+        <dl className="flex flex-col gap-1.5 text-sm">
           {conflicts.map((a) => {
             const byValue = new Map<string, string[]>()
             for (const s of a.sources) {
@@ -125,11 +125,11 @@ function DataThatDoNotMatch({ caseId, findings }: { caseId: string; findings: Fi
               byValue.set(v, [...(byValue.get(v) ?? []), typeName(s.document_type)])
             }
             return (
-              <div key={`${a.role}.${a.attribute}`} className="grid gap-1 sm:grid-cols-[10rem_1fr] sm:gap-3">
-                <dt className="pt-0.5 text-muted-foreground">{label(a.role, a.attribute)}</dt>
+              <div key={`${a.role}.${a.attribute}`} className="flex flex-col gap-0.5">
+                <dt className="text-xs text-muted-foreground">{label(a.role, a.attribute)}</dt>
                 <dd className="flex flex-wrap gap-1">
                   {[...byValue.entries()].map(([value, docs]) => (
-                    <span key={value} className="inline-flex items-baseline gap-1.5 rounded-md border bg-background px-2 py-0.5">
+                    <span key={value} className="inline-flex items-baseline gap-1.5 rounded border bg-background px-1.5 leading-6">
                       <span className="font-semibold">{value}</span>
                       <span className="text-xs text-muted-foreground">{docs.join(', ')}</span>
                     </span>
@@ -226,14 +226,14 @@ export function ValidationPage() {
       ) : !groups.length ? (
         <p className="text-sm text-muted-foreground">{filtered ? 'Ninguna observación con estos filtros.' : 'Todo se cumplió: no hay observaciones.'}</p>
       ) : (
-        <div className={cn('grid items-start gap-3 xl:grid-cols-2', isFetching && 'opacity-60')}>
+        <div className={cn('gap-3 xl:columns-2 2xl:columns-3', isFetching && 'opacity-60')}>
           {groups.map((g) => {
             // The consistency findings show as one table: they count once.
             const shownFindings = [...g.findings.filter((f) => f.issue.rule_id !== CONSISTENCY), ...g.findings.filter((f) => f.issue.rule_id === CONSISTENCY).slice(0, 1)]
             const counts = SEVERITIES.map((s) => [s, shownFindings.filter((f) => f.issue.severity === s).length] as const).filter(([, n]) => n)
             return (
-              <section key={g.id} className="overflow-hidden rounded-xl border bg-card">
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b bg-muted/40 px-4 py-2">
+              <section key={g.id} className="mb-3 break-inside-avoid overflow-hidden rounded-xl border bg-card">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b bg-muted/40 px-4 py-1.5">
                   <FolderOpen className="size-4 text-muted-foreground" />
                   <Link to={`/cases/${g.id}`} className="font-semibold hover:underline">
                     {g.ref ?? `Expediente ${g.id.slice(0, 8)}`}
@@ -261,7 +261,7 @@ export function ValidationPage() {
             )
           })}
           {data && data.total > data.issues.length && (
-            <Button variant="outline" className="justify-self-center xl:col-span-2" disabled={isFetching} onClick={() => setLimit(limit + STEP)}>
+            <Button variant="outline" className="mx-auto flex" disabled={isFetching} onClick={() => setLimit(limit + STEP)}>
               {isFetching && <Loader2 className="size-4 animate-spin" />} Ver anteriores ({data.total - data.issues.length} más)
             </Button>
           )}
