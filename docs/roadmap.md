@@ -523,3 +523,6 @@ Método, mediciones y aprendizajes: [eficiencia-modelos-ia.md](eficiencia-modelo
 
 ## VRT-101 — Unidades de negocio en palabras
 **Why:** el alta era una fila con un identificador técnico y una casilla, renombrar abría un cuadro del navegador, y los grupos de la cuenta corporativa ocupaban la tabla. **Scope:** una tarjeta por unidad con cuántas personas entran (en ámbar si nadie todavía) y «Estás aquí» en la actual; un diálogo para crear (nombre, identificador plegado, en blanco o con ejemplos) que termina mostrando los grupos a crear, y para renombrar o eliminar; los grupos de cada unidad, plegados con copiar. Sin cambios de API.
+
+## VRT-102 — Auditoría en palabras
+**Why:** dos tablas anchas con desplazamiento lateral; en los accesos a datos personales, 190 de 220 registros eran borrados automáticos de pruebas que tapaban lo que hicieron las personas, y las correcciones sin motivo no se distinguían. **Scope:** pestañas Correcciones / Datos personales (solo admin); motivos de corrección en barras que filtran, con «Sin motivo registrado» en ámbar; búsqueda; cada registro como una frase (dato, antes → después, documento, quién, motivo) agrupado por día; personas y procesos automáticos por separado, filtro por acción; «ver anteriores» en vez de un tope fijo; modelo e instrucción de cada corrección, plegados. Sin cambios de API.

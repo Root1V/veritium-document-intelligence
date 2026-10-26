@@ -1,7 +1,7 @@
 // TanStack Query hooks, one per backend endpoint — cache/loading/error
 // states come from the library instead of hand-rolled state machines.
 import { useEffect } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from '@/lib/apiClient'
 import { getToken } from '@/lib/auth'
 import type {
@@ -599,6 +599,7 @@ export function useAuditLog(params: { limit?: number; offset?: number } = {}) {
       const { data } = await apiClient.get<AuditLogResponse>('/audit', { params })
       return data
     },
+    placeholderData: keepPreviousData,
   })
 }
 
@@ -1081,8 +1082,12 @@ export function useRevealCaseData() {
   })
 }
 
-export function useDataAccessLog() {
-  return useQuery({ queryKey: ['data-access'], queryFn: async () => (await apiClient.get<DataAccessEntry[]>('/v1/data-access')).data })
+export function useDataAccessLog(limit = 100) {
+  return useQuery({
+    queryKey: ['data-access', limit],
+    queryFn: async () => (await apiClient.get<DataAccessEntry[]>('/v1/data-access', { params: { limit } })).data,
+    placeholderData: keepPreviousData,
+  })
 }
 
 /** Remove a case's personal data for good, on request (VRT-58). Admins only. */
