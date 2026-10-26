@@ -157,4 +157,4 @@ Estados: `done` · `todo` · `blocked` (espera a otro equipo) · `superseded` (a
 | VRT-108 | Revisar en palabras | done | Expedientes en lista y el elegido al lado; cada dato con lo leído, su motivo en semáforo, la sugerencia de la IA, «Corregir» o «Es correcto». |
 | VRT-109 | Expedientes, documentos y cargas masivas en palabras | done | Decisiones en fichas que filtran, una línea por expediente o documento, cargas en tarjetas con su resultado en una barra, y nueva carga en un diálogo. |
 | VRT-110 | Detalle del expediente en palabras | done | La decisión con qué hacer y cuánto hay detrás, lo que pide el proceso, los datos por persona con los que no coinciden primero, y observaciones sin códigos. |
-| VRT-111 | Inicio para decidir | todo | Conclusiones con su acción, cómo terminan los expedientes y por canal, documentos que más revisión piden y cuánto espera la cola. |
+| VRT-111 | Inicio para decidir | done | Conclusiones con su acción, cómo terminan los expedientes y por canal, documentos que más revisión piden y cuánto espera la cola. |
