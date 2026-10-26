@@ -56,14 +56,26 @@ position from the region_id: do not write them.
 extra spaces, without the label's name). "source_text", on the other hand, must be the RAW text as it appears in \
 the OCR region, including any separator or label — do not make them the same. Example: if the region says \
 "Apellidos y Nombres : SALAS SIGUAS, KATERIN KAROLA", value must be "SALAS SIGUAS, KATERIN KAROLA" (without the \
-leading ":") and source_text can keep the full text.
+leading ":") and source_text can keep the full text. The value is only the data the field asks for: leave out \
+any text the OCR glued to it from a neighbouring label or counter (e.g. a region "PERIODO: MAR 2025 N:3-" gives a \
+period value "MAR 2025").
 7. The documents are in Spanish: copy names, codes, dates and amounts exactly as the document writes them. Never \
 translate a value.
+8. Copy every amount, total included, from the document; never add up or compute one yourself. A total of \
+deductions, discounts or charges is a positive amount even when the document prints it with a minus sign.
+9. When the document carries several records of the same kind (e.g. the ID cards of several people), its pages \
+can come in any order — e.g. the fronts of every card first and then their backs, in reverse. Before filling any \
+record, decide for EACH page which record it belongs to, using only what that page itself says: a document number, \
+a name, or a machine-readable line (a line full of "<"; on an ID card one such line starts with the document \
+number followed by one check digit — "1234567894…" is document 123456789 — and another carries the surname). \
+Never pair pages by their order or position, and never mix two records in one entry.
+10. Before calling submit, count the rows of every list in the regions (e.g. each code with its amount under \
+earnings, deductions and contributions) and check that your list has all of them.
 {self_check}""", filled=('hint', 'regions', 'schema', 'grounding', 'self_check'))
 
 
 _SELF_CHECK = (
-    "8. Before calling submit, call check_draft ONCE with the values you are going to submit ({field: value}). If it reports problems, "
+    "11. Before calling submit, call check_draft ONCE with the values you are going to submit ({field: value}). If it reports problems, "
     "re-read those fields' regions and correct them; if the document really says that, submit it anyway — do not invent values to make it add up.\n"
 )
 
