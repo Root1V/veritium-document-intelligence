@@ -102,7 +102,9 @@ async def test_a_suite_from_a_table_runs_and_compares(live_settings, stub_model)
             second = (await client.post(f"/v1/eval-suites/{suite_id}/runs", headers=h)).json()
             run2 = (await client.get(f"/v1/eval-runs/{second['id']}", headers=h, params={"baseline": first["id"]})).json()
             assert run2["metrics"]["fields"]["correct"] == 1
-            assert [(c["field"], c["before"], c["after"]) for c in run2["comparison"]["regressions"]] == [("net_pay", 4304.14, 4304.0)]
+            # The pay is personal data: compared, but masked like the results (VRT-58); the field's name is not (VRT-107).
+            assert [(c["field"], c["before"], c["after"]) for c in run2["comparison"]["regressions"]] == [("net_pay", "•••", "•••")]
+            assert {f["field"] for f in run2["results"][0]["fields"]} == {"net_pay", "employee_name"}
             assert run2["comparison"]["improvements"] == []
 
             # Measuring semantic grounding (VRT-46): one run with it on, against the same suite.

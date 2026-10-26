@@ -27,7 +27,7 @@ from idp.domain.semantic import SemanticCatalog
 
 HIDDEN = "•••"
 # Response keys whose number is a datum of the case (and not a count or a confidence).
-_VALUE_KEYS = {"value", "values", "expected", "actual", "current_value", "original_value", "corrected_value", "suggested_value", "distinct_values"}
+_VALUE_KEYS = {"value", "values", "expected", "actual", "before", "after", "current_value", "original_value", "corrected_value", "suggested_value", "distinct_values"}
 _INDEX = re.compile(r"\[\d+\]")
 _UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", re.IGNORECASE)
 # When a record was made (e.g. created_at), never a datum: a number of the case may be part of it.

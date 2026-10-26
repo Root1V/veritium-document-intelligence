@@ -245,6 +245,12 @@ def _masked(catalog: SemanticCatalog | None, document_type: str | None, *payload
     return Masker.for_documents(catalog, [(document_type, p) for p in payloads])
 
 
+def _read(field_results: list[dict[str, Any]]) -> dict[str, Any]:
+    """What a run read, as a payload: each value under its field's name. The
+    per-field results themselves would make the field names secrets (VRT-107)."""
+    return {f["field"]: f.get("actual") for f in field_results}
+
+
 @router.get("/eval-suites/{suite_id}", response_model=SuiteDetail)
 async def get_suite(suite_id: uuid.UUID, session: AsyncSession = Depends(get_db_session)) -> SuiteDetail:
     detail, catalog = _suite_detail(await _suite_or_404(session, suite_id)), await _catalog(session)
@@ -295,7 +301,7 @@ async def get_run(
         suite_name=run.suite.name,
         case_count=len(cases),
         results=[
-            ResultView.model_validate(_masked(catalog, cases[r.case_id].expected_document_type, cases[r.case_id].expected_fields, r.field_results).json(ResultView(
+            ResultView.model_validate(_masked(catalog, cases[r.case_id].expected_document_type, cases[r.case_id].expected_fields, _read(r.field_results)).json(ResultView(
                 case_id=r.case_id, filename=cases[r.case_id].filename, expected_document_type=cases[r.case_id].expected_document_type,
                 predicted_document_type=r.predicted_document_type, classification_confidence=r.classification_confidence,
                 status=r.status, error=r.error, duration_ms=r.duration_ms, fields=r.field_results,
@@ -308,9 +314,14 @@ async def get_run(
         if base is None or base.suite_id != run.suite_id:
             raise HTTPException(status_code=_unprocessable, detail="la corrida base debe ser de la misma suite")
         detail.baseline_id = base.id
-        detail.comparison = compare_runs(
-            [outcome_of(r, cases[r.case_id]) for r in base.results], [outcome_of(r, cases[r.case_id]) for r in run.results]
+        comparison = compare_runs([outcome_of(r, cases[r.case_id]) for r in base.results], [outcome_of(r, cases[r.case_id]) for r in run.results])
+        # What either run read, and what was expected, masked like the results (VRT-58): before, it went out as it was.
+        masker = Masker.for_documents(
+            catalog,
+            [(c.expected_document_type, c.expected_fields) for c in cases.values()]
+            + [(cases[r.case_id].expected_document_type, _read(r.field_results)) for r in [*run.results, *base.results]],
         )
+        detail.comparison = RunComparison.model_validate(masker.json(comparison.model_dump(mode="json")))
     return detail
 
 

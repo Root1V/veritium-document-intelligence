@@ -57,3 +57,12 @@ export function configChanges(before: EvalRunSummary['provenance'], after: EvalR
     out.push(after.self_check ? 'Se activó la autovalidación del borrador' : 'Se desactivó la autovalidación del borrador')
   return out
 }
+
+/** The traffic light of a rate (VRT-107): green from 95 %, amber from 85 %. */
+export function toneOf(rate: EvalRate | null | undefined): { bar: string; text: string } {
+  const a = rate?.accuracy
+  if (a === null || a === undefined) return { bar: 'bg-muted-foreground/30', text: 'text-muted-foreground' }
+  if (a >= 0.95) return { bar: 'bg-emerald-500', text: 'text-emerald-700 dark:text-emerald-400' }
+  if (a >= 0.85) return { bar: 'bg-amber-500', text: 'text-amber-700 dark:text-amber-400' }
+  return { bar: 'bg-red-500', text: 'text-red-700 dark:text-red-400' }
+}
