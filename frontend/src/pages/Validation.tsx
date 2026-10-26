@@ -67,27 +67,29 @@ function FindingRow({ finding }: { finding: Finding }) {
   const meta = SEVERITY[issue.severity]
   const Icon = meta.icon
   const field = issue.field_label ?? (issue.field_path ? humanizeFieldName(issue.field_path) : null)
+  const [technical, setTechnical] = useState(false)
   return (
-    <div className="flex items-start gap-3 p-4">
+    <div className="flex items-start gap-2.5 px-4 py-2.5">
       <Icon className={cn('mt-0.5 size-4 shrink-0', meta.text)} aria-label={meta.label} />
-      <div className="flex min-w-0 flex-1 flex-col gap-2">
+      <div className="flex min-w-0 flex-1 flex-col gap-1">
         <p className="text-sm whitespace-pre-line">{issue.message}</p>
-        <div className="flex flex-wrap items-center gap-1.5 text-xs">
-          <span className="rounded-md bg-muted px-2 py-0.5 font-medium">{CATEGORY[issue.category] ?? issue.category}</span>
-          {field && <span className="rounded-md bg-muted px-2 py-0.5">{field}</span>}
+        <div className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
+          <span className="rounded bg-muted px-1.5 py-0.5 text-foreground">{CATEGORY[issue.category] ?? issue.category}</span>
+          {field && <span className="rounded bg-muted px-1.5 py-0.5 text-foreground">{field}</span>}
           {finding.documents.map((d) => (
-            <Link key={d.id} to={`/documents/${d.id}`} className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-primary hover:bg-primary/10">
+            <Link key={d.id} to={`/documents/${d.id}`} className="inline-flex items-center gap-1 rounded px-1 py-0.5 text-primary hover:bg-primary/10">
               <FileText className="size-3" /> {d.name}
             </Link>
           ))}
+          <button type="button" onClick={() => setTechnical(!technical)} className="px-1 hover:text-foreground">
+            {technical ? 'Ocultar detalle' : 'Detalle técnico'}
+          </button>
         </div>
-        <details className="text-xs text-muted-foreground">
-          <summary className="cursor-pointer select-none hover:text-foreground">Detalle técnico</summary>
-          <div className="mt-1 flex flex-col gap-0.5">
-            <code>{issue.rule_id}</code>
-            <span>{issue.explanation}</span>
-          </div>
-        </details>
+        {technical && (
+          <p className="text-xs text-muted-foreground">
+            <code>{issue.rule_id}</code> · {issue.explanation}
+          </p>
+        )}
       </div>
     </div>
   )
@@ -111,13 +113,11 @@ function DataThatDoNotMatch({ caseId, findings }: { caseId: string; findings: Fi
     return `${name} del ${who.toLowerCase()}`
   }
   return (
-    <div className="flex items-start gap-3 p-4">
+    <div className="flex items-start gap-2.5 px-4 py-2.5">
       <AlertCircle className="mt-0.5 size-4 shrink-0 text-red-600 dark:text-red-400" aria-label="error" />
-      <div className="flex min-w-0 flex-1 flex-col gap-3">
-        <p className="text-sm font-medium">
-          {conflicts.length === 1 ? '1 dato no coincide' : `${conflicts.length} datos no coinciden`} entre los documentos
-        </p>
-        <div className="overflow-hidden rounded-lg border bg-card">
+      <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+        <p className="text-sm">No coinciden entre documentos:</p>
+        <dl className="flex flex-col gap-1 text-sm">
           {conflicts.map((a) => {
             const byValue = new Map<string, string[]>()
             for (const s of a.sources) {
@@ -125,23 +125,20 @@ function DataThatDoNotMatch({ caseId, findings }: { caseId: string; findings: Fi
               byValue.set(v, [...(byValue.get(v) ?? []), typeName(s.document_type)])
             }
             return (
-              <div key={`${a.role}.${a.attribute}`} className="grid gap-1 border-b px-3 py-2.5 last:border-0 sm:grid-cols-[14rem_1fr] sm:gap-4">
-                <span className="text-sm font-medium">{label(a.role, a.attribute)}</span>
-                <ul className="flex flex-col gap-1 text-sm">
+              <div key={`${a.role}.${a.attribute}`} className="grid gap-1 sm:grid-cols-[10rem_1fr] sm:gap-3">
+                <dt className="pt-0.5 text-muted-foreground">{label(a.role, a.attribute)}</dt>
+                <dd className="flex flex-wrap gap-1">
                   {[...byValue.entries()].map(([value, docs]) => (
-                    <li key={value} className="flex flex-wrap items-baseline gap-x-2">
+                    <span key={value} className="inline-flex items-baseline gap-1.5 rounded-md border bg-background px-2 py-0.5">
                       <span className="font-semibold">{value}</span>
                       <span className="text-xs text-muted-foreground">{docs.join(', ')}</span>
-                    </li>
+                    </span>
                   ))}
-                </ul>
+                </dd>
               </div>
             )
           })}
-        </div>
-        <Link to={`/cases/${caseId}`} className="text-xs text-primary hover:underline">
-          Ver de dónde sale cada valor en el expediente
-        </Link>
+        </dl>
       </div>
     </div>
   )
@@ -229,14 +226,14 @@ export function ValidationPage() {
       ) : !groups.length ? (
         <p className="text-sm text-muted-foreground">{filtered ? 'Ninguna observación con estos filtros.' : 'Todo se cumplió: no hay observaciones.'}</p>
       ) : (
-        <div className={cn('flex flex-col gap-4', isFetching && 'opacity-60')}>
+        <div className={cn('grid items-start gap-3 xl:grid-cols-2', isFetching && 'opacity-60')}>
           {groups.map((g) => {
             // The consistency findings show as one table: they count once.
             const shownFindings = [...g.findings.filter((f) => f.issue.rule_id !== CONSISTENCY), ...g.findings.filter((f) => f.issue.rule_id === CONSISTENCY).slice(0, 1)]
             const counts = SEVERITIES.map((s) => [s, shownFindings.filter((f) => f.issue.severity === s).length] as const).filter(([, n]) => n)
             return (
-              <section key={g.id} className="rounded-2xl border bg-muted/40">
-                <div className="flex flex-wrap items-center gap-3 rounded-t-2xl border-b bg-background px-4 py-3 sm:px-5">
+              <section key={g.id} className="overflow-hidden rounded-xl border bg-card">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b bg-muted/40 px-4 py-2">
                   <FolderOpen className="size-4 text-muted-foreground" />
                   <Link to={`/cases/${g.id}`} className="font-semibold hover:underline">
                     {g.ref ?? `Expediente ${g.id.slice(0, 8)}`}
@@ -264,7 +261,7 @@ export function ValidationPage() {
             )
           })}
           {data && data.total > data.issues.length && (
-            <Button variant="outline" className="self-center" disabled={isFetching} onClick={() => setLimit(limit + STEP)}>
+            <Button variant="outline" className="justify-self-center xl:col-span-2" disabled={isFetching} onClick={() => setLimit(limit + STEP)}>
               {isFetching && <Loader2 className="size-4 animate-spin" />} Ver anteriores ({data.total - data.issues.length} más)
             </Button>
           )}
