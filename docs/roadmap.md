@@ -517,3 +517,6 @@ Método, mediciones y aprendizajes: [eficiencia-modelos-ia.md](eficiencia-modelo
 
 ## VRT-99 — Mensaje claro cuando la IA no responde bien
 **Why:** al redactar una regla, si el modelo no entregaba una salida válida en sus intentos, la pantalla recibía un 500 sin explicación. **Scope:** toda la API responde 502 con «La IA no logró dar una respuesta válida esta vez. Inténtalo de nuevo o dilo con otras palabras.», como ya lo hace con 503 cuando falta el modelo. Fuera: reintentar solo.
+
+## VRT-100 — Evaluaciones con el mismo archivo repetido
+**Why:** la suite «Correcciones de boletas» tiene tres copias de la misma boleta; al evaluarlas a la vez, la segunda y la tercera chocaban con la petición de la primera aún en curso en el gateway y salían como fallidas, o la corrida quedaba colgada. **Scope:** en una corrida, los casos con el mismo contenido y páginas esperan su turno; los distintos siguen en paralelo. Fuera: la llave de idempotencia de synaptum.

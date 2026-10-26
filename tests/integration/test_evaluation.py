@@ -167,3 +167,51 @@ async def test_a_golden_set_takes_what_the_reviewers_left_but_not_business_decis
                 await session.execute(delete(EvalSuite).where(EvalSuite.id == uuid.UUID(suite_id)))
             await session.execute(delete(Case).where(Case.id == case_id))
             await session.commit()
+
+
+@pytest.mark.asyncio
+async def test_the_same_file_twice_runs_one_after_the_other(live_settings, stub_model, monkeypatch):
+    """At once, the copy would hit the first's request still in flight at the gateway (VRT-100)."""
+    import threading
+    import time
+
+    extract, lock, state = runner.extract_document, threading.Lock(), {"now": 0, "most": 0}
+
+    def tracked(*args: Any, **kwargs: Any) -> Any:
+        with lock:
+            state["now"] += 1
+            state["most"] = max(state["most"], state["now"])
+        time.sleep(0.2)
+        with lock:
+            state["now"] -= 1
+        return extract(*args, **kwargs)
+
+    monkeypatch.setattr(runner, "extract_document", tracked)
+    factory = get_session_factory(live_settings)
+    async with factory() as session:
+        users = UserRepository(session)
+        if await users.get_by_email(_ADMIN) is None:
+            await users.create(name="Test Admin", email=_ADMIN, password_hash=hash_password(_PASSWORD), role="admin")
+            await session.commit()
+
+    suite_id = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=create_app()), base_url="http://test") as client:
+            token = (await client.post("/auth/login", json={"email": _ADMIN, "password": _PASSWORD})).json()["access_token"]
+            h = {"Authorization": f"Bearer {token}"}
+            table = "archivo;tipo;net_pay\na.png;payslip;4304.14\nb.png;payslip;4304.14\n"
+            created = await client.post(
+                "/v1/eval-suites", headers=h, data={"name": f"Copias {uuid.uuid4().hex[:6]}"},
+                files=[("table", ("casos.csv", table.encode(), "text/csv")), ("files", ("a.png", b"png", "image/png")), ("files", ("b.png", b"png", "image/png"))],
+            )
+            assert created.status_code == 201, created.text
+            suite_id = created.json()["id"]
+            started = (await client.post(f"/v1/eval-suites/{suite_id}/runs", headers=h)).json()
+            run = (await client.get(f"/v1/eval-runs/{started['id']}", headers=h)).json()
+            assert run["status"] == "completed" and run["metrics"]["failed"] == 0
+            assert state["most"] == 1, "the two copies overlapped"
+    finally:
+        if suite_id:
+            async with factory() as session:
+                await session.execute(delete(EvalSuite).where(EvalSuite.id == uuid.UUID(suite_id)))
+                await session.commit()

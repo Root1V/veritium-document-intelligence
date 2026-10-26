@@ -9,12 +9,16 @@ It runs in the API process, like the interim case executor: not durable,
 but resumable (POST the run again). Gateway responses to an identical
 request within its idempotency window are replays, so re-running an
 unchanged suite costs nothing; any change to a model, prompt or type
-changes the request and is measured fresh."""
+changes the request and is measured fresh. The same file twice in a suite
+runs one after the other (VRT-100): at once, the second would hit the first's
+request still in flight and fail instead of getting its replay."""
 
 from __future__ import annotations
 
 import asyncio
 import functools
+import hashlib
+from collections import defaultdict
 import time
 import uuid
 from datetime import UTC, datetime
@@ -52,28 +56,32 @@ def outcome_of(result: EvalResult, case: EvalCase) -> CaseOutcome:
     )
 
 
-async def _evaluate(settings: Settings, case: EvalCase, run_id: uuid.UUID, catalog: DocumentTypeCatalog, grounding: bool, self_check: bool) -> EvalResult:
+async def _evaluate(
+    settings: Settings, case: EvalCase, run_id: uuid.UUID, catalog: DocumentTypeCatalog, grounding: bool, self_check: bool, same: defaultdict[str, asyncio.Lock]
+) -> EvalResult:
     started = time.monotonic()
     label = f"eval-{case.id}"
     predicted: str | None = None
     confidence: float | None = None
     try:
         file_bytes = await asyncio.to_thread(S3ObjectStore(settings).get, case.storage_key)
-        parsed = await asyncio.to_thread(parse_example, settings, file_bytes, case.filename)
-        if case.page_start is not None:
-            parsed = slice_by_pages(parsed, case.page_start, case.page_end if case.page_end is not None else case.page_start)
-        classification = await asyncio.to_thread(classify_document, settings, parsed, catalog, document_id=label)
-        predicted, confidence = classification.document_type, classification.confidence
-        async with get_session_factory(settings)() as session:
-            meanings = await extraction_grounding(settings, session, predicted, enabled=grounding)
-            checker = await draft_checker(settings, session, predicted, catalog, enabled=self_check)
-        try:
-            outcome = await asyncio.to_thread(
-                functools.partial(extract_document, settings, parsed, predicted, catalog, document_id=label, grounding=meanings, checker=checker)
-            )
-            payload: dict[str, Any] | None = outcome.schema_instance.model_dump(mode="json") if outcome.schema_instance is not None else None
-        except ExtractionIncomplete:
-            payload = None  # measured as every expected field missing
+        content = hashlib.sha256(file_bytes).hexdigest() + f":{case.page_start}-{case.page_end}"
+        async with same[content]:
+            parsed = await asyncio.to_thread(parse_example, settings, file_bytes, case.filename)
+            if case.page_start is not None:
+                parsed = slice_by_pages(parsed, case.page_start, case.page_end if case.page_end is not None else case.page_start)
+            classification = await asyncio.to_thread(classify_document, settings, parsed, catalog, document_id=label)
+            predicted, confidence = classification.document_type, classification.confidence
+            async with get_session_factory(settings)() as session:
+                meanings = await extraction_grounding(settings, session, predicted, enabled=grounding)
+                checker = await draft_checker(settings, session, predicted, catalog, enabled=self_check)
+            try:
+                outcome = await asyncio.to_thread(
+                    functools.partial(extract_document, settings, parsed, predicted, catalog, document_id=label, grounding=meanings, checker=checker)
+                )
+                payload: dict[str, Any] | None = outcome.schema_instance.model_dump(mode="json") if outcome.schema_instance is not None else None
+            except ExtractionIncomplete:
+                payload = None  # measured as every expected field missing
         current = catalog.current(case.expected_document_type or predicted)
         fields = compare_fields(current[1].fields if current else [], case.expected_fields, payload)
         status, error = "done", None
@@ -130,10 +138,11 @@ async def _run_evaluation(settings: Settings, run_id: uuid.UUID) -> None:
             pending = [c for c in run.suite.cases if c.id not in done]
 
         semaphore = asyncio.Semaphore(settings.case_max_parallel_documents)
+        same: defaultdict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
 
         async def one(case: EvalCase) -> None:
             async with semaphore:
-                result = await _evaluate(settings, case, run_id, catalog, grounding, self_check)
+                result = await _evaluate(settings, case, run_id, catalog, grounding, self_check, same)
             async with factory() as session:
                 await EvaluationRepository(session).save_result(result)
                 await session.commit()
