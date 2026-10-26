@@ -177,6 +177,7 @@ Veritium pasa de "subir documentos sueltos" a ser una **capacidad de decisión d
 - Fuera: pasos propios de nivel 2 más allá de los del expediente, y el paso a `activo`, que hace argus al verificar.
 
 ## F2 — Diseñador y catálogo
+
 ## VRT-32 — Catálogo de tipos documentales en BD
 **Why:** hoy los tipos viven en código, así que crear o ajustar un tipo requiere un desarrollador ([ADR-0008](adr/0008-tipos-documentales-como-datos.md)).
 **Scope:**
@@ -223,6 +224,7 @@ Veritium pasa de "subir documentos sueltos" a ser una **capacidad de decisión d
 - Una versión nueva parte de la activa con los ids retirados (VRT-35) ya convertidos.
 
 ## F3 — Expediente y revisión
+
 ## VRT-38 — Vista E2E del expediente
 **Why:** el ejecutivo necesita ver el resultado completo y su evidencia en un solo lugar. Absorbe VRT-17, VRT-18 y VRT-20.
 **Scope:**
@@ -244,6 +246,7 @@ Veritium pasa de "subir documentos sueltos" a ser una **capacidad de decisión d
 - Grafo campo → regla: cada regla declara qué lee (`ValidationRule.reads`: campos y `@atributo`); las CEL lo derivan de su expresión; lo desconocido se re-evalúa siempre.
 - Una corrección se escribe en la extracción (confianza 1.0, misma evidencia) y dispara una corrida `correction` sobre ese campo. Re-extraer re-aplica las correcciones; si la re-extracción falla, la extracción anterior se conserva y la corrida lo dice.
 - Fuera: re-extraer documentos segmentados (409) y guardar el historial de extracciones por corrida.
+
 ## VRT-41 — Exportes
 **Why:** el resultado se comparte fuera de la plataforma.
 **Scope:**
@@ -259,12 +262,14 @@ Veritium pasa de "subir documentos sueltos" a ser una **capacidad de decisión d
 - Fuera: tiempos por etapa y avance dentro de una etapa (p. ej. página por página).
 
 ## F4 — Calidad y comprensión
+
 ## VRT-42 — Suites de evaluación
 **Why:** sin evaluación no se puede cambiar un modelo, prompt o tipo documental con seguridad.
 **Scope:**
 - Suite = documentos con su tipo y valores esperados, desde una tabla CSV/Excel (`archivo`, `tipo`, `paginas`, un campo por columna; plantilla por tipo) o como golden set desde las correcciones (sin las decisiones de negocio).
 - Una corrida clasifica y extrae con la configuración del momento, sin crear expedientes, y guarda métricas (clasificación, campos, por campo) y procedencia; se compara con la corrida anterior (regresiones y mejoras). UI en `/evaluation`.
 - Fuera: evaluar reglas y veredictos (VRT-44), calibración (VRT-43), campos lista, curar casos desde la UI y correr sobre aeon (corre en la API, reanudable).
+
 ## VRT-43 — Exactitud por campo y calibración
 **Why:** una confianza mal calibrada deja pasar errores con confianza alta; medido en VRT-42, el modelo dice 100% y acierta 50–67% en algunos campos.
 **Scope:**
@@ -272,12 +277,14 @@ Veritium pasa de "subir documentos sueltos" a ser una **capacidad de decisión d
 - Por campo: acierto, confianza media, ECE, Brier y confianza calibrada por tramos (suavizada hacia el acierto del campo, no decreciente); umbrales sugeridos para 1/2/5% de error con su cobertura.
 - Versiones inmutables; un admin activa una y la cola de revisión compara la confianza calibrada con el umbral del perfil; la corrida registra la versión. UI en `/calibration`.
 - Fuera: recalcular solo y fijar el umbral del perfil automáticamente (lo decide una persona).
+
 ## VRT-44 — Simulación *what-if* y modo sombra
 **Why:** medir el impacto de un cambio de proceso antes de publicarlo, sin tocar expedientes.
 **Scope:**
 - Candidato = una versión de perfil (checklist, reglas vinculadas incluidas las en borrador, catálogo y umbrales). Sobre el historial: re-decide los últimos N expedientes del proceso con lo ya extraído; en sombra: decide cada expediente nuevo también con el candidato, sin afectar el veredicto ni los webhooks.
 - Resultado en lenguaje de negocio: cuántos cambiarían, de qué decisión a cuál, y los motivos que aparecen o desaparecen (comparados por lo que tratan, no por su texto). UI en `/simulations`, con acceso desde el borrador en Perfiles.
 - Fuera: simular cambios de modelo o prompt (eso es VRT-42) y re-extraer en la simulación.
+
 ## VRT-45 — Lentes de Riesgos y Legal
 **Why:** las áreas aguas abajo necesitan comprender documentos, no solo validarlos.
 **Scope:**
@@ -285,6 +292,7 @@ Veritium pasa de "subir documentos sueltos" a ser una **capacidad de decisión d
 - Leer un expediente con una lente: el modelo recibe primero los datos ya extraídos y conciliados ([fN]) y luego el texto OCR numerado ([dN:R]); cada afirmación cita referencias que se resuelven a página y recuadro. Citas inexistentes se descartan y una cita textual que no está en el documento se marca para verificar.
 - El texto OCR de cada archivo se guarda junto a él al procesarlo (los anteriores se leen una vez más la primera vez).
 - Fuera: lentes que corren solas en cada corrida y versionado de lentes (cada lectura guarda la definición que usó y se marca si la lente cambió).
+
 ## VRT-46 — Prompts versionados y grounding semántico
 **Why:** reproducibilidad y calidad de extracción medible.
 **Scope:**
@@ -317,6 +325,7 @@ Método, mediciones y aprendizajes: [eficiencia-modelos-ia.md](eficiencia-modelo
 - Descartado: detector `mobile` (pierde valores), CoreML (más lento), cambiar hilos, lotes u orientación de línea en Paddle (sin ganancia). Fuera: el layout sigue en Paddle (0,6 s por página, ~5 GB de pico).
 
 ## F5 — Canales
+
 ## VRT-47 — Sesión de carga + verificación rápida
 **Why:** el canal en línea no puede esperar el pipeline completo: quien sube una foto mala debe saberlo mientras aún puede repetirla.
 **Scope:**
@@ -324,18 +333,22 @@ Método, mediciones y aprendizajes: [eficiencia-modelos-ia.md](eficiencia-modelo
 - Cada archivo se revisa en 1–3 s: se abre (dañado, contraseña, formato), nitidez, luz, página en blanco y resolución con umbrales medidos en documentos reales; tipo con el modelo de visión y las descripciones del catálogo, con tiempo límite. Solo lo ilegible se rechaza; lo demás advierte, en palabras del cliente.
 - Los requisitos del perfil se muestran ya filtrados por los datos del proceso, con los tipos que cumplen cada uno (también por atributo); enviar crea el expediente (o completa uno existente) en el canal `online`, sin los archivos rechazados, una sola vez.
 - Fuera: URL prefirmada directa al almacenamiento (la verificación necesita pasar por la API) y QR del enlace.
+
 ## VRT-48 — *Bulk jobs*
 **Why:** el backoffice procesa en masa sin afectar al canal en línea. **Scope:**
 - ZIP con una carpeta por expediente (su nombre es la referencia) y manifiesto opcional (perfil y datos del proceso por expediente); lo inutilizable se omite con su motivo.
 - Carril `bulk`: las corridas esperan `queued` y se liberan de a pocas (`bulk_max_in_flight`), sea cual sea el ejecutor.
 - Avance y resultado por expediente (pantalla y CSV) y evento `bulk_job.completed`. Fuera: carga por URL o almacenamiento externo (VRT-49).
+
 ## VRT-49 — Eventos CloudEvents
 **Why:** integración por eventos con sistemas que ya hablan por bus. **Scope:**
 - Bus con protocolo Kafka (Redpanda en local, `EVENT_BUS_BROKERS`): el outbox se publica completo (CloudEvents estructurado, clave = expediente, `acks=all`, productor idempotente).
 - Comandos `case.submit` y `case.documents.add` por el bus o por `POST /v1/events` (modos estructurado y binario), respondidos con `command.accepted` / `.rejected`; un comando repetido (mismo `source` + `id`) recibe la misma respuesta sin repetir nada.
 - Claim-check: los documentos llegan por referencia `s3://` o `https://`, solo desde prefijos permitidos (anti-SSRF). Fuera: esquemas registrados (schema registry) y otros buses nativos.
+
 ## VRT-50 — Salida renderizable (A2UI)
 **Why:** que otros front-ends muestren el resultado sin conocer el dominio. **Scope:** capa A2UI v0.9 sobre el contrato canónico.
+
 ## VRT-65 — Credenciales de sistema
 **Why:** hoy un sistema solo entra como una persona (usuario y contraseña, token de 8 h); para integrarse de verdad necesita credenciales propias que se roten y revoquen sin tocar a nadie más. **Scope:**
 - Alta de sistemas por un admin: `client_id` + secreto mostrado una sola vez; rotar y revocar con efecto inmediato.
@@ -343,23 +356,28 @@ Método, mediciones y aprendizajes: [eficiencia-modelos-ia.md](eficiencia-modelo
 - Cuota de llamadas por minuto y por sistema (429 + `Retry-After`); arranque rechazado fuera de dev con la clave JWT por defecto. Fuera: SSO de personas y multi-tenant (VRT-57).
 
 ## F6 — Agéntico
+
 ## VRT-51 — Servidor MCP
 **Why:** otros agentes deben poder usar Veritium como tool. **Scope:**
 - `/mcp` (Streamable HTTP, spec 2026-07-28, sin estado; clientes 2025-11-25 también): tools `list_processes`, `submit_case`, `add_documents`, `get_case_status`, `get_case_result`, `find_cases` y el recurso `veritium://cases/{id}/result`.
 - Extensión Tasks: crear o completar un expediente devuelve una tarea cuyo id es la corrida persistida (`tasks/get` sirve desde cualquier instancia).
 - Mismas identidades, roles y cuota que la API (login o credenciales de sistema de VRT-65; metadata RFC 9728/8414). Fuera: MRTR/elicitación y `notifications/tasks` (las tareas se consultan por sondeo).
+
 ## VRT-52 — Servidor A2A
 **Why:** delegación entre agentes con un ciclo de vida estándar. **Scope:**
 - A2A v1.0 con el SDK oficial: JSON-RPC en `/a2a/` y HTTP+JSON en `/a2a/rest`; Agent Card en `/.well-known/agent-card.json`, firmada (JWS ES256 sobre RFC 8785) con la clave pública en `/.well-known/jwks.json`.
 - Una tarea es un expediente: el primer mensaje lo abre (parte de datos + documentos por url autorizada o contenido) y la tarea sigue su corrida; `input-required` = faltan documentos, que se envían en la misma tarea; el veredicto llega en el artefacto `resultado`.
 - Tareas en Postgres por dueño (mismas identidades, roles y cuota que la API); una tarea que un reinicio dejó en curso se resuelve desde su corrida al leerla. Fuera: notificaciones push (hay webhooks) y compatibilidad A2A 0.3.
+
 ## VRT-53 — Catálogo de tools
 **Why:** las validaciones y los agentes necesitan herramientas tipadas y gobernadas, sin definirlas dos veces. **Scope:**
 - Cada tool se define una sola vez (determinista o con modelo, costo, rol que la usa); de esa definición salen las tools internas (synaptum `@tool`) y las expuestas por MCP.
 - Criterio de exposición: MCP solo donde se cruza una frontera de proceso, dueño o confianza; los pasos internos (clasificar, extraer, leer regiones) no se exponen. Próximas a exponer: enlace de carga, verificación rápida, evidencia de un dato, lentes.
 - Catálogo consultable (`GET /v1/tools`, pantalla «Catálogo de tools») y descriptores MCP con sus metadatos (`GET /v1/tools/mcp`) para federarlas; registrarlas en el catálogo de aeon espera `VRT-AEON-006`. Las tools de terceros (RENIEC/SUNAT/SBS, VRT-60) se consumirán por MCP desde el gateway de tools de aeon.
+
 ## VRT-54 — Asistente del usuario
 **Why:** ayudar a operar, buscar y diagnosticar sin conocer la plataforma por dentro. **Scope:** agente synaptum que consume el MCP de Veritium (`MCPTools`) con el token de la persona: mismos permisos, cuota y auditoría que ella, sin un segundo camino con privilegios. Solo usa las tools de lectura; las que cambian algo (abrir expediente, pedir documentos, lentes) quedan como botones en la UI. Para servirle se sumaron al MCP la búsqueda por día, veredicto, estado y proceso, `cases_overview` y `get_review_queue`; los números los calcula Veritium (`summary`), no el modelo. La conversación vive en el cliente.
+
 ## VRT-55 — Permisos de tools con Cedar
 **Why:** gobernar qué agente usa qué tool donde hay frontera. **Scope:**
 - Las tools MCP de Veritium están federadas en aeon (`deploy/aeon/tool_sources.yaml`, aeon `TOOL-010`). Cada tool está aprobada y clasificada una por una, con su descriptor fijado por huella. Las escrituras llevan clave de idempotencia. `request_documents_link` queda fuera.
@@ -372,22 +390,26 @@ Método, mediciones y aprendizajes: [eficiencia-modelos-ia.md](eficiencia-modelo
 **Why:** un 32 % de los documentos termina con campos para revisión humana, casi todos por hallazgos de validación (maestro de empleados y consistencia entre documentos); el revisor empieza cada uno desde cero. **Scope:**
 - Agente synaptum con 6 tools internas del catálogo (evidencia de un dato, leer y buscar en un documento, mirar una región con visión, comparar nombres, maestro de empleados); deja diagnóstico, causa, acción sugerida y evidencia verificada contra el texto. No decide ni corrige: la sugerencia se aplica desde la cola de revisión.
 - A demanda (por hallazgo o por expediente) para controlar el costo de modelo. Métrica: % de sugerencias aceptadas, registrado solo al corregir el campo (`GET /v1/investigations/stats`).
+
 ## VRT-67 — Autovalidación de la extracción
 **Why:** muchos hallazgos (formato, aritmética interna) los puede detectar el propio agente antes de entregar, si tiene con qué. **Scope:**
 - Tool interna `check_draft`: corre sobre el borrador las reglas propias del documento (categoría SELF: aritmética interna, formato de cada atributo del catálogo semántico, reglas CEL propias); el agente corrige o, si el documento dice eso, entrega igual.
 - Medible: opción de las corridas de evaluación para comparar con y sin autovalidación sobre el mismo golden set. Fuera: reglas entre documentos (eso es VRT-66).
 - Apagada por defecto: medido el 2026-10-10, solo 2 de 74 documentos con hallazgos tenían uno que pudiera detectar (el resto: maestro de empleados y consistencia entre documentos), y cada revisión es un turno más del modelo.
+
 ## VRT-68 — Clasificación con escalamiento agéntico
 **Why:** la clasificación es una sola llamada; los casos dudosos o los PDF mezclados quedan "genéricos" o mal clasificados. **Scope:** se mantiene la llamada única para los casos claros; con confianza baja o mezcla, un agente revisa páginas (texto, imagen, descripciones de los tipos). Métrica: % de genéricos y de mal clasificados en las suites.
 - **Medido el 2026-10-10, sin construir:** de 188 documentos, 16 quedaron "genéricos", pero fue porque se clasificaron antes de existir su tipo. Reclasificados hoy con una sola llamada, 10 de 10 salen bien (el único genérico real sigue genérico). La confianza no sirve de señal de escalamiento: siempre ≥ 0,8. Se reabre si las suites muestran errores de clasificación.
 
 ## F7 — Hardening y producción
+
 ## VRT-56 — Ruta de inferencia gobernada
 **Why:** en producción todo el tráfico de modelo debe tener presupuestos, atribución y gobierno ([ADR-0006](adr/0006-inferencia-gobernada-por-fases.md)). **Scope:**
 - `INFERENCE_ROUTE=governed`: el `InferencePort` usa el `HttpModel` de synaptum contra aeon-modelgw con el token de Veritium. Pide **perfiles** (`deploy/aeon/model_policy.yaml`: razonamiento y visión, locales y `restricted`) y aeon resuelve el modelo con su credencial de prometheus. Obligatoria en producción.
 - Cada llamada va atribuida: la de un paso de expediente, a su run de aeon y al agente `veritium-case-run`; la demás (asistente, lentes, investigaciones, borradores), a un run propio y al agente `veritium-service`. Los presupuestos (llamadas, tokens, USD) están en los manifiestos (`deploy/aeon/agents/`); al agotarse, aeon responde 402 y Veritium lo dice así. El costo queda por run en el ledger de aeon.
 - Fuera: el diario compartido de synaptum (S-5), porque aeon ignora `sub_run_id` al leerlo (reportado); la durabilidad la siguen dando la actividad y la idempotencia de prometheus. Y el resto de S-4 (`/decide`, `/execute`).
 - Bloqueada (`VRT-AEON-008`): `/v1/chat/completions` responde 502 a un turno con argumentos de tool rotos (el bucle de `VRT-69`) en vez de pasarlo, así que la extracción falla por la ruta gobernada. Desarrollo vuelve a la autónoma hasta que aeon lo arregle.
+
 ## VRT-71 — Administración de plataforma y unidad en blanco
 **Why:** para entregar una unidad a una persona real del banco: que configure su proceso desde cero sin poder cambiar lo que usan las demás unidades. **Scope:**
 - Rol de plataforma (`veritium:plataforma:admin` o `:especialista_ia` en el proveedor, o por script): solo ese rol cambia tipos de documento, catálogo semántico, biblioteca de reglas, lentes, instrucciones al modelo y las unidades. El admin de una unidad configura lo suyo: procesos, personas, sistemas, conservación.
@@ -407,6 +429,7 @@ Método, mediciones y aprendizajes: [eficiencia-modelos-ia.md](eficiencia-modelo
 - Aislamiento en una sola costura (`persistence/tenancy.py`): toda consulta filtrada, toda fila sellada, fallo cerrado sin unidad; otra unidad responde 404, nunca 403. La unidad viene de la credencial, nunca de la petición; el worker, la carga masiva, los webhooks y el bus declaran la suya.
 - Una persona trabaja en varias unidades con un rol en cada una; un token por unidad (`/auth/switch`). SSO OpenID Connect (código + PKCE) con cualquier proveedor; unidad y rol desde los grupos `veritium:<unidad>:<rol>`; las unidades las registra el operador. Keycloak para desarrollo.
 - Fuera: RLS en Postgres (el comportamiento está fijado por pruebas negativas por tabla), un proveedor de identidad por unidad, y quién edita el catálogo corporativo (hoy los admin y especialistas de cualquier unidad).
+
 ## VRT-58 — PII y retención
 **Why:** Ley 29733: un dato personal se muestra solo a quien lo necesita, queda constancia de quién lo vio, y se borra cuando ya no hace falta o el titular lo pide. **Scope:**
 - Enmascarado por defecto en pantalla, API, MCP, A2A y CSV, derivado de la clase PII del catálogo semántico (sensible oculto; personal con últimos dígitos o iniciales; un campo sin mapeo cuenta como personal). El enmascarador conoce los valores del expediente y los tapa también donde se citan (hallazgos, motivos, evidencia, errores).
@@ -414,6 +437,7 @@ Método, mediciones y aprendizajes: [eficiencia-modelos-ia.md](eficiencia-modelo
 - Conservación: días por proceso (Legal; sin plazo, se conserva) y supresión a pedido por un admin; ambas anonimizan (borran originales, OCR, lo extraído y los textos que lo citan; queda proceso, fechas y veredicto).
 - Telemetría y logs sin datos (excepciones y logs saneados antes de salir); en producción no arranca con un gateway de modelos externo ni con la captura de prompts encendida.
 - Fuera: enmascarar lo que va al modelo (es interno y necesita leer el dato), cifrado de columnas, y que el colector de argus reconozca identificadores peruanos (pedido aparte).
+
 ## VRT-59 — Búsqueda híbrida
 **Why:** el `ILIKE` de VRT-11 no escala, no ordena por relevancia, no tolera un DNI mal leído por el OCR ni encuentra un documento por lo que trata. **Scope:**
 - **Qué se indexa:** por documento, los valores extraídos (ya corregidos) y el texto leído de cada página en ventanas solapadas. Cada corrida re-indexa su expediente al terminar, sin hacerla fallar nunca; `scripts/reindex_search.py` indexa lo anterior.
@@ -421,10 +445,13 @@ Método, mediciones y aprendizajes: [eficiencia-modelos-ia.md](eficiencia-modelo
 - **Filtros:** unidad (por tenancy) y proceso, combinables con estado, tipo y revisión.
 - **Datos personales:** el resultado dice dónde coincidió (datos, página, archivo), nunca qué dice. Buscar sigue reservado a quien puede ver datos, y queda registrado. La anonimización borra los fragmentos y sus vectores.
 - **Fuera:** BM25 real (ParadeDB, AGPL) y búsqueda de expedientes como tool del asistente o de MCP.
+
 ## VRT-60 — Conectores RENIEC / SUNAT / SBS
 **Why:** validar contra fuentes oficiales; desbloquea lo que VRT-15 no pudo. **Scope:** conectores como tools del catálogo. Absorbe VRT-15.
+
 ## VRT-61 — Antifraude forense
 **Why:** los documentos financieros falsificados con IA crecieron ~4x (2025–2026); validar la coherencia no los detecta. **Scope:** forense del archivo (metadatos, fuentes, píxeles, estructura).
+
 ## VRT-62 — Auditoría inmutable y cumplimiento
 **Why:** el DS 115-2025-PCM clasifica la evaluación crediticia como de alto riesgo. **Scope:** auditoría con hash encadenado y requisitos de transparencia (confirmar el alcance con Legal).
 
@@ -502,18 +529,14 @@ Método, mediciones y aprendizajes: [eficiencia-modelos-ia.md](eficiencia-modelo
 ## VRT-95 — Herramientas para agentes en palabras
 **Why:** una tabla de 23 filas con descripciones escritas para agentes (parámetros entre comillas, nombres técnicos) no dejaba ver qué puede hacer un sistema conectado ni qué usa cada agente por dentro. **Scope:** dos fichas que filtran (para otros sistemas / internas), búsqueda y «solo las que usan IA»; bloques por uso con una tarjeta por herramienta: frase de negocio, usa IA o no, consulta o cambia algo, costo en semáforo y quién la usa; el texto para el agente, el nombre y si se puede repetir, plegados. Sin cambios de API.
 
-
 ## VRT-96 — Personas en palabras
 **Why:** una tabla con un ícono rojo de borrar en cada fila, y para cambiar el rol de alguien había que quitarlo y volver a crearlo; el alta pedía «Contraseña: solo si es una persona nueva» sin explicar qué hacía cada rol. **Scope:** fichas por rol con lo que puede hacer y cuántos hay (filtran), búsqueda, personas en tarjetas agrupadas por rol; un diálogo para cambiar el rol o quitar de la unidad, de solo lectura para cuentas corporativas; alta con el rol elegido por lo que permite. API: `PATCH /users/{id}` cambia el rol (no el propio ni el de una cuenta corporativa).
 
 ## VRT-97 — Sistemas conectados en palabras
 **Why:** una tabla con fechas sueltas («Secreto desde: 9/10/26, 2:14 p.m.») no decía si un sistema estaba en uso, y el alta mezclaba en una fila el nombre, una cuota numérica y las credenciales que aparecían debajo. **Scope:** una tarjeta por sistema con su estado en semáforo (en uso, sin uso reciente, aún no se conecta, sin acceso), último uso y cambio de secreto en palabras; conectar en un diálogo: nombre y cuota por opciones, luego las credenciales una sola vez con copiar; el nuevo secreto tras cambiarlo, en el mismo diálogo; los sistemas sin acceso y la guía para su equipo técnico, plegados. Sin cambios de API.
+
 ## VRT-98 — Ajuste de las instrucciones de extracción en inglés
 **Why:** tras pasar a inglés (VRT-94), la boleta y el carné de extranjería salían por debajo del español: periodo con restos del OCR («ENE 2026 N:1-»), total de descuentos negativo o calculado por el modelo, listas incompletas, y datos de dos personas mezclados en un carné con frentes y reversos en otro orden. **Scope:** cuatro reglas generales en la instrucción de extracción: valor sin texto pegado por el OCR, montos copiados del documento y descuentos en positivo, cada página ligada a su persona por número o nombre (no por orden), y contar las filas de cada lista antes de entregar. Resultado (banco de 4 documentos): boleta 6/6 en 5 de 5 corridas (antes 3–5/6); carné estable en 6/12 (inglés 2–6, español 6–9). Fuera: el emparejamiento del carné, que la instrucción sola no resuelve con el modelo actual.
-
-## VRT-103 — Reversos de documentos de identidad ligados por su número
-**Why:** en un archivo con los carnés de dos personas y los reversos en otro orden, el modelo cruzaba el pasaporte y las fechas entre ellas; la instrucción de VRT-98 no bastó. **Scope:** al armar la instrucción de extracción, una página cuya línea legible por máquina (MRZ) empieza con un número impreso en otra página se declara de ese registro, como un hecho; documentos sin esas líneas no cambian. Resultado: carné 12/12 en 2 de 3 corridas (antes 6/12), banco completo 94 % (antes 69 %).
-
 
 ## VRT-99 — Mensaje claro cuando la IA no responde bien
 **Why:** al redactar una regla, si el modelo no entregaba una salida válida en sus intentos, la pantalla recibía un 500 sin explicación. **Scope:** toda la API responde 502 con «La IA no logró dar una respuesta válida esta vez. Inténtalo de nuevo o dilo con otras palabras.», como ya lo hace con 503 cuando falta el modelo. Fuera: reintentar solo.
@@ -526,6 +549,9 @@ Método, mediciones y aprendizajes: [eficiencia-modelos-ia.md](eficiencia-modelo
 
 ## VRT-102 — Auditoría en palabras
 **Why:** dos tablas anchas con desplazamiento lateral; en los accesos a datos personales, 190 de 220 registros eran borrados automáticos de pruebas que tapaban lo que hicieron las personas, y las correcciones sin motivo no se distinguían. **Scope:** pestañas Correcciones / Datos personales (solo admin); motivos de corrección en barras que filtran, con «Sin motivo registrado» en ámbar; búsqueda; cada registro como una frase (dato, antes → después, documento, quién, motivo) agrupado por día; personas y procesos automáticos por separado, filtro por acción; «ver anteriores» en vez de un tope fijo; modelo e instrucción de cada corrección, plegados. Sin cambios de API.
+
+## VRT-103 — Reversos de documentos de identidad ligados por su número
+**Why:** en un archivo con los carnés de dos personas y los reversos en otro orden, el modelo cruzaba el pasaporte y las fechas entre ellas; la instrucción de VRT-98 no bastó. **Scope:** al armar la instrucción de extracción, una página cuya línea legible por máquina (MRZ) empieza con un número impreso en otra página se declara de ese registro, como un hecho; documentos sin esas líneas no cambian. Resultado: carné 12/12 en 2 de 3 corridas (antes 6/12), banco completo 94 % (antes 69 %).
 
 ## VRT-104 — Observaciones de validación en palabras
 **Why:** una tabla paginada de a 25 donde la misma diferencia entre documentos aparecía una vez por cada documento del expediente, sin decir de qué expediente era ni cuántos errores había en total. **Scope:** fichas de errores, advertencias e informativas con su total, que filtran; filtros de comprobación en chips y de tipo de documento; observaciones agrupadas por expediente (con su nombre y enlace) y dichas una vez con los documentos en que se vieron; los datos que no coinciden entre documentos, en una tabla por expediente (cada dato, y cada valor con los documentos que lo dicen) en vez de los párrafos de la regla de consistencia; «ver anteriores» en vez de páginas; la regla detrás, plegada. API: cada observación trae `case_ref`.
