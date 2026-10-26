@@ -152,4 +152,4 @@ Estados: `done` · `todo` · `blocked` (espera a otro equipo) · `superseded` (a
 | VRT-103 | Reversos de documentos de identidad ligados por su número | done | La plataforma dice al modelo a qué carné pertenece cada reverso, leyendo el número de su línea con «<», en vez de dejarlo adivinar por el orden. |
 | VRT-104 | Observaciones de validación en palabras | done | Errores, advertencias y notas en fichas que filtran, observaciones agrupadas por expediente y dichas una vez con todos sus documentos. |
 | VRT-105 | Qué hacer con cada observación | done | Lista de expedientes y el elegido al lado; cada observación dice si está por revisar, y se revisa ahí mismo o se pide a la IA. |
-| VRT-106 | Confiabilidad de la lectura en palabras | todo | Estado de la medición y su uso arriba, cuánto se sobreestima el sistema, y los datos en un tablero de semáforo de tres columnas. |
+| VRT-106 | Confiabilidad de la lectura en palabras | done | Estado de la medición y su uso arriba, cuánto se sobreestima el sistema, y los datos en un tablero de semáforo de tres columnas. |
