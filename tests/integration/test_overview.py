@@ -75,6 +75,12 @@ async def test_the_home_figures_compare_and_never_quote_a_person(live_settings, 
             ("DNI del titular: los documentos no coinciden", "human_review"), ("Falta: Boleta de pago", "return_to_client")}
         assert [(a["kind"], a["case_ref"]) for a in data["attention"]] == [("failed", "EXP-CLI"), ("review", "EXP-REV"), ("client", "EXP-CLI")]
         assert str(clean_id) not in {a["case_id"] for a in data["attention"]}
+        # Where the work is (VRT-111): by channel, by document type, and how long the queue has waited.
+        assert sum(c["continued"] + c["human_review"] + c["return_to_client"] + c["in_progress"] for c in data["by_channel"]) == 4
+        assert sum(t["documents"] for t in data["by_document_type"]) == 3
+        assert sum(t["needs_review"] for t in data["by_document_type"]) == 2 and sum(t["failed"] for t in data["by_document_type"]) == 1
+        assert [b["label"] for b in data["backlog"]] == ["Menos de 1 día", "1 a 7 días", "8 a 30 días", "Más de 30 días"]
+        assert sum(b["count"] for b in data["backlog"]) == 1
     finally:
         async with factory() as session:
             await session.execute(delete(User).where(User.email == f"test-inicio-{scratch_unit}@example.com"))

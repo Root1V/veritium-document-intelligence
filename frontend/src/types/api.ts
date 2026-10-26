@@ -1148,4 +1148,8 @@ export interface Overview {
   daily: DayCount[]
   reasons: ReasonCount[]
   attention: AttentionItem[]
+  // Where the work is (VRT-111).
+  by_channel: { channel: string; continued: number; human_review: number; return_to_client: number; in_progress: number }[]
+  by_document_type: { document_type: string | null; documents: number; needs_review: number; failed: number }[]
+  backlog: { label: string; count: number }[]
 }

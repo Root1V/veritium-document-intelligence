@@ -10,7 +10,10 @@ Nothing here quotes a person's data: reasons are grouped by what failed
   with no field ever sent to a person.
 - time_to_verdict: median from a case's arrival to its first verdict.
 - daily: cases per arrival day, by their current decision.
-- reasons: why cases did not decide themselves, most frequent first."""
+- reasons: why cases did not decide themselves, most frequent first.
+- by_channel: the period's cases per channel, by their current decision (VRT-111).
+- by_document_type: the period's documents per type — how many needed a person, how many failed.
+- backlog: the fields waiting for a person, by how long they have waited."""
 
 from __future__ import annotations
 
@@ -68,6 +71,26 @@ class ReasonCount(BaseModel):
     count: int
 
 
+class ChannelCount(BaseModel):
+    channel: str
+    continued: int = 0
+    human_review: int = 0
+    return_to_client: int = 0
+    in_progress: int = 0
+
+
+class TypeCount(BaseModel):
+    document_type: str | None
+    documents: int
+    needs_review: int
+    failed: int
+
+
+class AgeBucket(BaseModel):
+    label: str
+    count: int
+
+
 class AttentionItem(BaseModel):
     kind: Literal["failed", "review", "client"]
     case_id: uuid.UUID
@@ -90,6 +113,9 @@ class Overview(BaseModel):
     daily: list[DayCount]
     reasons: list[ReasonCount]
     attention: list[AttentionItem]
+    by_channel: list[ChannelCount] = []
+    by_document_type: list[TypeCount] = []
+    backlog: list[AgeBucket] = []
 
 
 def _rule_label(reason: dict, cel: dict[str, str]) -> str:
@@ -114,7 +140,7 @@ def reason_label(reason: dict, cel: dict[str, str]) -> str | None:
 
 async def _window(session: AsyncSession, start: datetime, end: datetime) -> tuple[list, set[uuid.UUID], dict[uuid.UUID, datetime]]:
     rows = list((await session.execute(
-        select(Case.id, Case.created_at, Case.verdict, Case.verdict_reasons).where(Case.created_at >= start, Case.created_at < end)
+        select(Case.id, Case.created_at, Case.verdict, Case.verdict_reasons, Case.channel).where(Case.created_at >= start, Case.created_at < end)
     )).all())
     ids = [r.id for r in rows]
     if not ids:
@@ -189,6 +215,37 @@ async def overview(
             for label in {lbl for reason in r.verdict_reasons or [] if (lbl := reason_label(reason, cel))}:
                 reasons[(label, r.verdict)] += 1
 
+    channels: dict[str, ChannelCount] = {}
+    for r in rows:
+        bucket = channels.setdefault(r.channel, ChannelCount(channel=r.channel))
+        field = {"continue": "continued", "human_review": "human_review", "return_to_client": "return_to_client"}.get(r.verdict or "", "in_progress")
+        setattr(bucket, field, getattr(bucket, field) + 1)
+
+    by_type: list[TypeCount] = []
+    if rows:
+        reviewed_docs = select(ReviewItem.document_id).distinct()
+        by_type = [
+            TypeCount(document_type=t, documents=n, needs_review=r or 0, failed=f or 0)
+            for t, n, r, f in (await session.execute(
+                select(
+                    Document.document_type,
+                    func.count(Document.id),
+                    func.count(Document.id).filter(Document.id.in_(reviewed_docs)),
+                    func.count(Document.id).filter(Document.status == "failed"),
+                )
+                .where(Document.case_id.in_([r.id for r in rows]), Document.status != "segmented")
+                .group_by(Document.document_type)
+                .order_by(func.count(Document.id).desc())
+            )).all()
+        ]
+
+    now = datetime.now(UTC)
+    ages = [(now - at).total_seconds() / 86_400 for at in await session.scalars(select(ReviewItem.created_at).where(ReviewItem.status == "pending"))]
+    backlog = [
+        AgeBucket(label=label, count=sum(1 for a in ages if low <= a < high))
+        for label, low, high in (("Menos de 1 día", 0, 1), ("1 a 7 días", 1, 7), ("8 a 30 días", 7, 30), ("Más de 30 días", 30, float("inf")))
+    ]
+
     attention, in_review, waiting_client, failed_documents = await _attention(session, cel)
     pending, oldest = (await session.execute(select(func.count(ReviewItem.id), func.min(ReviewItem.created_at)).where(ReviewItem.status == "pending"))).one()
     return Overview(
@@ -205,4 +262,7 @@ async def overview(
         daily=list(daily.values()),
         reasons=[ReasonCount(label=label, decision=decision, count=n) for (label, decision), n in reasons.most_common(6)],
         attention=attention,
+        by_channel=sorted(channels.values(), key=lambda c: -(c.continued + c.human_review + c.return_to_client + c.in_progress)),
+        by_document_type=by_type,
+        backlog=backlog,
     )
