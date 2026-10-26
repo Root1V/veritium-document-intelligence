@@ -145,7 +145,7 @@ Estados: `done` · `todo` · `blocked` (espera a otro equipo) · `superseded` (a
 | VRT-96 | Personas en palabras | done | Fichas por rol con lo que puede hacer, personas en tarjetas por rol, cambiar el rol sin borrar y agregar en un diálogo claro. |
 | VRT-97 | Sistemas conectados en palabras | done | Cada sistema en una tarjeta con su estado en semáforo y «último uso hace…»; conectar en un diálogo de dos pasos; sin acceso y guía técnica plegados. |
 | VRT-98 | Ajuste de las instrucciones de extracción en inglés | done | Valor limpio sin restos del OCR, totales copiados y en positivo, varias personas por número y no por página, y contar las filas de cada lista. |
-| VRT-99 | Mensaje claro cuando la IA no responde bien | todo | Si el modelo no entrega una respuesta válida, la persona lee qué hacer en vez de un error 500. |
+| VRT-99 | Mensaje claro cuando la IA no responde bien | done | Si el modelo no entrega una respuesta válida, la persona lee qué hacer en vez de un error 500. |
 | VRT-100 | Evaluaciones con el mismo archivo repetido | todo | Las copias de un mismo archivo en una suite se evalúan una tras otra y reciben la respuesta ya generada, en vez de fallar. |
 | VRT-101 | Unidades de negocio en palabras | todo | Una tarjeta por unidad con cuántas personas entran (en ámbar si nadie), y crear, renombrar o eliminar en un diálogo que termina en los grupos a crear. |
 | VRT-102 | Auditoría en palabras | todo | Correcciones y accesos a datos personales en pestañas, cada registro como una frase agrupada por día; sin motivo en ámbar; procesos automáticos aparte. |
