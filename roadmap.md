@@ -146,3 +146,4 @@ Estados: `done` · `todo` · `blocked` (espera a otro equipo) · `superseded` (a
 | VRT-97 | Sistemas conectados en palabras | done | Cada sistema en una tarjeta con su estado en semáforo y «último uso hace…»; conectar en un diálogo de dos pasos; sin acceso y guía técnica plegados. |
 | VRT-98 | Ajuste de las instrucciones de extracción en inglés | todo | Valor limpio sin restos del OCR, totales copiados y en positivo, varias personas por número y no por página, y contar las filas de cada lista. |
 | VRT-103 | Reversos de documentos de identidad ligados por su número | todo | La plataforma dice al modelo a qué carné pertenece cada reverso, leyendo el número de su línea con «<», en vez de dejarlo adivinar por el orden. |
+| VRT-99 | Mensaje claro cuando la IA no responde bien | todo | Si el modelo no entrega una respuesta válida, la persona lee qué hacer en vez de un error 500. |

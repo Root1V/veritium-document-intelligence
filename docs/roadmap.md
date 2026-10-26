@@ -514,3 +514,6 @@ Método, mediciones y aprendizajes: [eficiencia-modelos-ia.md](eficiencia-modelo
 ## VRT-103 — Reversos de documentos de identidad ligados por su número
 **Why:** en un archivo con los carnés de dos personas y los reversos en otro orden, el modelo cruzaba el pasaporte y las fechas entre ellas; la instrucción de VRT-98 no bastó. **Scope:** al armar la instrucción de extracción, una página cuya línea legible por máquina (MRZ) empieza con un número impreso en otra página se declara de ese registro, como un hecho; documentos sin esas líneas no cambian. Resultado: carné 12/12 en 2 de 3 corridas (antes 6/12), banco completo 94 % (antes 69 %).
 
+
+## VRT-99 — Mensaje claro cuando la IA no responde bien
+**Why:** al redactar una regla, si el modelo no entregaba una salida válida en sus intentos, la pantalla recibía un 500 sin explicación. **Scope:** toda la API responde 502 con «La IA no logró dar una respuesta válida esta vez. Inténtalo de nuevo o dilo con otras palabras.», como ya lo hace con 503 cuando falta el modelo. Fuera: reintentar solo.

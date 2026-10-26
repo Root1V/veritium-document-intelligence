@@ -14,6 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from opentelemetry import trace
 from sqlalchemy import select
+from synaptum import NoObjectGeneratedError
 
 from idp.api.routes import api_clients, overview, assistant, audit, auth, batches, bulk_jobs, data_access, events, investigations, tools, calibration, cases, document_types, documents, evaluation, lenses, profiles, prompts, simulations, upload_sessions, review, semantic_catalog, tenants, type_suggestions, users, validation, validation_rules, webhooks
 from idp.config import get_settings
@@ -81,6 +82,11 @@ def create_app() -> FastAPI:
     @app.exception_handler(ModelResolutionError)
     async def _no_models(_: Request, exc: ModelResolutionError) -> JSONResponse:
         return JSONResponse(status_code=503, content={"detail": f"La IA no está disponible ahora: {exc}. Lo demás funciona; inténtalo cuando prometheus tenga el modelo."})
+
+    # The model answered, but never in the shape asked for (VRT-99): a person can retry or say it otherwise.
+    @app.exception_handler(NoObjectGeneratedError)
+    async def _no_answer(_: Request, __: NoObjectGeneratedError) -> JSONResponse:
+        return JSONResponse(status_code=502, content={"detail": "La IA no logró dar una respuesta válida esta vez. Inténtalo de nuevo o dilo con otras palabras."})
 
     # The trace of each request, joined to the caller's when it comes from a trusted network.
     app.add_middleware(argus.ASGIMiddleware, propagate_mode="trusted")
