@@ -150,3 +150,4 @@ Estados: `done` · `todo` · `blocked` (espera a otro equipo) · `superseded` (a
 | VRT-100 | Evaluaciones con el mismo archivo repetido | todo | Las copias de un mismo archivo en una suite se evalúan una tras otra y reciben la respuesta ya generada, en vez de fallar. |
 | VRT-101 | Unidades de negocio en palabras | todo | Una tarjeta por unidad con cuántas personas entran (en ámbar si nadie), y crear, renombrar o eliminar en un diálogo que termina en los grupos a crear. |
 | VRT-102 | Auditoría en palabras | todo | Correcciones y accesos a datos personales en pestañas, cada registro como una frase agrupada por día; sin motivo en ámbar; procesos automáticos aparte. |
+| VRT-104 | Observaciones de validación en palabras | todo | Errores, advertencias y notas en fichas que filtran, observaciones agrupadas por expediente y dichas una vez con todos sus documentos. |

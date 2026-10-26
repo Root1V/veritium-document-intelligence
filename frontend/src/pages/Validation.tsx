@@ -1,205 +1,208 @@
+// What did not pass (VRT-104): how many errors, warnings and notes there
+// are — each a filter in its traffic-light colour — and the findings grouped
+// by case. A finding between documents is said once, with every document it
+// was seen in, instead of once per document. The rule behind it stays folded.
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { AlertCircle, AlertTriangle, ChevronLeft, ChevronRight, Info, Loader2 } from 'lucide-react'
-import { useDocumentTypeCatalog, useValidationLog } from '@/lib/queries'
-import { useTypeName } from '@/lib/labels'
-import { humanizeFieldName } from '@/lib/extraction'
-import { Badge } from '@/components/ui/badge'
-import { Card, CardContent } from '@/components/ui/card'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { AlertCircle, AlertTriangle, FileText, FolderOpen, Info, Loader2, type LucideIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { humanizeFieldName } from '@/lib/extraction'
+import { useDocumentTypeCatalog, useValidationLog } from '@/lib/queries'
+import { cn } from '@/lib/utils'
+import type { ValidationIssueEntry } from '@/types/api'
 
 const ALL = '__all__'
-const PAGE_SIZE = 25
+const STEP = 200
 
-const CATEGORY_OPTIONS = ['self', 'request_input', 'cross_document', 'conditional', 'reference_data', 'external_system']
-const CATEGORY_LABEL: Record<string, string> = {
-  self: 'Interna del documento',
-  request_input: 'Datos de entrada',
+const CATEGORY: Record<string, string> = {
   cross_document: 'Entre documentos',
-  conditional: 'Condicional',
+  self: 'Interna del documento',
   reference_data: 'Datos de referencia',
+  request_input: 'Datos de entrada',
+  conditional: 'Condicional',
   external_system: 'Sistema externo',
 }
 
-const SEVERITY_OPTIONS = ['error', 'warning', 'info']
-const SEVERITY_LABEL: Record<string, string> = { error: 'Error', warning: 'Advertencia', info: 'Informativa' }
-const SEVERITY_ICON = { error: AlertCircle, warning: AlertTriangle, info: Info }
-const SEVERITY_CLASSES: Record<string, string> = {
-  error: 'text-red-600 dark:text-red-400',
-  warning: 'text-amber-600 dark:text-amber-400',
-  info: 'text-muted-foreground',
+type Severity = ValidationIssueEntry['severity']
+const SEVERITY: Record<Severity, { label: string; plural: string; icon: LucideIcon; text: string; tile: string }> = {
+  error: { label: 'error', plural: 'Errores', icon: AlertCircle, text: 'text-red-600 dark:text-red-400', tile: 'ring-red-500' },
+  warning: { label: 'advertencia', plural: 'Advertencias', icon: AlertTriangle, text: 'text-amber-600 dark:text-amber-400', tile: 'ring-amber-500' },
+  info: { label: 'nota', plural: 'Informativas', icon: Info, text: 'text-muted-foreground', tile: 'ring-border' },
+}
+const SEVERITIES = Object.keys(SEVERITY) as Severity[]
+const HINT: Record<Severity, string> = {
+  error: 'Algo que no cuadra y frena la decisión.',
+  warning: 'Conviene revisarlo; no frena por sí solo.',
+  info: 'Para tener en cuenta.',
 }
 
-function formatTimestamp(iso: string): string {
-  return new Date(iso).toLocaleString('es-PE', { dateStyle: 'medium', timeStyle: 'short' })
+/** One finding of a case, with every document it was seen in. */
+interface Finding {
+  issue: ValidationIssueEntry
+  documents: { id: string; name: string }[]
+}
+
+function groupByCase(issues: ValidationIssueEntry[]) {
+  const cases = new Map<string, { id: string; ref: string | null | undefined; at: string; findings: Map<string, Finding> }>()
+  for (const issue of issues) {
+    const group = cases.get(issue.batch_id) ?? { id: issue.batch_id, ref: issue.case_ref, at: issue.created_at, findings: new Map<string, Finding>() }
+    const key = `${issue.rule_id}|${issue.message}`
+    const finding = group.findings.get(key) ?? { issue, documents: [] }
+    if (issue.document_id && !finding.documents.some((d) => d.id === issue.document_id))
+      finding.documents.push({ id: issue.document_id, name: issue.document_filename ?? 'documento' })
+    group.findings.set(key, finding)
+    cases.set(issue.batch_id, group)
+  }
+  return [...cases.values()].map((c) => ({ ...c, findings: [...c.findings.values()].sort((a, b) => SEVERITIES.indexOf(a.issue.severity) - SEVERITIES.indexOf(b.issue.severity)) }))
+}
+
+function FindingRow({ finding }: { finding: Finding }) {
+  const { issue } = finding
+  const meta = SEVERITY[issue.severity]
+  const Icon = meta.icon
+  const field = issue.field_label ?? (issue.field_path ? humanizeFieldName(issue.field_path) : null)
+  return (
+    <div className="flex items-start gap-3 p-4">
+      <Icon className={cn('mt-0.5 size-4 shrink-0', meta.text)} aria-label={meta.label} />
+      <div className="flex min-w-0 flex-1 flex-col gap-2">
+        <p className="text-sm whitespace-pre-line">{issue.message}</p>
+        <div className="flex flex-wrap items-center gap-1.5 text-xs">
+          <span className="rounded-md bg-muted px-2 py-0.5 font-medium">{CATEGORY[issue.category] ?? issue.category}</span>
+          {field && <span className="rounded-md bg-muted px-2 py-0.5">{field}</span>}
+          {finding.documents.map((d) => (
+            <Link key={d.id} to={`/documents/${d.id}`} className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-primary hover:bg-primary/10">
+              <FileText className="size-3" /> {d.name}
+            </Link>
+          ))}
+        </div>
+        <details className="text-xs text-muted-foreground">
+          <summary className="cursor-pointer select-none hover:text-foreground">Detalle técnico</summary>
+          <div className="mt-1 flex flex-col gap-0.5">
+            <code>{issue.rule_id}</code>
+            <span>{issue.explanation}</span>
+          </div>
+        </details>
+      </div>
+    </div>
+  )
+}
+
+function SeverityTile({ severity, active, onClick, filters }: { severity: Severity; active: boolean; onClick: () => void; filters: { category?: string; document_type?: string } }) {
+  const { data } = useValidationLog({ ...filters, severity, limit: 1 })
+  const meta = SEVERITY[severity]
+  const Icon = meta.icon
+  return (
+    <button type="button" onClick={onClick} className={cn('flex flex-col gap-1 rounded-xl border bg-card p-4 text-left transition hover:border-primary/40', active && `ring-2 ${meta.tile}`)}>
+      <span className="flex items-center justify-between gap-2">
+        <span className={cn('inline-flex items-center gap-1.5 font-semibold', meta.text)}>
+          <Icon className="size-4" /> {meta.plural}
+        </span>
+        <span className="text-2xl font-semibold tabular-nums">{data?.total ?? '—'}</span>
+      </span>
+      <span className="text-xs text-muted-foreground">{HINT[severity]}</span>
+    </button>
+  )
 }
 
 export function ValidationPage() {
-  const [category, setCategory] = useState(ALL)
-  const [severity, setSeverity] = useState(ALL)
+  const [category, setCategory] = useState<string | null>(null)
+  const [severity, setSeverity] = useState<Severity | null>(null)
   const [documentType, setDocumentType] = useState(ALL)
-  const [offset, setOffset] = useState(0)
-
+  const [limit, setLimit] = useState(STEP)
   const { data: catalog } = useDocumentTypeCatalog()
-  const typeName = useTypeName()
-  const { data, isLoading, isFetching, isError } = useValidationLog({
-    category: category === ALL ? undefined : category,
-    severity: severity === ALL ? undefined : severity,
-    document_type: documentType === ALL ? undefined : documentType,
-    limit: PAGE_SIZE,
-    offset,
-  })
+  const scope = { category: category ?? undefined, document_type: documentType === ALL ? undefined : documentType }
+  const { data, isLoading, isFetching, isError } = useValidationLog({ ...scope, severity: severity ?? undefined, limit })
+  const groups = groupByCase(data?.issues ?? [])
+  const filtered = category || severity || documentType !== ALL
 
-  function resetAndSet(setter: (value: string) => void) {
-    return (value: string) => {
-      setter(value)
-      setOffset(0)
-    }
-  }
-
-  const total = data?.total ?? 0
-  const page = Math.floor(offset / PAGE_SIZE) + 1
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
+  const reset = <T,>(set: (v: T) => void) => (v: T) => (set(v), setLimit(STEP))
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
+      <div className="max-w-3xl">
         <h1 className="text-2xl font-semibold tracking-tight">Observaciones de validación</h1>
-        <p className="text-muted-foreground">
-          Lo que no se cumplió en cada documento{isError ? '' : ` (${total} en total)`}. Una comprobación que pasa no aparece aquí.
-        </p>
+        <p className="text-muted-foreground">Lo que no se cumplió en cada expediente, agrupado por expediente. Una comprobación que pasa no aparece aquí.</p>
       </div>
 
-      <div className="flex flex-wrap gap-3">
-        <Select value={category} onValueChange={resetAndSet(setCategory)}>
-          <SelectTrigger className="w-56">
-            <SelectValue placeholder="Comprobación" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={ALL}>Todas las comprobaciones</SelectItem>
-            {CATEGORY_OPTIONS.map((c) => (
-              <SelectItem key={c} value={c}>
-                {CATEGORY_LABEL[c] ?? c}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+      <div className="grid gap-3 sm:grid-cols-3">
+        {SEVERITIES.map((s) => (
+          <SeverityTile key={s} severity={s} active={severity === s} filters={scope} onClick={() => reset(setSeverity)(severity === s ? null : s)} />
+        ))}
+      </div>
 
-        <Select value={severity} onValueChange={resetAndSet(setSeverity)}>
-          <SelectTrigger className="w-44">
-            <SelectValue placeholder="Gravedad" />
+      <div className="flex flex-wrap items-center gap-2">
+        {Object.entries(CATEGORY).map(([key, label]) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => reset(setCategory)(category === key ? null : key)}
+            className={cn('rounded-full border px-3 py-1 text-xs font-medium transition', category === key ? 'border-primary bg-primary text-primary-foreground' : 'bg-card hover:border-primary/40')}
+          >
+            {label}
+          </button>
+        ))}
+        <Select value={documentType} onValueChange={reset(setDocumentType)}>
+          <SelectTrigger className="h-8 w-52">
+            <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value={ALL}>Toda gravedad</SelectItem>
-            {SEVERITY_OPTIONS.map((s) => (
-              <SelectItem key={s} value={s}>
-                {SEVERITY_LABEL[s]}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        <Select value={documentType} onValueChange={resetAndSet(setDocumentType)}>
-          <SelectTrigger className="w-56">
-            <SelectValue placeholder="Tipo de documento" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={ALL}>Todos los tipos</SelectItem>
+            <SelectItem value={ALL}>Todos los documentos</SelectItem>
             <SelectItem value="generic">Otro documento</SelectItem>
-            {catalog?.registered.map((type) => (
-              <SelectItem key={type.name} value={type.name}>
-                {type.display_name}
+            {catalog?.registered.map((t) => (
+              <SelectItem key={t.name} value={t.name}>
+                {t.display_name}
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
+        {filtered && (
+          <Button size="sm" variant="ghost" onClick={() => (setCategory(null), setSeverity(null), setDocumentType(ALL), setLimit(STEP))}>
+            Ver todas
+          </Button>
+        )}
       </div>
 
       {isLoading ? (
-        <div className="flex h-48 items-center justify-center">
-          <Loader2 className="size-6 animate-spin text-muted-foreground" />
-        </div>
+        <Loader2 className="size-5 animate-spin text-muted-foreground" />
       ) : isError ? (
-        <p className="text-sm text-destructive">No se pudieron cargar las observaciones. Vuelve a intentarlo en un momento.</p>
-      ) : !data || data.issues.length === 0 ? (
-        <p className="text-sm text-muted-foreground">Sin observaciones que coincidan con los filtros.</p>
+        <p className="text-sm text-muted-foreground">No se pudieron cargar las observaciones: el servidor de Veritium no responde.</p>
+      ) : !groups.length ? (
+        <p className="text-sm text-muted-foreground">{filtered ? 'Ninguna observación con estos filtros.' : 'Todo se cumplió: no hay observaciones.'}</p>
       ) : (
-        <>
-          <Card>
-            <CardContent className="overflow-x-auto p-0">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Fecha</TableHead>
-                    <TableHead>Documento</TableHead>
-                    <TableHead>Observación</TableHead>
-                    <TableHead>Dato</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {data.issues.map((issue) => {
-                    const Icon = SEVERITY_ICON[issue.severity]
-                    return (
-                      <TableRow key={issue.id} className={isFetching ? 'opacity-60' : undefined}>
-                        <TableCell className="whitespace-nowrap text-xs text-muted-foreground">{formatTimestamp(issue.created_at)}</TableCell>
-                        <TableCell>
-                          {issue.document_id ? (
-                            <Link to={`/documents/${issue.document_id}`} className="text-xs text-primary hover:underline">
-                              {issue.document_filename ?? 'Ver documento'}
-                            </Link>
-                          ) : (
-                            <span className="text-xs text-muted-foreground">—</span>
-                          )}
-                          {issue.document_type && <div className="text-xs text-muted-foreground">{typeName(issue.document_type)}</div>}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-start gap-2">
-                            <Icon className={`mt-0.5 size-4 shrink-0 ${SEVERITY_CLASSES[issue.severity]}`} aria-label={SEVERITY_LABEL[issue.severity]} />
-                            <div className="flex flex-col gap-1">
-                              <span className="whitespace-pre-line text-xs font-medium">{issue.message}</span>
-                              <Badge variant="outline" className="w-fit text-[10px]">
-                                {CATEGORY_LABEL[issue.category] ?? issue.category}
-                              </Badge>
-                              <details className="text-xs text-muted-foreground">
-                                <summary className="cursor-pointer select-none">Detalle técnico</summary>
-                                <div className="mt-1 flex flex-col gap-0.5">
-                                  <code>{issue.rule_id}</code>
-                                  <span>{issue.explanation}</span>
-                                </div>
-                              </details>
-                            </div>
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-xs">{issue.field_label ?? (issue.field_path ? humanizeFieldName(issue.field_path) : '—')}</TableCell>
-                      </TableRow>
-                    )
-                  })}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-muted-foreground">
-              Página {page} de {totalPages}
-            </span>
-            <div className="flex gap-2">
-              <Button variant="outline" size="icon" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}>
-                <ChevronLeft className="size-4" />
-              </Button>
-              <Button
-                variant="outline"
-                size="icon"
-                disabled={offset + PAGE_SIZE >= total}
-                onClick={() => setOffset(offset + PAGE_SIZE)}
-              >
-                <ChevronRight className="size-4" />
-              </Button>
-            </div>
-          </div>
-        </>
+        <div className={cn('flex flex-col gap-4', isFetching && 'opacity-60')}>
+          {groups.map((g) => {
+            const counts = SEVERITIES.map((s) => [s, g.findings.filter((f) => f.issue.severity === s).length] as const).filter(([, n]) => n)
+            return (
+              <section key={g.id} className="rounded-2xl border bg-muted/40">
+                <div className="flex flex-wrap items-center gap-3 rounded-t-2xl border-b bg-background px-4 py-3 sm:px-5">
+                  <FolderOpen className="size-4 text-muted-foreground" />
+                  <Link to={`/cases/${g.id}`} className="font-semibold hover:underline">
+                    {g.ref ?? `Expediente ${g.id.slice(0, 8)}`}
+                  </Link>
+                  <span className="text-xs text-muted-foreground">{new Date(g.at).toLocaleString('es-PE', { dateStyle: 'medium', timeStyle: 'short' })}</span>
+                  <span className="ml-auto flex flex-wrap gap-3 text-xs">
+                    {counts.map(([s, n]) => (
+                      <span key={s} className={cn('inline-flex items-center gap-1 font-medium', SEVERITY[s].text)}>
+                        {n} {n === 1 ? SEVERITY[s].label : SEVERITY[s].plural.toLowerCase()}
+                      </span>
+                    ))}
+                  </span>
+                </div>
+                <div className="flex flex-col divide-y">
+                  {g.findings.map((f) => (
+                    <FindingRow key={`${f.issue.rule_id}|${f.issue.message}`} finding={f} />
+                  ))}
+                </div>
+              </section>
+            )
+          })}
+          {data && data.total > data.issues.length && (
+            <Button variant="outline" className="self-center" disabled={isFetching} onClick={() => setLimit(limit + STEP)}>
+              {isFetching && <Loader2 className="size-4 animate-spin" />} Ver anteriores ({data.total - data.issues.length} más)
+            </Button>
+          )}
+        </div>
       )}
     </div>
   )

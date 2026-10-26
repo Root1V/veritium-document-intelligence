@@ -76,6 +76,8 @@ async def test_personal_data_are_masked_until_whoever_works_the_case_asks(live_s
                     assert r.status_code == 200, (path, r.text)
                     assert not [s for s in secrets if s.lower() in r.text.lower()], f"{path} shows personal data"
             assert "••••5866" in (await client.get(f"/v1/cases/{case_id}/result", headers=visor)).text, "masked, not removed: the last digits tell two apart"
+            issues = (await client.get("/validation", headers=visor, params={"limit": 500})).json()["issues"]
+            assert any(i["case_ref"] == "DATOS-1" for i in issues), "each finding names its case (VRT-104)"
             assert (await client.get(f"/documents/{doc_id}/file", headers=operador)).status_code == 403, "the original is all personal data"
 
             # A visor cannot ask to see them, nor find a case by a datum.

@@ -12,12 +12,14 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from idp.api.deps import get_current_user, get_db_session, get_principal
 from idp.api.disclosure import CaseMaskers
 from idp.auth.authenticate import Principal
 from idp.api.routes.review import field_label
+from idp.persistence.models import Case
 from idp.persistence.repositories import DocumentTypeRepository, SemanticCatalogRepository, ValidationRepository
 
 router = APIRouter(prefix="/validation", tags=["validation"], dependencies=[Depends(get_current_user)])
@@ -29,6 +31,7 @@ class ValidationIssueResponse(BaseModel):
     document_filename: str | None
     document_type: str | None
     batch_id: uuid.UUID
+    case_ref: str | None = None  # the case's name for a person (VRT-104)
     rule_id: str
     category: str
     field_path: str | None
@@ -64,6 +67,7 @@ async def list_validation_issues(
     type_catalog = await DocumentTypeRepository(session).load_catalog()
     loaded = await SemanticCatalogRepository(session).load_active()
     semantic = loaded[0] if loaded is not None else None
+    refs = dict((await session.execute(select(Case.id, Case.external_ref).where(Case.id.in_({r.case_id for r in rows})))).tuples().all())
     issues = []
     for row in rows:
         issue = ValidationIssueResponse(
@@ -72,6 +76,7 @@ async def list_validation_issues(
             document_filename=row.document.original_filename if row.document else None,
             document_type=row.document.document_type if row.document else None,
             batch_id=row.case_id,
+            case_ref=refs.get(row.case_id),
             rule_id=row.rule_id,
             category=row.category,
             field_path=row.field_path,

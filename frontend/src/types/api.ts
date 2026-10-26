@@ -223,6 +223,7 @@ export interface ValidationIssueEntry {
   document_filename: string | null
   document_type: string | null
   batch_id: string
+  case_ref?: string | null
   rule_id: string
   category: string
   field_path: string | null

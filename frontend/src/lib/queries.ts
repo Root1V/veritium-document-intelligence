@@ -619,6 +619,7 @@ export function useValidationLog(filters: ValidationLogFilters = {}) {
       const { data } = await apiClient.get<ValidationLogResponse>('/validation', { params: filters })
       return data
     },
+    placeholderData: keepPreviousData,
   })
 }
 
