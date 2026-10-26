@@ -4,7 +4,7 @@
 // was seen in, instead of once per document; the data that do not match are
 // one table per case — each datum, and what each document says — instead of
 // the consistency rule's run-on sentences. The rule behind it stays folded.
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { AlertCircle, AlertTriangle, FileText, FolderOpen, Info, Loader2, type LucideIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -19,6 +19,7 @@ const ALL = '__all__'
 // The rule that compares each datum across the case's documents (VRT-23).
 const CONSISTENCY = 'semantic.attribute_consistency'
 const STEP = 200
+const IN_FLIGHT = 6
 
 const CATEGORY: Record<string, string> = {
   cross_document: 'Entre documentos',
@@ -97,14 +98,18 @@ function FindingRow({ finding }: { finding: Finding }) {
 
 /** The data of a case that its documents state differently: each datum,
  * and every value with the documents that say it. */
-function DataThatDoNotMatch({ caseId, findings }: { caseId: string; findings: Finding[] }) {
-  const { data: result, isLoading } = useCaseResult(caseId)
+function DataThatDoNotMatch({ caseId, findings, turn, onDone }: { caseId: string; findings: Finding[]; turn: boolean; onDone: () => void }) {
+  // Asked for a few at a time: every case asking at once kept the API busy (VRT-104).
+  const { data: result, isLoading, isFetched } = useCaseResult(turn ? caseId : undefined)
+  useEffect(() => {
+    if (isFetched) onDone()
+  }, [isFetched]) // eslint-disable-line react-hooks/exhaustive-deps
   const { data: semantic } = useSemanticCatalog()
   const typeName = useTypeName()
   const conflicts = Object.values(result?.entities ?? {})
     .flatMap((entities) => Object.values(entities).flatMap((attrs) => Object.values(attrs)))
     .filter((a) => a.status === 'conflict')
-  if (isLoading) return <Loader2 className="m-4 size-4 animate-spin text-muted-foreground" />
+  if (!turn || isLoading) return <Loader2 className="mx-4 my-3 size-4 animate-spin text-muted-foreground" />
   // A case read again since: its findings say it as they were.
   if (!conflicts.length) return <>{findings.map((f) => <FindingRow key={`${f.issue.rule_id}|${f.issue.message}`} finding={f} />)}</>
   const label = (role: string, attribute: string) => {
@@ -170,6 +175,8 @@ export function ValidationPage() {
   const scope = { category: category ?? undefined, document_type: documentType === ALL ? undefined : documentType }
   const { data, isLoading, isFetching, isError } = useValidationLog({ ...scope, severity: severity ?? undefined, limit })
   const groups = groupByCase(data?.issues ?? [])
+  const [done, setDone] = useState(0)
+  const withConflicts = groups.filter((g) => g.findings.some((f) => f.issue.rule_id === CONSISTENCY)).map((g) => g.id)
   const filtered = category || severity || documentType !== ALL
 
   const reset = <T,>(set: (v: T) => void) => (v: T) => (set(v), setLimit(STEP))
@@ -249,7 +256,12 @@ export function ValidationPage() {
                 </div>
                 <div className="flex flex-col divide-y">
                   {g.findings.some((f) => f.issue.rule_id === CONSISTENCY) && (
-                    <DataThatDoNotMatch caseId={g.id} findings={g.findings.filter((f) => f.issue.rule_id === CONSISTENCY)} />
+                    <DataThatDoNotMatch
+                      caseId={g.id}
+                      findings={g.findings.filter((f) => f.issue.rule_id === CONSISTENCY)}
+                      turn={withConflicts.indexOf(g.id) < done + IN_FLIGHT}
+                      onDone={() => setDone((n) => n + 1)}
+                    />
                   )}
                   {g.findings
                     .filter((f) => f.issue.rule_id !== CONSISTENCY)
