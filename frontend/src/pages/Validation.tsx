@@ -1,18 +1,23 @@
 // What did not pass (VRT-104): how many errors, warnings and notes there
 // are — each a filter in its traffic-light colour — and the findings grouped
 // by case. A finding between documents is said once, with every document it
-// was seen in, instead of once per document. The rule behind it stays folded.
+// was seen in, instead of once per document; the data that do not match are
+// one table per case — each datum, and what each document says — instead of
+// the consistency rule's run-on sentences. The rule behind it stays folded.
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { AlertCircle, AlertTriangle, FileText, FolderOpen, Info, Loader2, type LucideIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { humanizeFieldName } from '@/lib/extraction'
-import { useDocumentTypeCatalog, useValidationLog } from '@/lib/queries'
+import { formatValue, humanizeFieldName } from '@/lib/extraction'
+import { useTypeName } from '@/lib/labels'
+import { useCaseResult, useDocumentTypeCatalog, useSemanticCatalog, useValidationLog } from '@/lib/queries'
 import { cn } from '@/lib/utils'
 import type { ValidationIssueEntry } from '@/types/api'
 
 const ALL = '__all__'
+// The rule that compares each datum across the case's documents (VRT-23).
+const CONSISTENCY = 'semantic.attribute_consistency'
 const STEP = 200
 
 const CATEGORY: Record<string, string> = {
@@ -83,6 +88,60 @@ function FindingRow({ finding }: { finding: Finding }) {
             <span>{issue.explanation}</span>
           </div>
         </details>
+      </div>
+    </div>
+  )
+}
+
+/** The data of a case that its documents state differently: each datum,
+ * and every value with the documents that say it. */
+function DataThatDoNotMatch({ caseId, findings }: { caseId: string; findings: Finding[] }) {
+  const { data: result, isLoading } = useCaseResult(caseId)
+  const { data: semantic } = useSemanticCatalog()
+  const typeName = useTypeName()
+  const conflicts = Object.values(result?.entities ?? {})
+    .flatMap((entities) => Object.values(entities).flatMap((attrs) => Object.values(attrs)))
+    .filter((a) => a.status === 'conflict')
+  if (isLoading) return <Loader2 className="m-4 size-4 animate-spin text-muted-foreground" />
+  // A case read again since: its findings say it as they were.
+  if (!conflicts.length) return <>{findings.map((f) => <FindingRow key={`${f.issue.rule_id}|${f.issue.message}`} finding={f} />)}</>
+  const label = (role: string, attribute: string) => {
+    const name = semantic?.catalog.attributes.find((a) => a.key === attribute)?.name ?? humanizeFieldName(attribute.split('.').pop() ?? attribute)
+    const who = semantic?.catalog.roles.find((r) => r.key === role)?.name ?? role
+    return `${name} del ${who.toLowerCase()}`
+  }
+  return (
+    <div className="flex items-start gap-3 p-4">
+      <AlertCircle className="mt-0.5 size-4 shrink-0 text-red-600 dark:text-red-400" aria-label="error" />
+      <div className="flex min-w-0 flex-1 flex-col gap-3">
+        <p className="text-sm font-medium">
+          {conflicts.length === 1 ? '1 dato no coincide' : `${conflicts.length} datos no coinciden`} entre los documentos
+        </p>
+        <div className="overflow-hidden rounded-lg border bg-card">
+          {conflicts.map((a) => {
+            const byValue = new Map<string, string[]>()
+            for (const s of a.sources) {
+              const v = formatValue(s.value)
+              byValue.set(v, [...(byValue.get(v) ?? []), typeName(s.document_type)])
+            }
+            return (
+              <div key={`${a.role}.${a.attribute}`} className="grid gap-1 border-b px-3 py-2.5 last:border-0 sm:grid-cols-[14rem_1fr] sm:gap-4">
+                <span className="text-sm font-medium">{label(a.role, a.attribute)}</span>
+                <ul className="flex flex-col gap-1 text-sm">
+                  {[...byValue.entries()].map(([value, docs]) => (
+                    <li key={value} className="flex flex-wrap items-baseline gap-x-2">
+                      <span className="font-semibold">{value}</span>
+                      <span className="text-xs text-muted-foreground">{docs.join(', ')}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )
+          })}
+        </div>
+        <Link to={`/cases/${caseId}`} className="text-xs text-primary hover:underline">
+          Ver de dónde sale cada valor en el expediente
+        </Link>
       </div>
     </div>
   )
@@ -172,7 +231,9 @@ export function ValidationPage() {
       ) : (
         <div className={cn('flex flex-col gap-4', isFetching && 'opacity-60')}>
           {groups.map((g) => {
-            const counts = SEVERITIES.map((s) => [s, g.findings.filter((f) => f.issue.severity === s).length] as const).filter(([, n]) => n)
+            // The consistency findings show as one table: they count once.
+            const shownFindings = [...g.findings.filter((f) => f.issue.rule_id !== CONSISTENCY), ...g.findings.filter((f) => f.issue.rule_id === CONSISTENCY).slice(0, 1)]
+            const counts = SEVERITIES.map((s) => [s, shownFindings.filter((f) => f.issue.severity === s).length] as const).filter(([, n]) => n)
             return (
               <section key={g.id} className="rounded-2xl border bg-muted/40">
                 <div className="flex flex-wrap items-center gap-3 rounded-t-2xl border-b bg-background px-4 py-3 sm:px-5">
@@ -190,9 +251,14 @@ export function ValidationPage() {
                   </span>
                 </div>
                 <div className="flex flex-col divide-y">
-                  {g.findings.map((f) => (
-                    <FindingRow key={`${f.issue.rule_id}|${f.issue.message}`} finding={f} />
-                  ))}
+                  {g.findings.some((f) => f.issue.rule_id === CONSISTENCY) && (
+                    <DataThatDoNotMatch caseId={g.id} findings={g.findings.filter((f) => f.issue.rule_id === CONSISTENCY)} />
+                  )}
+                  {g.findings
+                    .filter((f) => f.issue.rule_id !== CONSISTENCY)
+                    .map((f) => (
+                      <FindingRow key={`${f.issue.rule_id}|${f.issue.message}`} finding={f} />
+                    ))}
                 </div>
               </section>
             )
