@@ -324,6 +324,21 @@ Método, mediciones y aprendizajes: [eficiencia-modelos-ia.md](eficiencia-modelo
 - Condición medida: nuestra conversión de los modelos (`scripts/export_ocr_onnx.sh`) y los parámetros de detección de Paddle. Los archivos y valores por defecto de RapidOCR leen peor y bajaron la extracción a 69–71%.
 - Descartado: detector `mobile` (pierde valores), CoreML (más lento), cambiar hilos, lotes u orientación de línea en Paddle (sin ganancia). Fuera: el layout sigue en Paddle (0,6 s por página, ~5 GB de pico).
 
+## VRT-112 — Dato que no se lee frente a dato que falta
+**Why:** un dato ilegible y uno ausente terminan igual («Falta: evidencia de ingreso»), y al cliente se le pide un documento que ya envió. Distinguir «falta» de «no se lee» es práctica de la extracción guiada por esquema (ExtractBench, arXiv 2607.29677). **Scope:**
+- El agente marca los datos que ve pero no puede leer (borroso, cortado, tapado, letra ilegible) con su región, en vez de adivinar.
+- La condición del expediente dice «No se lee», con el documento y la página; un dato obligatorio ilegible va a revisión con ese motivo.
+- Fuera: medir la calidad de la imagen antes de leer y pedir la copia al cliente automáticamente.
+
+## VRT-113 — Mirar la página cuando la lectura duda
+**Why:** el agente solo usa la visión en tablas y figuras; casillas marcadas, campos llenados a mano, sellos y firmas se pierden si el OCR los lee mal. Un valor que no aparece en el texto leído es la señal más usada para detectar uno inventado (arXiv 2606.24420, 2609.20110). **Scope:**
+- Una herramienta para ver con visión cualquier zona o la página entera, con más resolución.
+- Un valor que no está en el texto leído, o en el que lectura y visión no coinciden, va a revisión.
+- Se mide en el banco y en confiabilidad. Fuera: reemplazar el OCR (OXR y la página entera leyeron peor: 28–34 de 41 frente a 40).
+
+## VRT-114 — Elegir páginas antes de extraer en documentos largos
+**Why:** en documentos largos escaneados, elegir las páginas relevantes antes de extraer fue lo que más subió la exactitud (hasta +32 puntos; OCBC, arXiv 2604.26462): los modelos empeoran cuanto más leen de una vez. **Scope:** cuando un documento pasa de ~10 páginas, el agente recibe solo las que traen los datos de su tipo, elegidas con la búsqueda híbrida (VRT-59). Fuera: hasta que lleguen documentos así; los actuales son cortos.
+
 ## F5 — Canales
 
 ## VRT-47 — Sesión de carga + verificación rápida
