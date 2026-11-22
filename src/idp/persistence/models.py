@@ -290,7 +290,7 @@ class ReviewItem(TenantScoped, Base):
     field_path: Mapped[str] = mapped_column(String(256), nullable=False)
     current_value: Mapped[dict] = mapped_column(JSONB, nullable=False)
     confidence: Mapped[float] = mapped_column(Float, nullable=False)
-    reason: Mapped[str] = mapped_column(String(64), nullable=False)  # low_confidence | validation_issue | investigation (VRT-66)
+    reason: Mapped[str] = mapped_column(String(64), nullable=False)  # low_confidence | validation_issue | investigation (VRT-66) | unreadable (VRT-112)
     status: Mapped[str] = mapped_column(String(16), default="pending", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
@@ -531,7 +531,7 @@ class CaseCondition(TenantScoped, Base):
     case_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("cases.id", ondelete="CASCADE"), nullable=False)
     key: Mapped[str] = mapped_column(String(64), nullable=False)  # the checklist item key
     label: Mapped[str] = mapped_column(Text, nullable=False)
-    kind: Mapped[str] = mapped_column(String(32), nullable=False)  # missing_document | missing_evidence
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)  # missing_document | missing_evidence | unreadable_evidence (VRT-112)
     document_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
     attributes: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     role: Mapped[str | None] = mapped_column(String(32), nullable=True)

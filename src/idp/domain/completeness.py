@@ -19,7 +19,8 @@ from typing import Any
 from pydantic import BaseModel
 
 from idp.domain.process_profile import ChecklistItem, ProcessProfileDefinition
-from idp.domain.semantic_resolution import ConsolidatedView
+from idp.domain.semantic_resolution import ConsolidatedView, UnreadableEvidence
+from idp.domain.verdict import ConditionKind
 
 
 @dataclass(frozen=True)
@@ -35,6 +36,15 @@ class ChecklistOutcome(BaseModel):
     satisfied: bool
     satisfying_document_ids: list[uuid.UUID]
     note: str | None = None
+    # Unsatisfied because a document that carries it cannot be read (VRT-112):
+    # the client sends a clearer copy, not another document.
+    unreadable: list[UnreadableEvidence] = []
+
+    @property
+    def condition_kind(self) -> ConditionKind:
+        if self.item.document_type is not None:
+            return "missing_document"
+        return "unreadable_evidence" if self.unreadable else "missing_evidence"
 
 
 def evaluate_checklist(
@@ -78,4 +88,7 @@ def _evaluate_item(
         per_attribute.append({s.document_id for s in sources if accepted is None or s.document_type in accepted})
     satisfied = all(len(ids) >= item.min_count for ids in per_attribute)
     union = sorted(set().union(*per_attribute), key=str) if per_attribute else []
-    return ChecklistOutcome(item=item, applicable=True, satisfied=satisfied, satisfying_document_ids=union, note=note)
+    unreadable = [] if satisfied or view is None else [
+        u for a in item.requires_attributes for u in view.unreadable_for(item.role, a) if accepted is None or u.document_type in accepted
+    ]
+    return ChecklistOutcome(item=item, applicable=True, satisfied=satisfied, satisfying_document_ids=union, note=note, unreadable=unreadable)

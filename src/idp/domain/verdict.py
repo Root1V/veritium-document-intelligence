@@ -1,8 +1,8 @@
 """The case verdict (VRT-27): what the calling process should do next, and
 why. Pure — computed from the case's current state:
 
-- a required document or evidence still missing (open condition) → the
-  client must act: ``return_to_client``;
+- a required document or evidence still missing, or there but unreadable
+  (open condition) → the client must act: ``return_to_client``;
 - a field awaiting human review, or a document that could not be processed
   → ``human_review``;
 - a failed rule whose profile binding is ``blocking`` → that binding's
@@ -24,7 +24,8 @@ from pydantic import BaseModel
 from idp.domain.process_profile import ProcessProfileDefinition
 
 Decision = Literal["continue", "human_review", "return_to_client"]
-ReasonKind = Literal["missing_document", "missing_evidence", "rule", "pending_review", "failed_document"]
+ConditionKind = Literal["missing_document", "missing_evidence", "unreadable_evidence"]
+ReasonKind = Literal["missing_document", "missing_evidence", "unreadable_evidence", "rule", "pending_review", "failed_document"]
 
 _PRECEDENCE: dict[str, int] = {"continue": 0, "human_review": 1, "return_to_client": 2}
 
@@ -45,7 +46,7 @@ class CaseVerdict(BaseModel):
 class OpenCondition:
     key: str
     label: str
-    kind: Literal["missing_document", "missing_evidence"]
+    kind: ConditionKind
 
 
 @dataclass(frozen=True)
@@ -66,7 +67,8 @@ class VerdictInputs:
 def decide(inputs: VerdictInputs, definition: ProcessProfileDefinition | None) -> CaseVerdict:
     reasons: list[VerdictReason] = []
     for c in inputs.open_conditions:
-        reasons.append(VerdictReason(kind=c.kind, decision="return_to_client", message=f"Falta: {c.label}", ref={"condition_key": c.key}))
+        said = "No se lee" if c.kind == "unreadable_evidence" else "Falta"
+        reasons.append(VerdictReason(kind=c.kind, decision="return_to_client", message=f"{said}: {c.label}", ref={"condition_key": c.key}))
     for doc_id in sorted(inputs.failed_document_ids, key=str):
         reasons.append(
             VerdictReason(kind="failed_document", decision="human_review", message="Un documento no se pudo procesar.", ref={"document_id": str(doc_id)})

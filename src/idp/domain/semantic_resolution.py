@@ -44,6 +44,18 @@ class EvidenceSource(BaseModel):
     source_text: str | None = None
 
 
+class UnreadableEvidence(BaseModel):
+    """An attribute a document carries but could not be read (VRT-112)."""
+
+    role: str
+    attribute: str
+    document_id: uuid.UUID
+    document_type: str
+    field_path: str
+    why: str
+    page: int | None = None
+
+
 class ResolvedAttribute(BaseModel):
     role: str
     attribute: str
@@ -57,12 +69,16 @@ class ResolvedAttribute(BaseModel):
 class ConsolidatedView(BaseModel):
     catalog_version: int | None = None
     attributes: list[ResolvedAttribute]
+    unreadable: list[UnreadableEvidence] = []
 
     def get(self, role: str, attribute: str) -> ResolvedAttribute | None:
         for a in self.attributes:
             if a.role == role and a.attribute == attribute:
                 return a
         return None
+
+    def unreadable_for(self, role: str, attribute: str) -> list[UnreadableEvidence]:
+        return [u for u in self.unreadable if u.role == role and u.attribute == attribute]
 
     def conflicts_involving(self, document_id: uuid.UUID) -> list[ResolvedAttribute]:
         return [a for a in self.attributes if a.status == "conflict" and any(s.document_id == document_id for s in a.sources)]
@@ -95,10 +111,17 @@ def resolve_case(
     name_match_threshold: float = DEFAULT_NAME_MATCH_THRESHOLD,
 ) -> ConsolidatedView:
     sources_by_target: dict[tuple[str, str], list[EvidenceSource]] = {}
+    unreadable: list[UnreadableEvidence] = []
     for doc in documents:
+        cannot_read = {u["field"]: u for u in doc.payload.get("unreadable_fields") or []}
         for mapping in catalog.mappings_for(doc.document_type):
-            source = _source_for(doc, mapping)
-            if source is not None:
+            # A value the agent said it cannot read is not evidence, even its best reading of a required field.
+            if u := next((cannot_read[p] for p in mapping.field_paths if p in cannot_read), None):
+                unreadable.append(
+                    UnreadableEvidence(role=mapping.role, attribute=mapping.attribute, document_id=doc.document_id, document_type=doc.document_type,
+                                       field_path=u["field"], why=u["why"], page=u.get("page"))
+                )
+            elif (source := _source_for(doc, mapping)) is not None:
                 sources_by_target.setdefault((mapping.role, mapping.attribute), []).append(source)
 
     resolved: list[ResolvedAttribute] = []
@@ -123,7 +146,7 @@ def resolve_case(
             )
         )
     resolved.sort(key=lambda a: (a.role, a.attribute))
-    return ConsolidatedView(catalog_version=catalog_version, attributes=resolved)
+    return ConsolidatedView(catalog_version=catalog_version, attributes=resolved, unreadable=unreadable)
 
 
 def describe_conflict(resolved: ResolvedAttribute, names: dict[str, str] | None = None) -> str:

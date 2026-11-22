@@ -73,11 +73,16 @@ number followed by one check digit — "1234567894…" is document 123456789 —
 Never pair pages by their order or position, and never mix two records in one entry.
 10. Before calling submit, count the rows of every list in the regions (e.g. each code with its amount under \
 earnings, deductions and contributions) and check that your list has all of them.
+11. A field the document carries but whose value you cannot read for sure — blurry, cut off at the edge, covered \
+(by a stamp, a finger, a fold) or handwriting you cannot make out — is not guessed: list it in unreadable_fields \
+with its path as in the schema (e.g. "net_pay", "concepts[2].amount"), why, and the region_id where it is. Leave an \
+optional field empty; for a required one, write your best reading with a confidence of 0.3 or less. A field the \
+document does not carry at all is not unreadable: leave it out.
 {self_check}""", filled=('hint', 'regions', 'schema', 'grounding', 'self_check'))
 
 
 _SELF_CHECK = (
-    "11. Before calling submit, call check_draft ONCE with the values you are going to submit ({field: value}). If it reports problems, "
+    "12. Before calling submit, call check_draft ONCE with the values you are going to submit ({field: value}). If it reports problems, "
     "re-read those fields' regions and correct them; if the document really says that, submit it anyway — do not invent values to make it add up.\n"
 )
 

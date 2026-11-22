@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from idp.domain.completeness import CaseDocument, evaluate_checklist
+from idp.domain.completeness import CaseDocument, ChecklistOutcome, evaluate_checklist
 from idp.domain.process_profile import ProcessProfileDefinition
 from idp.domain.semantic_resolution import ConsolidatedView
 from idp.domain.verdict import CaseVerdict, FindingInput, OpenCondition, VerdictInputs, decide
@@ -46,6 +46,17 @@ def apply_binding(result: ValidationResult, definition: ProcessProfileDefinition
     return result.model_copy(update={"severity": binding.severity}) if binding is not None else result
 
 
+_WHY = {"blurry": "borroso", "cut_off": "cortado en el borde", "covered": "tapado", "illegible_handwriting": "letra a mano ilegible", "other": "no se distingue"}
+
+
+def _unreadable_note(outcome: ChecklistOutcome) -> str | None:
+    """Where it cannot be read, for the person who asks the client again: 'pág. 2, borroso'."""
+    if not outcome.unreadable:
+        return outcome.note
+    u = outcome.unreadable[0]
+    return ", ".join(p for p in (f"pág. {u.page + 1}" if u.page is not None else None, _WHY.get(u.why, u.why)) if p)
+
+
 async def refresh_conditions(
     session: AsyncSession, case: Case, run: CaseRun, view: ConsolidatedView | None, definition: ProcessProfileDefinition | None
 ) -> None:
@@ -62,18 +73,22 @@ async def refresh_conditions(
     for outcome in evaluate_checklist(definition, documents, view, case.request_input_payload or {}):
         item, current = outcome.item, latest.get(outcome.item.key)
         if outcome.applicable and not outcome.satisfied:
-            if current is not None and current.status in ("open", "waived"):
+            if current is not None and (current.status == "waived" or (current.status == "open" and current.kind == outcome.condition_kind)):
                 continue
+            if current is not None and current.status == "open":  # same requirement, now known to be there but unreadable, or the reverse
+                await repo.resolve(current, run_id=run.id, document_id=None, note="Cambió el motivo")
+            unreadable = outcome.unreadable[0] if outcome.unreadable else None
             await repo.add(
                 CaseCondition(
                     case_id=case.id,
                     key=item.key,
                     label=item.label,
-                    kind="missing_document" if item.document_type is not None else "missing_evidence",
-                    document_type=item.document_type,
+                    kind=outcome.condition_kind,
+                    # Unreadable: the document to send again (VRT-112).
+                    document_type=unreadable.document_type if unreadable else item.document_type,
                     attributes=item.requires_attributes or None,
                     role=item.role if item.requires_attributes else None,
-                    note=outcome.note,
+                    note=_unreadable_note(outcome),
                     opened_in_run_id=run.id,
                 )
             )

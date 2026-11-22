@@ -9,7 +9,7 @@
 // the documents that say it; findings without codes; the rest folded.
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { AlertTriangle, Bot, CheckCircle2, ChevronLeft, CircleAlert, CircleX, Download, FileText, Info, Loader2, MessageSquareText, MoreHorizontal, RefreshCw, Search, Trash2 } from 'lucide-react'
+import { AlertTriangle, Bot, CheckCircle2, ChevronLeft, CircleAlert, CircleX, Download, EyeOff, FileText, Info, Loader2, MessageSquareText, MoreHorizontal, RefreshCw, Search, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAssistant } from '@/lib/assistant'
 import { InvestigationPanel } from '@/components/cases/InvestigationPanel'
@@ -62,14 +62,19 @@ function ConditionRow({ caseId, condition, what }: { caseId: string; condition: 
   const [reason, setReason] = useState('')
   const [open, setOpen] = useState(false)
   const missing = condition.status === 'open'
+  const unreadable = condition.kind === 'unreadable_evidence'
   return (
     <div className="flex flex-col gap-2 px-4 py-2.5 text-sm">
       <div className="flex flex-wrap items-center gap-2">
-        {missing ? <CircleX className="size-4 shrink-0 text-red-600" /> : <CheckCircle2 className="size-4 shrink-0 text-emerald-600" />}
+        {missing ? (
+          unreadable ? <EyeOff className="size-4 shrink-0 text-red-600" /> : <CircleX className="size-4 shrink-0 text-red-600" />
+        ) : (
+          <CheckCircle2 className="size-4 shrink-0 text-emerald-600" />
+        )}
         <span className="flex min-w-0 flex-1 flex-col">
           <span className="font-medium">{condition.label}</span>
           <span className="text-xs text-muted-foreground">
-            {missing ? 'Falta' : condition.status === 'waived' ? `Dispensado por ${condition.waived_by}: ${condition.waived_reason}` : 'Cumplido'} · {what}
+            {missing ? (unreadable ? 'No se lee' : 'Falta') : condition.status === 'waived' ? `Dispensado por ${condition.waived_by}: ${condition.waived_reason}` : 'Cumplido'} · {what}
           </span>
         </span>
         {missing && canExecute() && !open && (
@@ -477,7 +482,9 @@ export function CaseDetailPage() {
     toReview && (toReview === 1 ? '1 documento con datos por revisar' : `${toReview} documentos con datos por revisar`),
   ].filter(Boolean) as string[]
   const conditionWhat = (c: CaseCondition) =>
-    c.kind === 'missing_evidence' ? `Lo prueba cualquier documento con ${(c.attributes ?? []).join(', ').replace(/[a-z_]+\./g, '').replace(/_/g, ' ')}` : c.document_type ? (typeName[c.document_type] ?? c.document_type) : ''
+    c.kind === 'unreadable_evidence' && c.status === 'open'
+      ? `Está en ${typeName[c.document_type ?? ''] ?? c.document_type ?? 'un documento'}, pero no se lee${c.note ? ` (${c.note})` : ''}: pide al cliente una copia nítida de esa página`
+      : c.kind === 'missing_evidence' || c.kind === 'unreadable_evidence' ? `Lo prueba cualquier documento con ${(c.attributes ?? []).join(', ').replace(/[a-z_]+\./g, '').replace(/_/g, ' ')}` : c.document_type ? (typeName[c.document_type] ?? c.document_type) : ''
   const investigationOf = Object.fromEntries((investigations ?? []).filter((i) => i.validation_issue_id).map((i) => [i.validation_issue_id!, i]))
   const investigating = (investigations ?? []).some((i) => i.status === 'running')
   const canInvestigate = canExecute() || isAISpecialist()

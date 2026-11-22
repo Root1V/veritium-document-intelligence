@@ -129,8 +129,8 @@ def _rule_label(reason: dict, cel: dict[str, str]) -> str:
 def reason_label(reason: dict, cel: dict[str, str]) -> str | None:
     """A reason in words that quote no one's data, or None when it says nothing a person acts on."""
     kind = reason.get("kind")
-    if kind in ("missing_document", "missing_evidence"):
-        return reason.get("message")  # "Falta: <requirement>", from the process
+    if kind in ("missing_document", "missing_evidence", "unreadable_evidence"):
+        return reason.get("message")  # "Falta: <requirement>" / "No se lee: <requirement>", from the process
     if kind == "failed_document":
         return "Un documento no se pudo leer"
     if kind == "rule":

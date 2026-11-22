@@ -37,7 +37,7 @@ import unicodedata
 
 from pydantic import BaseModel
 
-from idp.domain.envelope import Extracted
+from idp.domain.envelope import Extracted, Unreadable
 from idp.parsing.normalize import ParsedBlock, ParsedDocument
 
 
@@ -101,7 +101,10 @@ def attach_grounding(instance: BaseModel, parsed: ParsedDocument) -> None:
 
 
 def _attach_recursive(value: object, parsed: ParsedDocument) -> None:
-    if isinstance(value, Extracted):
+    if isinstance(value, Unreadable):  # VRT-112: the page to ask for again
+        block = parsed.block(value.region_id) if value.region_id is not None else None
+        value.page = block.page if block is not None else None
+    elif isinstance(value, Extracted):
         block = _resolve_by_region_id(value, parsed) or _find_source_block(value.source_text or "", parsed)
         if block is not None:
             value.page = block.page

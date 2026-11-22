@@ -26,7 +26,17 @@ def _definition(**fields_and_overrides) -> DocumentTypeDefinition:
 
 @pytest.mark.parametrize("definition", seed_definitions(), ids=lambda d: d.key)
 def test_the_seed_compiles_to_exactly_the_code_schema(definition):
-    assert compile_schema(definition).model_json_schema() == SCHEMA_BY_DOCUMENT_TYPE[DocumentType(definition.key)].model_json_schema()
+    assert _without_unreadable(compile_schema(definition)) == SCHEMA_BY_DOCUMENT_TYPE[DocumentType(definition.key)].model_json_schema()
+
+
+def _without_unreadable(model) -> dict:
+    """The compiled schema minus what every type adds: which fields cannot be read (VRT-112)."""
+    schema = model.model_json_schema()
+    assert schema["properties"].pop("unreadable_fields")["items"] == {"$ref": "#/$defs/Unreadable"}
+    del schema["$defs"]["Unreadable"]
+    if not schema["$defs"]:
+        del schema["$defs"]
+    return schema
 
 
 def test_the_seed_covers_every_typed_document_with_texts():
@@ -78,7 +88,7 @@ def test_a_run_sees_the_latest_published_version_and_can_reread_older_ones():
 
 def test_extractions_from_before_the_catalog_are_version_one():
     catalog = DocumentTypeCatalog([(d.key, 1, "published", d) for d in seed_definitions()])
-    assert extraction_schema(catalog, "payslip", "1.0").model_json_schema() == SCHEMA_BY_DOCUMENT_TYPE[DocumentType.PAYSLIP].model_json_schema()
+    assert _without_unreadable(extraction_schema(catalog, "payslip", "1.0")) == SCHEMA_BY_DOCUMENT_TYPE[DocumentType.PAYSLIP].model_json_schema()
 
 
 def test_the_classifier_can_only_answer_a_published_type_or_generic():

@@ -25,13 +25,17 @@ from pydantic import BaseModel, Field, create_model, model_validator
 from pydantic.fields import FieldInfo
 from pydantic_core import PydanticUndefined
 
-from idp.domain.envelope import Extracted, Read
+from idp.domain.envelope import Extracted, Read, Unreadable
 
 GENERIC = "generic"
 _SNAKE = re.compile(r"^[a-z][a-z0-9_]*$")
 _CLASS = re.compile(r"^[A-Z][A-Za-z0-9]*$")
 ValueType = Literal["str", "int", "float", "bool", "enum"]
 _PY_TYPES: dict[str, type] = {"str": str, "int": int, "float": float, "bool": bool}
+_UNREADABLE = (
+    "Fields the document carries but whose value cannot be read (blurry, cut off, covered, illegible handwriting). "
+    "Empty when everything could be read; a field the document does not carry is not listed here."
+)
 
 
 class FieldSpec(BaseModel):
@@ -140,7 +144,9 @@ def _model(name: str, doc: str | None, specs: list[FieldSpec], envelope: type[Ba
 @lru_cache(maxsize=256)
 def _compile(definition_json: str, for_agent: bool = False) -> type[BaseModel]:
     d = DocumentTypeDefinition.model_validate_json(definition_json)
-    return _model(d.schema_title, d.schema_description, d.fields, Read if for_agent else Extracted)
+    model = _model(d.schema_title, d.schema_description, d.fields, Read if for_agent else Extracted)
+    # Every type can say which of its fields are there but cannot be read (VRT-112).
+    return create_model(model.__name__, __base__=model, __doc__=model.__doc__, unreadable_fields=(list[Unreadable], Field(default_factory=list, description=_UNREADABLE)))
 
 
 def compile_schema(definition: DocumentTypeDefinition, *, for_agent: bool = False) -> type[BaseModel]:

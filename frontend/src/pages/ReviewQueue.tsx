@@ -15,7 +15,7 @@ type Filter = 'all' | 'validation_issue' | 'low_confidence' | 'suggestion'
 const FILTERS: { key: Filter; label: string; test: (i: ReviewItem) => boolean }[] = [
   { key: 'all', label: 'Todos', test: () => true },
   { key: 'validation_issue', label: 'No pasaron una validación', test: (i) => i.reason === 'validation_issue' },
-  { key: 'low_confidence', label: 'Lectura dudosa', test: (i) => i.reason === 'low_confidence' },
+  { key: 'low_confidence', label: 'Lectura dudosa', test: (i) => i.reason === 'low_confidence' || i.reason === 'unreadable' },
   { key: 'suggestion', label: 'Con sugerencia de la IA', test: (i) => i.suggestion !== null },
 ]
 

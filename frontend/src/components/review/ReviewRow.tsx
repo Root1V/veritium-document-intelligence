@@ -21,6 +21,7 @@ const REASON_LABEL: Record<ReviewItem['reason'], string> = {
   low_confidence: 'Lectura dudosa',
   validation_issue: 'No pasó una validación',
   investigation: 'Sugerencia de la IA',
+  unreadable: 'No se lee en el documento',
 }
 
 const show = (v: unknown) => (v === null || v === undefined || v === '' ? '—' : String(v))

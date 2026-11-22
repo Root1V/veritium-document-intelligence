@@ -10,7 +10,7 @@ here" for extractors whose method is not a single fixed prompt.
 
 from __future__ import annotations
 
-from typing import Any, Generic, TypeVar
+from typing import Any, Generic, Literal, TypeVar
 
 from pydantic import BaseModel, Field
 
@@ -57,3 +57,18 @@ class Extracted(BaseModel, Generic[T]):
     # extraction/grounding.py.
     region_id: int | None = None
     reasoning_trace: list[ToolCallRecord] | None = None
+
+
+UnreadableWhy = Literal["blurry", "cut_off", "covered", "illegible_handwriting", "other"]
+
+
+class Unreadable(BaseModel):
+    """A field the document carries but whose value cannot be read (VRT-112):
+    what the client must send again is a clearer copy of that page, not the
+    document. ``field`` is the path as review uses it (``net_pay``,
+    ``concepts[2].amount``); the page comes from the region, like grounding."""
+
+    field: str
+    why: UnreadableWhy
+    region_id: int | None = None
+    page: int | None = None

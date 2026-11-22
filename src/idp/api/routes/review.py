@@ -269,7 +269,9 @@ async def submit_correction(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="document not found")
 
     extraction, written = document.extraction, False
-    if body.corrected_value != (item.current_value or {}).get("value") and extraction is not None and document.document_type is not None:
+    # Confirming a field the agent could not read is a reading too (VRT-112): it becomes evidence.
+    changed = body.corrected_value != (item.current_value or {}).get("value") or item.reason == "unreadable"
+    if changed and extraction is not None and document.document_type is not None:
         type_catalog = await DocumentTypeRepository(session).load_catalog()
         schema = extraction_schema(type_catalog, document.document_type, extraction.schema_version)
         try:

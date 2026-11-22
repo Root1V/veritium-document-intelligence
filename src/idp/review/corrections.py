@@ -1,6 +1,7 @@
 """A human correction written into the extraction it corrects (VRT-40):
 the leaf's value is replaced and its confidence set to 1.0, keeping its
-page and bbox (the evidence is still where it was read). The original
+page and bbox (the evidence is still where it was read); a field the agent
+could not read is read now (VRT-112). The original
 value stays in the audit log. Re-extracting a document re-applies its
 corrections, so a reprocess never silently undoes a human's work."""
 
@@ -28,6 +29,8 @@ def apply_correction(payload: dict, field_path: str, value: Any, schema: type[Ba
     if not isinstance(node, dict) or "confidence" not in node:
         raise ValueError(f"'{field_path}' no es un campo extraído")
     node["value"], node["confidence"] = value, 1.0
+    if "unreadable_fields" in corrected:
+        corrected["unreadable_fields"] = [u for u in corrected["unreadable_fields"] if u["field"] != field_path]
     try:
         return schema.model_validate(corrected).model_dump(mode="json")
     except ValidationError as exc:

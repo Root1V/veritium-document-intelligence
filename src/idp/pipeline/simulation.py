@@ -112,7 +112,7 @@ async def simulate_case(
 
     waived = {k for k, c in (await CaseConditionRepository(session).latest_by_key(case.id)).items() if c.status == "waived"}
     open_conditions = [
-        OpenCondition(key=o.item.key, label=o.item.label, kind="missing_document" if o.item.document_type is not None else "missing_evidence")
+        OpenCondition(key=o.item.key, label=o.item.label, kind=o.condition_kind)
         for o in evaluate_checklist(
             definition, [CaseDocument(document_id=d.id, document_type=d.document_type, status=d.status) for d in documents], view, case.request_input_payload or {}
         )
