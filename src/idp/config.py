@@ -66,7 +66,7 @@ class Settings(BaseSettings):
     cors_allowed_origins: list[str] = ["http://localhost:5180"]
 
     # --- Database ---
-    database_url: str = "postgresql+asyncpg://idp:idp@localhost:5433/idp"
+    database_url: str = "postgresql+asyncpg://idp:idp@localhost:5434/idp"
 
     # --- Object storage (S3-compatible; MinIO locally) ---
     storage_endpoint_url: str = "http://localhost:9002"

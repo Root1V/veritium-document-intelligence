@@ -6,7 +6,7 @@ services:
       POSTGRES_PASSWORD: idp
       POSTGRES_DB: idp
     ports:
-      - "5433:5432"  # 5432 is already taken locally (e.g. by another project's postgres)
+      - "5434:5432"  # 5432 and 5433 are taken locally by other projects' postgres
     volumes:
       - idp_postgres_data:/var/lib/postgresql/data
     healthcheck:
