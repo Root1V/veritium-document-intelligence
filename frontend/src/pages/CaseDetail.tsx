@@ -483,7 +483,7 @@ export function CaseDetailPage() {
   ].filter(Boolean) as string[]
   const conditionWhat = (c: CaseCondition) =>
     c.kind === 'unreadable_evidence' && c.status === 'open'
-      ? `Está en ${typeName[c.document_type ?? ''] ?? c.document_type ?? 'un documento'}, pero no se lee${c.note ? ` (${c.note})` : ''}: pide al cliente una copia nítida de esa página`
+      ? `Está en ${typeName[c.document_type ?? ''] ?? c.document_type ?? 'un documento'}${c.note ? ` (${c.note})` : ''}: pide al cliente una copia nítida de esa página`
       : c.kind === 'missing_evidence' || c.kind === 'unreadable_evidence' ? `Lo prueba cualquier documento con ${(c.attributes ?? []).join(', ').replace(/[a-z_]+\./g, '').replace(/_/g, ' ')}` : c.document_type ? (typeName[c.document_type] ?? c.document_type) : ''
   const investigationOf = Object.fromEntries((investigations ?? []).filter((i) => i.validation_issue_id).map((i) => [i.validation_issue_id!, i]))
   const investigating = (investigations ?? []).some((i) => i.status === 'running')
