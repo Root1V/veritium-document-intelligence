@@ -146,7 +146,7 @@ CaseState = Literal["submitted", "uploaded", "processing", "completed", "failed"
 Day = Annotated[str | None, Field(description="Fecha AAAA-MM-DD en el calendario del negocio, inclusive.")]
 
 _STATE = {"done": "listo", "running": "en curso", "pending": "pendiente", "failed": "con error"}
-_REVIEW_REASON = {"low_confidence": "confianza baja", "validation_issue": "problema de validación", "investigation": "sugerencia del investigador", "unreadable": "no se lee en el documento"}
+_REVIEW_REASON = {"low_confidence": "confianza baja", "validation_issue": "problema de validación", "investigation": "sugerencia del investigador", "unreadable": "no se lee en el documento", "not_in_text": "no está en el texto leído"}
 _FILE_VERDICT = {"ok": "se puede leer", "warning": "se puede leer, con observaciones", "reject": "no se puede leer"}
 _LENS_KIND = {"summary": "resumen", "playbook": "revisión de cláusulas"}
 

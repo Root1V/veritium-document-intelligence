@@ -93,7 +93,7 @@ export interface ReviewItem {
   field_path: string
   current_value: { value: unknown }
   confidence: number
-  reason: 'low_confidence' | 'validation_issue' | 'investigation' | 'unreadable'
+  reason: 'low_confidence' | 'validation_issue' | 'investigation' | 'unreadable' | 'not_in_text'
   status: string
   label: string
   description: string | null

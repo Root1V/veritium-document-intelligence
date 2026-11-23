@@ -47,7 +47,7 @@ def _normalize(text: str) -> str:
     return re.sub(r"\s+", " ", stripped).strip().lower()
 
 
-def _find_source_block(source_text: str, parsed: ParsedDocument) -> ParsedBlock | None:
+def find_source_block(source_text: str, parsed: ParsedDocument) -> ParsedBlock | None:
     """Best-effort match: the block whose OCR text has the longest overlap
     with the field's source_text, in either containment direction (a
     multi-region read can produce a source_text that's a substring of one
@@ -105,7 +105,7 @@ def _attach_recursive(value: object, parsed: ParsedDocument) -> None:
         block = parsed.block(value.region_id) if value.region_id is not None else None
         value.page = block.page if block is not None else None
     elif isinstance(value, Extracted):
-        block = _resolve_by_region_id(value, parsed) or _find_source_block(value.source_text or "", parsed)
+        block = _resolve_by_region_id(value, parsed) or find_source_block(value.source_text or "", parsed)
         if block is not None:
             value.page = block.page
             value.bbox = block.bbox

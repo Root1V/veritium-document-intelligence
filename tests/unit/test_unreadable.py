@@ -23,7 +23,7 @@ PAYSLIP = compile_schema(next(d for d in seed_definitions() if d.key == "payslip
 
 
 def _env(value, confidence: float = 0.95) -> dict:
-    return {"value": value, "confidence": confidence, "source_text": str(value)}
+    return {"value": value, "confidence": confidence, "source_text": str(value), "page": 0}
 
 
 def _payslip(**extra) -> dict:

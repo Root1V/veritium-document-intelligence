@@ -290,7 +290,7 @@ class ReviewItem(TenantScoped, Base):
     field_path: Mapped[str] = mapped_column(String(256), nullable=False)
     current_value: Mapped[dict] = mapped_column(JSONB, nullable=False)
     confidence: Mapped[float] = mapped_column(Float, nullable=False)
-    reason: Mapped[str] = mapped_column(String(64), nullable=False)  # low_confidence | validation_issue | investigation (VRT-66) | unreadable (VRT-112)
+    reason: Mapped[str] = mapped_column(String(64), nullable=False)  # low_confidence | validation_issue | investigation (VRT-66) | unreadable (VRT-112) | not_in_text (VRT-113)
     status: Mapped[str] = mapped_column(String(16), default="pending", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

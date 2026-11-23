@@ -64,6 +64,19 @@ _SPECS = (
         kind="model", cost="modelo", exposure="internal", roles=AGENT, read_only=True,
     ),
     ToolSpec(
+        "look_closer", "Mirar de cerca",
+        "Muestra a un modelo de vision la zona de la pagina desde una etiqueta hacia la derecha y unas lineas abajo (donde va su "
+        "valor), ampliada, y le hace tu pregunta. Pasa en label el texto de la etiqueta tal como esta en las regiones (p. ej. 'LIQ S/.'). Usala cuando una etiqueta no tiene un valor legible al lado, un valor parece raro, o el dato "
+        "es una casilla marcada, un sello, una firma o letra a mano: ve lo que el OCR pudo perder. Responde UNREADABLE si tampoco se lee.",
+        kind="model", cost="modelo", exposure="internal", roles=AGENT, read_only=True,
+    ),
+    ToolSpec(
+        "look_at_page", "Mirar la pagina",
+        "Muestra a un modelo de vision la pagina entera (page empieza en 0) y le hace tu pregunta. Para lo que no esta cerca de ninguna "
+        "region: un sello, una firma, una casilla, una zona que el OCR no leyo. Responde UNREADABLE si no se lee.",
+        kind="model", cost="modelo", exposure="internal", roles=AGENT, read_only=True,
+    ),
+    ToolSpec(
         "check_draft", "Revisar el borrador",
         "Revisa el borrador de la extraccion con las reglas propias del documento (aritmetica interna, formato de cada dato, reglas del "
         "tipo). Pasa en values los valores que vas a entregar, como {campo: valor}. Devuelve los problemas encontrados o 'Sin problemas'. "

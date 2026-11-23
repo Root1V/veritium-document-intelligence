@@ -67,7 +67,7 @@ def test_attach_grounding_falls_back_to_text_search_when_region_id_missing():
     parsed = _parsed_with_blocks()
     attach_grounding(field, parsed)
     # No region_id given — falls back to text search, which (by construction
-    # of _find_source_block's "first best match" rule) lands on whichever
+    # of find_source_block's "first best match" rule) lands on whichever
     # duplicate it encounters first. The key behavior under test is that a
     # region_id, when present, always wins over this fallback.
     assert field.page in (0, 2)

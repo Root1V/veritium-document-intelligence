@@ -22,6 +22,7 @@ const REASON_LABEL: Record<ReviewItem['reason'], string> = {
   validation_issue: 'No pasó una validación',
   investigation: 'Sugerencia de la IA',
   unreadable: 'No se lee en el documento',
+  not_in_text: 'No está en el texto leído',
 }
 
 const show = (v: unknown) => (v === null || v === undefined || v === '' ? '—' : String(v))

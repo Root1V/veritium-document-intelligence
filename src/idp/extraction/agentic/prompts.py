@@ -32,6 +32,10 @@ deductions table), pass them ALL together in a single call (region_ids=[85,86,87
 per region — each call uses up a turn of your limited budget.
 - read_table_region(region_id): visually interprets a table region.
 - read_figure_region(region_id): visually interprets a figure/chart region.
+- look_closer(label, question): shows a vision model the page from a label to the right and a few lines below (where its \
+value is), enlarged, and asks it your question — e.g. label "LIQ S/." and "What amount is written after 'LIQ S/.'?". \
+Pass the label's text as the regions show it. It sees what the OCR lost; it answers UNREADABLE when it cannot be read.
+- look_at_page(page, question): the same over a whole page (page starts at 0), for what is near no region.
 - submit(...): delivers the final result according to the target schema. You must call it to finish.
 
 Target schema (JSON Schema):
@@ -73,8 +77,11 @@ number followed by one check digit — "1234567894…" is document 123456789 —
 Never pair pages by their order or position, and never mix two records in one entry.
 10. Before calling submit, count the rows of every list in the regions (e.g. each code with its amount under \
 earnings, deductions and contributions) and check that your list has all of them.
-11. A field the document carries but whose value you cannot read for sure — blurry, cut off at the edge, covered \
-(by a stamp, a finger, a fold) or handwriting you cannot make out — is not guessed: list it in unreadable_fields \
+11. When a label has no readable value next to it, a value looks garbled, or the data is a ticked box, a stamp, a \
+signature or handwriting, look at it with look_closer (or look_at_page) before deciding: the OCR may have lost or \
+misread it. Take a value you only saw this way with a confidence of 0.8 or less, and its region_id as the label's.
+12. A field the document carries but whose value you cannot read for sure — blurry, cut off at the edge, covered \
+(by a stamp, a finger, a fold) or handwriting you cannot make out, even looking closer — is not guessed: list it in unreadable_fields \
 with its path as in the schema (e.g. "net_pay", "concepts[2].amount"), why, and the region_id where it is. Leave an \
 optional field empty; for a required one, write your best reading with a confidence of 0.3 or less. A label whose \
 value is not there or is garbled (e.g. "NET PAY:" or "LIQ S/." with nothing readable after it) is an unreadable \
@@ -84,7 +91,7 @@ even its label — is not unreadable: leave it out.
 
 
 _SELF_CHECK = (
-    "12. Before calling submit, call check_draft ONCE with the values you are going to submit ({field: value}). If it reports problems, "
+    "13. Before calling submit, call check_draft ONCE with the values you are going to submit ({field: value}). If it reports problems, "
     "re-read those fields' regions and correct them; if the document really says that, submit it anyway — do not invent values to make it add up.\n"
 )
 
