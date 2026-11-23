@@ -19,6 +19,7 @@ import {
   Hourglass,
   Lightbulb,
   Loader2,
+  ScanEye,
   TrendingDown,
   TrendingUp,
   type LucideIcon,
@@ -254,6 +255,22 @@ function insightsOf(data: Overview, typeName: (k: string | null) => string, setD
         </>
       ),
       action: { label: 'Ver observaciones', to: '/validation' },
+    })
+  // VRT-115: a type that starts reading worse is usually a badly scanned batch or a new template.
+  const worse = data.by_document_type
+    .filter((t) => t.documents >= 3 && t.doubtful_read_previous != null && t.doubtful_read / t.documents - t.doubtful_read_previous >= 0.2)
+    .sort((a, b) => b.doubtful_read / b.documents - a.doubtful_read / a.documents)[0]
+  if (worse)
+    out.push({
+      tone: 'warn',
+      icon: ScanEye,
+      text: (
+        <>
+          <strong>{typeName(worse.document_type)}</strong> se está leyendo peor: {pct(worse.doubtful_read / worse.documents)} de sus documentos tiene zonas leídas con dudas,
+          frente a {pct(worse.doubtful_read_previous)} en el periodo anterior. Suele ser un lote mal escaneado o una plantilla nueva.
+        </>
+      ),
+      action: { label: 'Ver documentos', to: '/documents' },
     })
   const worst = data.by_document_type.filter((t) => t.documents >= 3).sort((a, b) => b.needs_review / b.documents - a.needs_review / a.documents)[0]
   if (worst && worst.needs_review / worst.documents >= 0.25)

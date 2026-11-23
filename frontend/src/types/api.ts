@@ -93,7 +93,7 @@ export interface ReviewItem {
   field_path: string
   current_value: { value: unknown }
   confidence: number
-  reason: 'low_confidence' | 'validation_issue' | 'investigation' | 'unreadable' | 'not_in_text'
+  reason: 'low_confidence' | 'validation_issue' | 'investigation' | 'unreadable' | 'not_in_text' | 'low_read'
   status: string
   label: string
   description: string | null
@@ -1150,6 +1150,7 @@ export interface Overview {
   attention: AttentionItem[]
   // Where the work is (VRT-111).
   by_channel: { channel: string; continued: number; human_review: number; return_to_client: number; in_progress: number }[]
-  by_document_type: { document_type: string | null; documents: number; needs_review: number; failed: number }[]
+  // doubtful_read (VRT-115): documents with a region the OCR read with doubt; previous is a share.
+  by_document_type: { document_type: string | null; documents: number; needs_review: number; failed: number; doubtful_read: number; doubtful_read_previous: number | null }[]
   backlog: { label: string; count: number }[]
 }

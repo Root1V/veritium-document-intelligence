@@ -113,3 +113,28 @@ def test_a_submission_the_rules_find_nothing_in_is_accepted_at_once():
     agent_schema = compile_schema(next(d for d in seed_definitions() if d.key == "payslip"), for_agent=True)
     assert _CheckedOnSubmit(agent_schema, rules).validate(_submission(3497.2)).net_pay.value == 3497.2  # type: ignore[arg-type]
     assert "unreadable_fields" not in rules.drafts[0]
+
+
+def test_a_value_from_a_region_the_ocr_doubted_goes_to_review():
+    """VRT-115: grounding keeps how sure the OCR was of the region; under 0.9 a person looks."""
+    from idp.domain.document_type_catalog import compile_schema
+    from idp.domain.document_type_seed import seed_definitions
+    from idp.extraction.grounding import attach_grounding
+    from idp.parsing.normalize import ParsedBlock, ParsedDocument
+    from idp.review.routing import find_review_candidates
+
+    payslip = compile_schema(next(d for d in seed_definitions() if d.key == "payslip"))
+    parsed = ParsedDocument(backend="test", page_count=1, blocks=[
+        ParsedBlock(region_id=1, text="4 304,14", page=0, bbox=[0, 0, 1, 1], confidence=0.81),
+        *(ParsedBlock(region_id=i, text=text, page=0, bbox=[0, 0, 1, 1], confidence=0.99)
+          for i, text in enumerate(("SALAS SIGUAS, KATERIN", "ENERO - 2026", "6 618,00", "2 313,86"), start=2)),
+    ])
+    clean = {"employee_name": "SALAS SIGUAS, KATERIN", "period": "ENERO - 2026", "gross_pay": "6 618,00", "total_deductions": "2 313,86"}
+    instance = payslip.model_validate({
+        "net_pay": {"value": 4304.14, "confidence": 0.98, "source_text": "4 304,14", "region_id": 1},
+        **{k: {"value": v.replace(" ", "").replace(",", ".") if k.endswith(("pay", "deductions")) else v, "confidence": 0.98, "source_text": v} for k, v in clean.items()},
+        "unreadable_fields": [],
+    })
+    attach_grounding(instance, parsed)
+    assert instance.net_pay.read_confidence == 0.81
+    assert [(c.field_path, c.reason, c.confidence) for c in find_review_candidates(instance, [], confidence_threshold=0.75)] == [("net_pay", "low_read", 0.81)]

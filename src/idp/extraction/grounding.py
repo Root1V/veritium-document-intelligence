@@ -109,6 +109,7 @@ def _attach_recursive(value: object, parsed: ParsedDocument) -> None:
         if block is not None:
             value.page = block.page
             value.bbox = block.bbox
+            value.read_confidence = block.confidence
     elif isinstance(value, BaseModel):
         for name in type(value).model_fields:
             _attach_recursive(getattr(value, name), parsed)

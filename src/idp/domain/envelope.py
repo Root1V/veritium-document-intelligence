@@ -56,6 +56,9 @@ class Extracted(BaseModel, Generic[T]):
     # 3) and region_id resolves that ambiguity exactly. See
     # extraction/grounding.py.
     region_id: int | None = None
+    # How sure the OCR was of the region this value was read from (VRT-115),
+    # set by grounding: the agent can be sure of a value the OCR misread.
+    read_confidence: float | None = None
     reasoning_trace: list[ToolCallRecord] | None = None
 
 

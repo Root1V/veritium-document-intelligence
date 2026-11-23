@@ -348,6 +348,7 @@ Método, mediciones y aprendizajes: [eficiencia-modelos-ia.md](eficiencia-modelo
 ## VRT-115 — Lectura dudosa de una zona
 **Why:** el OCR ya da su seguridad por línea y no se usa: un dato puede salir con confianza alta del agente aunque la zona se leyó mal. LandingAI manda a revisión los tramos bajo su umbral y vigila la distribución por tipo para detectar escaneos malos o plantillas nuevas. **Scope:**
 - Un dato cuya zona el OCR leyó bajo 0,9 va a revisión con el motivo «Lectura dudosa». Medido el 2026-11-23: en el banco limpio, 1 de 1.088 valores queda bajo 0,9 (bajo 0,95 serían 73, sin más errores); en escaneos degradados, el 94 % de las líneas bajo 0,9 están mal leídas.
+- De punta a punta (2026-11-23): con el neto de una boleta desenfocado, el OCR lee «3 497,2» con 0,85, el agente lo entrega con confianza 1,0 y va a revisión como «Esa zona se leyó con dudas».
 - El inicio avisa cuando un tipo de documento se lee peor que en las semanas anteriores.
 - Fuera: un valor tan borroso que el OCR no lo detecta (eso lo cubre VRT-113).
 

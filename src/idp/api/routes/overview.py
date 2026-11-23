@@ -12,7 +12,9 @@ Nothing here quotes a person's data: reasons are grouped by what failed
 - daily: cases per arrival day, by their current decision.
 - reasons: why cases did not decide themselves, most frequent first.
 - by_channel: the period's cases per channel, by their current decision (VRT-111).
-- by_document_type: the period's documents per type — how many needed a person, how many failed.
+- by_document_type: the period's documents per type — how many needed a person, how many failed,
+  and how many had a region the OCR read with doubt, against the previous period (VRT-115: a type
+  that starts reading worse is a bad scan batch or a new template).
 - backlog: the fields waiting for a person, by how long they have waited."""
 
 from __future__ import annotations
@@ -84,6 +86,8 @@ class TypeCount(BaseModel):
     documents: int
     needs_review: int
     failed: int
+    doubtful_read: int = 0
+    doubtful_read_previous: float | None = None  # share, in the previous period
 
 
 class AgeBucket(BaseModel):
@@ -152,6 +156,28 @@ async def _window(session: AsyncSession, start: datetime, end: datetime) -> tupl
     return rows, reviewed, first
 
 
+async def _by_type(session: AsyncSession, case_ids: list[uuid.UUID]) -> list[TypeCount]:
+    if not case_ids:
+        return []
+    reviewed_docs = select(ReviewItem.document_id).distinct()
+    doubtful_docs = select(ReviewItem.document_id).where(ReviewItem.reason == "low_read").distinct()
+    return [
+        TypeCount(document_type=t, documents=n, needs_review=r or 0, failed=f or 0, doubtful_read=d or 0)
+        for t, n, r, f, d in (await session.execute(
+            select(
+                Document.document_type,
+                func.count(Document.id),
+                func.count(Document.id).filter(Document.id.in_(reviewed_docs)),
+                func.count(Document.id).filter(Document.status == "failed"),
+                func.count(Document.id).filter(Document.id.in_(doubtful_docs)),
+            )
+            .where(Document.case_id.in_(case_ids), Document.status != "segmented")
+            .group_by(Document.document_type)
+            .order_by(func.count(Document.id).desc())
+        )).all()
+    ]
+
+
 def _figures(rows: list, reviewed: set[uuid.UUID], first: dict[uuid.UUID, datetime]) -> tuple[int, int, float | None, float | None]:
     decided = [r for r in rows if r.verdict]
     straight = sum(1 for r in decided if r.verdict == "continue" and r.id not in reviewed)
@@ -203,7 +229,8 @@ async def overview(
 
     rows, reviewed, first = await _window(session, start, end)
     received, decided, straight, wait = _figures(rows, reviewed, first)
-    p_received, _, p_straight, p_wait = _figures(*await _window(session, start - timedelta(days=days), start))
+    previous = await _window(session, start - timedelta(days=days), start)
+    p_received, _, p_straight, p_wait = _figures(*previous)
 
     daily = {first_day + timedelta(days=i): DayCount(day=first_day + timedelta(days=i)) for i in range(days)}
     reasons: Counter[tuple[str, str]] = Counter()
@@ -221,23 +248,11 @@ async def overview(
         field = {"continue": "continued", "human_review": "human_review", "return_to_client": "return_to_client"}.get(r.verdict or "", "in_progress")
         setattr(bucket, field, getattr(bucket, field) + 1)
 
-    by_type: list[TypeCount] = []
-    if rows:
-        reviewed_docs = select(ReviewItem.document_id).distinct()
-        by_type = [
-            TypeCount(document_type=t, documents=n, needs_review=r or 0, failed=f or 0)
-            for t, n, r, f in (await session.execute(
-                select(
-                    Document.document_type,
-                    func.count(Document.id),
-                    func.count(Document.id).filter(Document.id.in_(reviewed_docs)),
-                    func.count(Document.id).filter(Document.status == "failed"),
-                )
-                .where(Document.case_id.in_([r.id for r in rows]), Document.status != "segmented")
-                .group_by(Document.document_type)
-                .order_by(func.count(Document.id).desc())
-            )).all()
-        ]
+    by_type = await _by_type(session, [r.id for r in rows])
+    before = {b.document_type: b for b in await _by_type(session, [r.id for r in previous[0]])}
+    for b in by_type:
+        if (p := before.get(b.document_type)) and p.documents >= 3:
+            b.doubtful_read_previous = p.doubtful_read / p.documents
 
     now = datetime.now(UTC)
     ages = [(now - at).total_seconds() / 86_400 for at in await session.scalars(select(ReviewItem.created_at).where(ReviewItem.status == "pending"))]

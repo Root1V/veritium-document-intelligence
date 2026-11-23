@@ -2,7 +2,8 @@
 ``Extracted[T]`` leaf in an extraction schema and flags it when its
 confidence is below threshold, or a validation rule touched that field with
 a non-passing result of severity >= warning, or the agent said it cannot be read
-(VRT-112), or its value is nowhere in the text read from the document (VRT-113). With an active calibration
+(VRT-112), or its value is nowhere in the text read from the document (VRT-113), or the OCR
+read its region with little certainty (VRT-115). With an active calibration
 (VRT-43) the confidence compared is the calibrated one: the accuracy
 observed for that field at that raw confidence."""
 
@@ -24,7 +25,13 @@ class ReviewCandidate(BaseModel):
     field_path: str
     value: Any
     confidence: float
-    reason: str  # "low_confidence" | "validation_issue" | "unreadable" | "not_in_text"
+    reason: str  # "low_confidence" | "validation_issue" | "unreadable" | "not_in_text" | "low_read"
+
+
+# Below it the OCR misreads: measured 2026-11-23, 94 % of the lines read under
+# 0.9 on degraded scans were wrong, and 1 of 1,088 values of the clean bench
+# falls under it (under 0.95 it would be 73, with no more errors among them).
+READ_CONFIDENCE_FLOOR = 0.9
 
 
 def _walk(instance: object, prefix: str, out: list[tuple[str, Extracted]]) -> None:
@@ -77,6 +84,9 @@ def find_review_candidates(
             candidates.append(ReviewCandidate(field_path=path, value=extracted.value, confidence=extracted.confidence, reason="unreadable"))
         elif catalog_type and _not_in_text(path, extracted):
             candidates.append(ReviewCandidate(field_path=path, value=extracted.value, confidence=extracted.confidence, reason="not_in_text"))
+        elif extracted.read_confidence is not None and extracted.read_confidence < READ_CONFIDENCE_FLOOR:
+            # The confidence shown is the reading's: the agent's (often 1.0) would contradict the reason.
+            candidates.append(ReviewCandidate(field_path=path, value=extracted.value, confidence=extracted.read_confidence, reason="low_read"))
         elif confidence < confidence_threshold:
             candidates.append(
                 ReviewCandidate(field_path=path, value=extracted.value, confidence=extracted.confidence, reason="low_confidence")

@@ -85,3 +85,34 @@ async def test_the_home_figures_compare_and_never_quote_a_person(live_settings, 
         async with factory() as session:
             await session.execute(delete(User).where(User.email == f"test-inicio-{scratch_unit}@example.com"))
             await session.commit()
+
+
+@pytest.mark.asyncio
+async def test_a_type_that_starts_reading_worse_shows_against_the_previous_period(live_settings, scratch_unit):
+    """VRT-115: documents with a region the OCR read with doubt, per type, this period and the one before."""
+    factory = get_session_factory(live_settings)
+    now = datetime.now(UTC)
+    with tenancy.acting_for(scratch_unit):
+        async with factory() as session:
+            docs = []
+            for days_ago in (1, 2, 3, 9, 10, 11):
+                c = Case(status="completed", verdict="continue", verdict_at=now, created_at=now - timedelta(days=days_ago))
+                session.add(c)
+                await session.flush()
+                d = Document(case_id=c.id, status="completed", storage_key="k", original_filename="b.pdf", document_type="payslip")
+                session.add(d)
+                docs.append(d)
+            await session.flush()
+            session.add_all([ReviewItem(document_id=d.id, field_path="net_pay", current_value={"value": 1}, confidence=0.9, reason="low_read") for d in docs[:2]])
+            await UserRepository(session).create(name="Inicio", email=f"test-inicio-{scratch_unit}@example.com", password_hash=hash_password(_PASSWORD), role="visor")
+            await session.commit()
+    try:
+        async with AsyncClient(transport=ASGITransport(app=create_app()), base_url="http://test") as client_http:
+            token = (await client_http.post("/auth/login", json={"email": f"test-inicio-{scratch_unit}@example.com", "password": _PASSWORD})).json()["access_token"]
+            data = (await client_http.get("/v1/overview", params={"days": 7}, headers={"Authorization": f"Bearer {token}"})).json()
+        [payslip] = data["by_document_type"]
+        assert (payslip["documents"], payslip["doubtful_read"], payslip["doubtful_read_previous"]) == (3, 2, 0.0)
+    finally:
+        async with factory() as session:
+            await session.execute(delete(User).where(User.email == f"test-inicio-{scratch_unit}@example.com"))
+            await session.commit()
