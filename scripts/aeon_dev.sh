@@ -5,6 +5,7 @@
 #
 #   scripts/aeon_dev.sh setup    # once: tokens (deploy/aeon/secrets/), callers.yaml, AEON_API_TOKEN in .env
 #   scripts/aeon_dev.sh up       # build + start temporal, controlplane, modelgw, toolgw, worker, runcontroller (+ deps)
+#   scripts/aeon_dev.sh start    # the same, without rebuilding the images already built
 #   scripts/aeon_dev.sh register-agents   # the manifests with their model budgets (VRT-56); `up` does it
 #   scripts/aeon_dev.sh status | logs [service] | down
 #   scripts/aeon_dev.sh reload-tools | verify-tools   # Veritium's tools federated in aeon, under Cedar (VRT-55)
@@ -124,6 +125,7 @@ case "${1:-}" in
   # One image at a time: Docker Desktop's BuildKit refuses parallel builds
   # ("only one connection allowed").
   up) for s in controlplane modelgw toolgw worker runcontroller; do compose build "$s"; done; compose up -d "${SERVICES[@]}" && register_agents ;;
+  start) compose up -d "${SERVICES[@]}" && register_agents ;;
   register-agents) register_agents ;;
   down) compose down ;;
   status) compose ps ;;
@@ -131,5 +133,5 @@ case "${1:-}" in
   # Restarts the gateway after a change to tool_sources.yaml or the Cedar bundle; the bridge shares its network.
   reload-tools) compose up -d --force-recreate toolgw veritium-bridge ;;
   verify-tools) (cd "$ROOT" && AEON_TOOLS_TOKEN="$(cat "$DIR/secrets/tools_token")" uv run --no-sync python scripts/verify_aeon_tools.py) ;;
-  *) sed -n '2,10p' "$0"; exit 1 ;;
+  *) sed -n '2,11p' "$0"; exit 1 ;;
 esac
