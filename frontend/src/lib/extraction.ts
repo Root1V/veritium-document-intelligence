@@ -38,6 +38,11 @@ export function confidenceLevel(confidence: number): ConfidenceLevel {
 /** Splits a document's extraction payload into top-level scalar fields
  * (rendered as `ExtractionField`s) and list-of-line-item fields (rendered
  * as `ExtractionTable`s) — covers every schema without per-type code. */
+// What the platform notes about the document, not data read from it: the fields
+// that cannot be read (VRT-112, shown in review) and the machine-readable lines
+// it checked (VRT-116, shown in validation).
+const NOT_DATA = new Set(['unreadable_fields', 'machine_readable_zones'])
+
 export function splitExtractionPayload(payload: Record<string, unknown>): {
   fields: [string, Extracted<unknown>][]
   tables: [string, Record<string, unknown>[]][]
@@ -48,7 +53,7 @@ export function splitExtractionPayload(payload: Record<string, unknown>): {
   for (const [key, value] of Object.entries(payload)) {
     if (isExtractedEnvelope(value)) {
       fields.push([key, value])
-    } else if (Array.isArray(value)) {
+    } else if (Array.isArray(value) && !NOT_DATA.has(key)) {
       tables.push([key, value as Record<string, unknown>[]])
     }
   }

@@ -30,10 +30,13 @@ def test_the_seed_compiles_to_exactly_the_code_schema(definition):
 
 
 def _without_unreadable(model) -> dict:
-    """The compiled schema minus what every type adds: which fields cannot be read (VRT-112)."""
+    """The compiled schema minus what every type adds: which fields cannot be read (VRT-112)..."""
     schema = model.model_json_schema()
     assert schema["properties"].pop("unreadable_fields")["items"] == {"$ref": "#/$defs/Unreadable"}
     del schema["$defs"]["Unreadable"]
+    # ... and the machine-readable lines the platform reads from the OCR text (VRT-116).
+    assert schema["properties"].pop("machine_readable_zones")["items"] == {"$ref": "#/$defs/MachineReadableZone"}
+    del schema["$defs"]["MachineReadableZone"]
     if not schema["$defs"]:
         del schema["$defs"]
     return schema

@@ -349,11 +349,17 @@ Método, mediciones y aprendizajes: [eficiencia-modelos-ia.md](eficiencia-modelo
 **Why:** el OCR ya da su seguridad por línea y no se usa: un dato puede salir con confianza alta del agente aunque la zona se leyó mal. LandingAI manda a revisión los tramos bajo su umbral y vigila la distribución por tipo para detectar escaneos malos o plantillas nuevas. **Scope:**
 - Un dato cuya zona el OCR leyó bajo 0,9 va a revisión con el motivo «Lectura dudosa». Medido el 2026-11-23: en el banco limpio, 1 de 1.088 valores queda bajo 0,9 (bajo 0,95 serían 73, sin más errores); en escaneos degradados, el 94 % de las líneas bajo 0,9 están mal leídas.
 - De punta a punta (2026-11-23): con el neto de una boleta desenfocado, el OCR lee «3 497,2» con 0,85, el agente lo entrega con confianza 1,0 y va a revisión como «Esa zona se leyó con dudas».
+- En el carné del banco atrapó un error real: el agente tomó el nombre de la línea con «<», que el OCR leyó «MIGUELK<KKK» con 0,87.
 - El inicio avisa cuando un tipo de documento se lee peor que en las semanas anteriores.
 - Fuera: un valor tan borroso que el OCR no lo detecta (eso lo cubre VRT-113).
 
 ## VRT-116 — Dígitos de control de la zona de lectura automática
-**Why:** la línea con «<» de carnés y pasaportes trae dígitos de control (ICAO 9303) que confirman número, fecha de nacimiento y vencimiento sin modelo; LandingAI la valida así. Es la primera pieza barata del antifraude (VRT-61). **Scope:** regla determinista que lee la línea, verifica sus dígitos y la compara con lo extraído; un dígito que no cuadra va a revisión. Fuera: el DNI peruano sin esa línea.
+**Why:** la línea con «<» de carnés y pasaportes trae dígitos de control (ICAO 9303) que confirman número, fecha de nacimiento y vencimiento sin modelo; LandingAI la valida así. Es la primera pieza barata del antifraude (VRT-61). **Scope:**
+- La plataforma lee del OCR la línea de datos de carnés (TD2) y pasaportes (TD3); el agente no la escribe.
+- Una regla verifica sus dígitos de control y que su número y fecha de nacimiento sean los extraídos; si no, va a revisión.
+- Medido el 2026-11-23: las dos líneas del banco cuadran. El vencimiento no se compara: en los carnés de extranjería el «Vencimiento» impreso es otra fecha (2018 frente a 2022 en la línea).
+- De punta a punta (2026-11-23): el carné del banco pasa sin alarmas; las líneas de las págs. 3 y 4 cuadran.
+- Fuera: los carnés de tres líneas (TD1), que ningún tipo del catálogo trae aún.
 
 ## VRT-117 — El agente ve dónde está cada zona
 **Why:** en DocVQA, darle al modelo la salida con posiciones subió de 95,36 % a 99,16 % (LandingAI). Hoy el agente solo ve el texto de cada zona y confunde valores vecinos («LIQ S/.» sin valor al lado). **Scope:** cada zona lleva su página y ubicación aproximada, en pocas palabras para no subir los tokens; se mide en el banco. Fuera: coordenadas exactas.

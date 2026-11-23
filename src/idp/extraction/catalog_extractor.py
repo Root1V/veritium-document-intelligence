@@ -8,6 +8,7 @@ from __future__ import annotations
 from idp.config import Settings
 from idp.domain.document_type_catalog import DocumentTypeCatalog
 from idp.extraction.agentic.loop import ExtractionIncomplete, run_agentic_extraction
+from idp.domain.machine_readable_zone import find_zones
 from idp.extraction.base import ExtractionOutcome, attach_trace
 from idp.extraction.grounding import attach_grounding
 from idp.extraction.self_check import DraftChecker
@@ -47,4 +48,5 @@ def extract_catalog_type(
     result = catalog.schema(type_key, version).model_validate(draft.model_dump())  # type: ignore[union-attr]
     attach_trace(result, trace)
     attach_grounding(result, parsed)
+    result.machine_readable_zones = find_zones(parsed)  # type: ignore[attr-defined]
     return ExtractionOutcome(schema_instance=result, needs_review=False, extraction_method="agentic", schema_version=schema_version)

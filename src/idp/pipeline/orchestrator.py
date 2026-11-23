@@ -81,7 +81,7 @@ from idp.validation.rules.external_system_rules import InsurancePolicyVerifiedEx
 from idp.validation.rules.generic import DataDrivenRule
 from idp.validation.rules.reference_data_rules import EmployeeCodeExistsInReferenceData, EmployeeNameExistsInReferenceData
 from idp.validation.rules.request_input_rules import ExpectedEmployeeCodeMatches
-from idp.validation.rules.self_rules import PayslipArithmeticConsistency
+from idp.validation.rules.self_rules import MachineReadableZoneChecks, PayslipArithmeticConsistency
 from idp.validation.rules.semantic_rules import SemanticAttributeConsistency, format_rules
 
 
@@ -174,6 +174,7 @@ def _hardcoded_rules(settings: Settings) -> list[ValidationRule]:
     instance instead of duplicating those strings by hand elsewhere."""
     return [
         PayslipArithmeticConsistency(),
+        MachineReadableZoneChecks(),
         ExpectedEmployeeCodeMatches(),
         DuplicateDocumentIdentifier(),
         EmployeeNameCrossDocumentMatch(settings),
@@ -186,6 +187,7 @@ def _hardcoded_rules(settings: Settings) -> list[ValidationRule]:
 
 HARDCODED_RULE_DESCRIPTIONS: dict[str, str] = {
     "self.payslip_arithmetic_consistency": "El neto de la boleta de pago es igual al bruto menos los descuentos (con una pequeña tolerancia).",
+    "self.machine_readable_zone": "La línea de lectura automática de carnés y pasaportes cuadra con sus dígitos de control, y su número y fecha de nacimiento son los extraídos.",
     "request_input.expected_employee_code_matches": "El código de empleado de la boleta es el que se indicó al enviar la solicitud.",
     "batch.duplicate_identifier": "Un mismo código de empleado o número de póliza no aparece repetido en documentos del mismo tipo de la solicitud.",
     "batch.employee_name_matches_insured_name": "El nombre del empleado en la boleta es el del asegurado en la declaración de seguro (acepta diferencias de formato; en casos dudosos lo decide el modelo).",

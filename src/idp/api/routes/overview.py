@@ -44,6 +44,7 @@ ATTENTION_LIMIT = 8
 # What a rule's failure means, said briefly; its message quotes the case's data.
 RULE_REASON = {
     "self.payslip_arithmetic_consistency": "El neto de la boleta no cuadra con bruto menos descuentos",
+    "self.machine_readable_zone": "La línea de lectura automática del carné o pasaporte no cuadra",
     "batch.employee_name_matches_insured_name": "El nombre de la boleta no coincide con el del seguro",
     "request_input.expected_employee_code_matches": "El código de empleado no es el esperado",
     "batch.duplicate_identifier": "Un identificador se repite entre documentos",
