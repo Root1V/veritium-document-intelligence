@@ -335,6 +335,8 @@ Método, mediciones y aprendizajes: [eficiencia-modelos-ia.md](eficiencia-modelo
 **Why:** el agente solo usa la visión en tablas y figuras; casillas marcadas, campos llenados a mano, sellos y firmas se pierden si el OCR los lee mal. Un valor que no aparece en el texto leído es la señal más usada para detectar uno inventado (arXiv 2606.24420, 2609.20110). **Scope:**
 - Una herramienta para ver con visión cualquier zona o la página entera, con más resolución.
 - Un valor que no está en el texto leído, o en el que lectura y visión no coinciden, va a revisión.
+- Las reglas propias del documento corren al entregar (antes eran una herramienta que el agente casi nunca usaba): lo que encuentran vuelve al agente una vez para que mire; la siguiente entrega se acepta.
+- Medido el 2026-11-22: con el neto borroso, el agente mira la etiqueta, la visión dice que no se lee y el expediente queda «No se lee» (pág. 1); banco 93 % sin turnos extra, y 1 de 96 valores limpios a revisión (entregado sin cita).
 - Se mide en el banco y en confiabilidad. Fuera: reemplazar el OCR (OXR y la página entera leyeron peor: 28–34 de 41 frente a 40).
 
 ## VRT-114 — Elegir páginas antes de extraer en documentos largos

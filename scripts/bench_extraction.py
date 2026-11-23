@@ -40,7 +40,7 @@ from idp.llm import port
 from idp.parsing.normalize import ParsedDocument
 from idp.persistence.db import get_session_factory
 from idp.persistence.repositories import DocumentTypeRepository
-from idp.pipeline.orchestrator import parse_example
+from idp.pipeline.orchestrator import draft_checker, parse_example
 from idp.pipeline.stages import extract_document
 
 REPO = Path(__file__).resolve().parent.parent
@@ -115,6 +115,8 @@ async def main(label: str, temperature: float | None, effort: str | None) -> Non
             )
         async with get_session_factory(settings)() as session:
             catalog = await DocumentTypeRepository(session).load_catalog()
+            # As the pipeline extracts: the document's own rules run on the submission (VRT-113).
+            checkers = {t: await draft_checker(settings, session, t, catalog) for t in {t for _, t in docs}}
         out = {}
         for raw, dtype in docs:
             path = Path(raw) if Path(raw).is_absolute() else REPO / raw
@@ -124,7 +126,7 @@ async def main(label: str, temperature: float | None, effort: str | None) -> Non
             _Retries.count = 0
             started = time.perf_counter()
             try:
-                result = await asyncio.to_thread(functools.partial(extract_document, settings, parsed, dtype, catalog, document_id=f"bench-{label}"))
+                result = await asyncio.to_thread(functools.partial(extract_document, settings, parsed, dtype, catalog, document_id=f"bench-{label}", checker=checkers[dtype]))
                 payload, error = (result.schema_instance.model_dump(mode="json") if result.schema_instance is not None else None), None
             except Exception as exc:  # noqa: BLE001 — measured, not raised: a failed document is a result
                 payload, error = None, f"{type(exc).__name__}: {str(exc)[:200]}"
