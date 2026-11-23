@@ -77,7 +77,7 @@ Estados: `done` · `todo` · `blocked` (espera a otro equipo) · `superseded` (a
 | VRT-63 | Edición gobernada de prompts | done | Un rol técnico edita instrucciones al modelo: borrador, evaluación obligatoria, publicación y vuelta atrás. |
 | VRT-69 | Agente de extracción eficiente | done | Medir tokens por turno y recortar lo que el agente reenvía; hoy es el 70–90% del tiempo de cada documento. |
 | VRT-70 | Lectura (OCR) más rápida en el mismo hardware | done | Runtime y tamaño de modelo del OCR medidos por tiempo y precisión; hoy 5–22 s por página. |
-| VRT-112 | Dato que no se lee frente a dato que falta | todo | Si el documento llegó pero un dato no se lee, se pide una copia nítida de esa página, no el documento. |
+| VRT-112 | Dato que no se lee frente a dato que falta | done | Si el documento llegó pero un dato no se lee, se pide una copia nítida de esa página, no el documento. |
 | VRT-113 | Mirar la página cuando la lectura duda | todo | El agente ve con visión cualquier zona o la página entera; un valor que no está en lo leído va a revisión. |
 | VRT-114 | Elegir páginas antes de extraer en documentos largos | todo | En documentos de muchas páginas, el agente recibe solo las que traen los datos de su tipo. |
 

@@ -328,6 +328,7 @@ Método, mediciones y aprendizajes: [eficiencia-modelos-ia.md](eficiencia-modelo
 **Why:** un dato ilegible y uno ausente terminan igual («Falta: evidencia de ingreso»), y al cliente se le pide un documento que ya envió. Distinguir «falta» de «no se lee» es práctica de la extracción guiada por esquema (ExtractBench, arXiv 2607.29677). **Scope:**
 - El agente marca los datos que ve pero no puede leer (borroso, cortado, tapado, letra ilegible) con su región, en vez de adivinar.
 - La condición del expediente dice «No se lee», con el documento y la página; un dato obligatorio ilegible va a revisión con ese motivo.
+- Medido el 2026-11-22: sin falsos «no se lee» en el banco; con el neto borroso el OCR no detecta nada y el agente no lo marca (tomó el monto vecino o lo calculó). Ver la mancha llega con VRT-113.
 - Fuera: medir la calidad de la imagen antes de leer y pedir la copia al cliente automáticamente.
 
 ## VRT-113 — Mirar la página cuando la lectura duda
