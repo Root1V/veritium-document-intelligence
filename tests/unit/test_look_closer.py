@@ -71,3 +71,45 @@ def test_a_value_nowhere_in_the_text_read_goes_to_a_person():
 def test_inferred_fields_and_located_values_do_not():
     """A concept's kind and the summary are the model's by design; every other value was found in the text."""
     assert find_review_candidates(PAYSLIP.model_validate(_payslip(net_pay_page=0)), [], confidence_threshold=0.75) == []
+
+
+class _Rules:
+    """The document's own rules, as the self-check runs them: here, the net pay must add up."""
+
+    def __init__(self) -> None:
+        self.drafts: list[dict] = []
+
+    async def check(self, draft: dict) -> list[str]:
+        self.drafts.append(draft)
+        values = {k: v["value"] for k, v in draft.items() if isinstance(v, dict)}
+        return [] if values["gross_pay"] - values["total_deductions"] == values["net_pay"] else ["El neto no cuadra con el bruto menos los descuentos."]
+
+
+def _submission(net_pay: float) -> dict:
+    read = lambda value: {"value": value, "confidence": 0.95, "source_text": str(value), "region_id": 1}  # noqa: E731
+    return {"employee_name": read("X"), "period": read("ENE 2026"), "gross_pay": read(7947.0), "total_deductions": read(4449.8), "net_pay": read(net_pay)}
+
+
+def test_the_platform_runs_the_documents_rules_on_the_submission_once():
+    """The agent was told to check its draft and often did not: what the rules find goes back once, to look again."""
+    from synaptum import NoObjectGeneratedError
+
+    from idp.extraction.agentic.loop import _CheckedOnSubmit
+
+    agent_schema = compile_schema(next(d for d in seed_definitions() if d.key == "payslip"), for_agent=True)
+    output = _CheckedOnSubmit(agent_schema, _Rules())  # type: ignore[arg-type]
+    try:
+        output.validate(_submission(4449.8))
+        raise AssertionError("the first submission should have come back")
+    except NoObjectGeneratedError as returned:
+        assert "El neto no cuadra" in str(returned) and "look_closer" in str(returned)
+    assert output.validate(_submission(4449.8)).net_pay.value == 4449.8  # if the document really says so, it is accepted
+
+
+def test_a_submission_the_rules_find_nothing_in_is_accepted_at_once():
+    from idp.extraction.agentic.loop import _CheckedOnSubmit
+
+    rules = _Rules()
+    agent_schema = compile_schema(next(d for d in seed_definitions() if d.key == "payslip"), for_agent=True)
+    assert _CheckedOnSubmit(agent_schema, rules).validate(_submission(3497.2)).net_pay.value == 3497.2  # type: ignore[arg-type]
+    assert "unreadable_fields" not in rules.drafts[0]

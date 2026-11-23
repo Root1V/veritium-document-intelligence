@@ -357,10 +357,11 @@ async def extraction_grounding(settings: Settings, session: AsyncSession, docume
 async def draft_checker(
     settings: Settings, session: AsyncSession, document_type: str, type_catalog: DocumentTypeCatalog, *, enabled: bool | None = None
 ) -> DraftChecker | None:
-    """The document's own rules for the extraction agent to check its draft
-    with (VRT-67), when self-check is on: ``enabled`` overrides the setting,
-    for an evaluation."""
-    if not (settings.extraction_self_check if enabled is None else enabled) or document_type == GENERIC:
+    """The document's own rules on the extraction agent's draft: always on
+    its submission (VRT-113) — no model call unless they find something —
+    and as a tool it calls before when self-check is on (VRT-67): ``enabled``
+    overrides the setting, for an evaluation."""
+    if document_type == GENERIC:
         return None
     current = type_catalog.current(document_type)
     if current is None:
@@ -368,7 +369,8 @@ async def draft_checker(
     loaded = await load_semantic_catalog(session, None)
     semantic = loaded[0] if loaded else None
     rules = await build_default_rules(settings, session) + (format_rules(semantic) if semantic else [])
-    return DraftChecker(rules, semantic, document_type, type_catalog.schema(document_type, current[0]))  # type: ignore[arg-type]
+    tool = settings.extraction_self_check if enabled is None else enabled
+    return DraftChecker(rules, semantic, document_type, type_catalog.schema(document_type, current[0]), tool=tool)  # type: ignore[arg-type]
 
 
 async def _suggest_type_if_promising(

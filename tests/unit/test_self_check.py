@@ -43,6 +43,8 @@ async def test_each_attributes_format_comes_from_the_semantic_catalog():
 
 
 class _Checker:
+    tool = True  # self-check on: offered as a tool too
+
     async def check(self, draft):
         return ["El neto a pagar (2,400.00) no es igual al bruto menos los descuentos (2,500.00)."] if draft.get("neto") == 2400 else []
 
@@ -64,6 +66,28 @@ async def test_the_agent_checks_its_draft_corrects_and_submits():
     assert "Problemas encontrados" in _tool_results(script.requests[1])[0]
     assert _tool_results(script.requests[3])[-1] == "Sin problemas."
     assert "check_draft" in (script.requests[0].system or "") and [t.tool_name for t in trace] == ["check_draft", "read_text_region", "check_draft"]
+
+
+class _OnSubmitOnly(_Checker):
+    tool = False
+
+
+@pytest.mark.asyncio
+async def test_with_self_check_off_the_platform_still_checks_the_submission():
+    """VRT-113: the agent submits without checking; the rules' finding comes back once, and it looks again."""
+    script = Script(
+        calls("submit", empleado="ANA PEREZ", neto=2400.0),
+        calls("read_text_region", id="c2", region_ids=[1]),
+        calls("submit", id="c3", empleado="ANA PEREZ", neto=2500.0),
+    )
+    settings = Settings(_env_file=None, extraction_max_turns=8)
+    async with port.inference_lifespan(settings, model=script, models={"reasoning": "razonador", "vision": "vlm"}):
+        result, _ = await asyncio.to_thread(
+            lambda: run_agentic_extraction(settings, PARSED, Boleta, purpose="extract/payslip/v1", hint="Es una boleta.", checker=_OnSubmitOnly())  # type: ignore[arg-type]
+        )
+    assert result == Boleta(empleado="ANA PEREZ", neto=2500.0)
+    assert "El neto a pagar" in _tool_results(script.requests[1])[0]
+    assert "check_draft" not in (script.requests[0].system or "")
 
 
 def test_without_a_checker_the_agent_has_neither_the_tool_nor_the_step():

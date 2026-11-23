@@ -100,10 +100,11 @@ class Settings(BaseSettings):
     # VRT-46: tell the extraction agent the business meaning of each field,
     # from the semantic catalog. Measure it with an evaluation run first.
     extraction_semantic_grounding: bool = False
-    # The extraction agent reviews its draft with the document's own rules
-    # before submitting (VRT-67). Off by default: measured on 2026-10-10, only
-    # 2 of 74 documents with findings had one it could catch, and each check
-    # is one more model turn. Evaluation runs can turn it on to compare.
+    # The extraction agent can review its draft with the document's own rules
+    # before submitting, as a tool (VRT-67). Off by default: measured on
+    # 2026-10-10, only 2 of 74 documents with findings had one it could catch,
+    # and each check is one more model turn. Evaluation runs can turn it on to
+    # compare. The platform runs those rules on the submission either way (VRT-113).
     extraction_self_check: bool = False
 
     # --- Upload sessions and quick check (VRT-47) ---

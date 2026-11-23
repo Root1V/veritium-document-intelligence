@@ -4,7 +4,9 @@ ones validation will run afterwards: arithmetic within the document, the
 format of each semantic attribute (e.g. a DNI is 8 digits) and the
 document's own CEL rules (category SELF). What fails comes back in words,
 so the agent re-reads and corrects; if the document really says so, it
-submits anyway and validation reports it as always. Never a model call."""
+submits anyway and validation reports it as always. Never a model call.
+The platform always runs them on the submission (VRT-113); offering them as
+a tool the agent calls before is the setting's (``tool``)."""
 
 from __future__ import annotations
 
@@ -51,8 +53,11 @@ def _number(value: Any) -> Any:
 
 
 class DraftChecker:
-    def __init__(self, rules: list[ValidationRule], catalog: SemanticCatalog | None, document_type: str, schema: type[BaseModel]) -> None:
+    def __init__(
+        self, rules: list[ValidationRule], catalog: SemanticCatalog | None, document_type: str, schema: type[BaseModel], *, tool: bool = False
+    ) -> None:
         self.rules = [r for r in rules if r.category == RuleCategory.SELF]
+        self.tool = tool
         self._catalog, self._type, self._numbers = catalog, document_type, _number_fields(schema)
 
     async def check(self, draft: dict[str, Any]) -> list[str]:
