@@ -76,8 +76,10 @@ earnings, deductions and contributions) and check that your list has all of them
 11. A field the document carries but whose value you cannot read for sure — blurry, cut off at the edge, covered \
 (by a stamp, a finger, a fold) or handwriting you cannot make out — is not guessed: list it in unreadable_fields \
 with its path as in the schema (e.g. "net_pay", "concepts[2].amount"), why, and the region_id where it is. Leave an \
-optional field empty; for a required one, write your best reading with a confidence of 0.3 or less. A field the \
-document does not carry at all is not unreadable: leave it out.
+optional field empty; for a required one, write your best reading with a confidence of 0.3 or less. A label whose \
+value is not there or is garbled (e.g. "NET PAY:" or "LIQ S/." with nothing readable after it) is an unreadable \
+field: never fill it with a neighbouring value of another label. A field the document does not carry at all — not \
+even its label — is not unreadable: leave it out.
 {self_check}""", filled=('hint', 'regions', 'schema', 'grounding', 'self_check'))
 
 
