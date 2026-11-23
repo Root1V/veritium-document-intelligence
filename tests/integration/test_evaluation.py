@@ -113,13 +113,14 @@ async def test_a_suite_from_a_table_runs_and_compares(live_settings, stub_model)
             run3 = (await client.get(f"/v1/eval-runs/{grounded['id']}", headers=h)).json()
             assert run3["provenance"]["semantic_grounding"] is True
             assert "net_pay" in (stub_model["grounding"] or {}), "the extraction got the business meaning of the fields"
-            assert stub_model["checker"] is None, "self-check is off by default (VRT-67)"
+            # The document's own rules always run on submit (VRT-113); the check_draft tool is off by default (VRT-67).
+            assert stub_model["checker"] is not None and stub_model["checker"].tool is False
 
             # Measuring self-check (VRT-67): the extraction gets the document's own rules to check its draft.
             checked = (await client.post(f"/v1/eval-suites/{suite_id}/runs", headers=h, json={"self_check": True})).json()
             run4 = (await client.get(f"/v1/eval-runs/{checked['id']}", headers=h)).json()
             assert run4["provenance"]["self_check"] is True
-            assert stub_model["checker"] is not None and any(r.rule_id == "self.payslip_arithmetic_consistency" for r in stub_model["checker"].rules)
+            assert stub_model["checker"].tool is True and any(r.rule_id == "self.payslip_arithmetic_consistency" for r in stub_model["checker"].rules)
             second = checked
 
             suites = (await client.get("/v1/eval-suites", headers=h)).json()
