@@ -79,7 +79,13 @@ Estados: `done` · `todo` · `blocked` (espera a otro equipo) · `superseded` (a
 | VRT-70 | Lectura (OCR) más rápida en el mismo hardware | done | Runtime y tamaño de modelo del OCR medidos por tiempo y precisión; hoy 5–22 s por página. |
 | VRT-112 | Dato que no se lee frente a dato que falta | done | Si el documento llegó pero un dato no se lee, se pide una copia nítida de esa página, no el documento. |
 | VRT-113 | Mirar la página cuando la lectura duda | done | El agente ve con visión cualquier zona o la página entera; un valor que no está en lo leído va a revisión. |
-| VRT-114 | Elegir páginas antes de extraer en documentos largos | todo | En documentos de muchas páginas, el agente recibe solo las que traen los datos de su tipo. |
+| VRT-114 | Documentos largos por secciones | todo | Un documento largo se extrae por secciones de su índice, en paralelo, y se une; la búsqueda cita la sección. |
+| VRT-115 | Lectura dudosa de una zona | todo | Un dato leído de una zona que el OCR leyó con poca seguridad va a revisión; el inicio avisa si un tipo empieza a leerse peor. |
+| VRT-116 | Dígitos de control de la zona de lectura automática | todo | En carnés de extranjería y pasaportes, los dígitos de control de la línea con «<» confirman número, fechas y que se leyó bien. |
+| VRT-117 | El agente ve dónde está cada zona | todo | La lista de zonas que recibe el agente dice su página y su ubicación, no solo su texto. |
+| VRT-118 | Firmas, sellos y casillas | todo | Se detecta si un documento está firmado o sellado y qué casillas están marcadas; el proceso puede exigirlo. |
+| VRT-119 | Otros nombres y formato de cada dato | todo | Cada dato del tipo dice con qué otros nombres aparece y su formato; un tipo se revisa con documentos nuevos. |
+| VRT-120 | Tablas con celdas combinadas | todo | Las tablas llegan al agente con sus celdas combinadas y cada celda con su ubicación. |
 
 ## F5 — Canales
 
@@ -103,6 +109,7 @@ Estados: `done` · `todo` · `blocked` (espera a otro equipo) · `superseded` (a
 | VRT-66 | Agente investigador de discrepancias | done | Ante cada hallazgo, investiga con tools y le deja al revisor diagnóstico, corrección sugerida y evidencia; no decide. |
 | VRT-67 | Autovalidación de la extracción | done | El agente de extracción revisa su borrador con las reglas propias del documento y corrige antes de entregar. |
 | VRT-68 | Clasificación con escalamiento agéntico | todo | Una llamada para lo claro; un agente que revisa páginas cuando la confianza es baja o el PDF mezcla documentos. |
+| VRT-122 | MCP fácil para otros agentes | todo | Guía `llms.txt` y errores que dicen al agente cómo seguir. |
 
 ## F7 — Hardening y producción
 
@@ -161,3 +168,4 @@ Estados: `done` · `todo` · `blocked` (espera a otro equipo) · `superseded` (a
 | VRT-109 | Expedientes, documentos y cargas masivas en palabras | done | Decisiones en fichas que filtran, una línea por expediente o documento, cargas en tarjetas con su resultado en una barra, y nueva carga en un diálogo. |
 | VRT-110 | Detalle del expediente en palabras | done | La decisión con qué hacer y cuánto hay detrás, lo que pide el proceso, los datos por persona con los que no coinciden primero, y observaciones sin códigos. |
 | VRT-111 | Inicio para decidir | done | Conclusiones con su acción, cómo terminan los expedientes y por canal, documentos que más revisión piden y cuánto espera la cola. |
+| VRT-121 | Expedientes sin intervención | todo | El inicio dice qué parte de los expedientes se decide sin que una persona toque un dato. |

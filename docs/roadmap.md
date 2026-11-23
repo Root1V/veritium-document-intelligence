@@ -339,8 +339,32 @@ Método, mediciones y aprendizajes: [eficiencia-modelos-ia.md](eficiencia-modelo
 - Medido el 2026-11-22: con el neto borroso, el agente mira la etiqueta, la visión dice que no se lee y el expediente queda «No se lee» (pág. 1); banco 93 % sin turnos extra, y 1 de 96 valores limpios a revisión (entregado sin cita).
 - Se mide en el banco y en confiabilidad. Fuera: reemplazar el OCR (OXR y la página entera leyeron peor: 28–34 de 41 frente a 40).
 
-## VRT-114 — Elegir páginas antes de extraer en documentos largos
-**Why:** en documentos largos escaneados, elegir las páginas relevantes antes de extraer fue lo que más subió la exactitud (hasta +32 puntos; OCBC, arXiv 2604.26462): los modelos empeoran cuanto más leen de una vez. **Scope:** cuando un documento pasa de ~10 páginas, el agente recibe solo las que traen los datos de su tipo, elegidas con la búsqueda híbrida (VRT-59). Fuera: hasta que lleguen documentos así; los actuales son cortos.
+## VRT-114 — Documentos largos por secciones
+**Why:** los modelos pierden lo del medio cuanto más leen de una vez; elegir lo relevante antes de extraer subió hasta 32 puntos (OCBC, arXiv 2604.26462), y LandingAI lo resuelve por secciones con su ruta («Cláusulas > Penalidades») en cada fragmento. **Scope:**
+- Cuando un documento pasa de ~10 páginas: índice de secciones, cada dato asignado a su sección, extracción por sección en paralelo y unión determinista.
+- La búsqueda híbrida (VRT-59) antepone la ruta de la sección a cada fragmento.
+- Medido el 2026-11-22: los documentos actuales tienen hasta 7 páginas; una página densa suma ~2k tokens y 20 páginas pasarían el límite de 180 s por turno. Fuera: hasta que lleguen documentos así.
+
+## VRT-115 — Lectura dudosa de una zona
+**Why:** el OCR ya da su seguridad por línea y no se usa: un dato puede salir con confianza alta del agente aunque la zona se leyó mal. LandingAI manda a revisión los tramos bajo su umbral y vigila la distribución por tipo para detectar escaneos malos o plantillas nuevas. **Scope:**
+- Un dato cuya zona el OCR leyó bajo 0,9 va a revisión con el motivo «Lectura dudosa». Medido el 2026-11-23: en el banco limpio, 1 de 1.088 valores queda bajo 0,9 (bajo 0,95 serían 73, sin más errores); en escaneos degradados, el 94 % de las líneas bajo 0,9 están mal leídas.
+- El inicio avisa cuando un tipo de documento se lee peor que en las semanas anteriores.
+- Fuera: un valor tan borroso que el OCR no lo detecta (eso lo cubre VRT-113).
+
+## VRT-116 — Dígitos de control de la zona de lectura automática
+**Why:** la línea con «<» de carnés y pasaportes trae dígitos de control (ICAO 9303) que confirman número, fecha de nacimiento y vencimiento sin modelo; LandingAI la valida así. Es la primera pieza barata del antifraude (VRT-61). **Scope:** regla determinista que lee la línea, verifica sus dígitos y la compara con lo extraído; un dígito que no cuadra va a revisión. Fuera: el DNI peruano sin esa línea.
+
+## VRT-117 — El agente ve dónde está cada zona
+**Why:** en DocVQA, darle al modelo la salida con posiciones subió de 95,36 % a 99,16 % (LandingAI). Hoy el agente solo ve el texto de cada zona y confunde valores vecinos («LIQ S/.» sin valor al lado). **Scope:** cada zona lleva su página y ubicación aproximada, en pocas palabras para no subir los tokens; se mide en el banco. Fuera: coordenadas exactas.
+
+## VRT-118 — Firmas, sellos y casillas
+**Why:** en banca «la carta de autorización debe estar firmada» es un requisito habitual y hoy no se comprueba; LandingAI los trata como elementos propios. **Scope:** detectar firmado, sellado y casillas marcadas con su ubicación (el layout de Paddle ya trae sellos), y que un proceso pueda exigirlo. Fuera: verificar que la firma sea de quien dice.
+
+## VRT-119 — Otros nombres y formato de cada dato
+**Why:** «N° de reclamo», «Ref.» y «EOB» son el mismo dato; cuando un emisor cambia su plantilla, la extracción falla en silencio (LandingAI, *schemas drift*). **Scope:** sinónimos y formato por dato del tipo, que llegan al agente; una acción para revisar el tipo con documentos nuevos, partiendo de una muestra variada. Fuera: crear tipos solos.
+
+## VRT-120 — Tablas con celdas combinadas
+**Why:** las tablas con celdas combinadas llegan como texto suelto y el agente desordena filas. **Scope:** la tabla como HTML con celdas combinadas y la ubicación de cada celda. Fuera: tablas que cruzan páginas.
 
 ## F5 — Canales
 
@@ -418,6 +442,9 @@ Método, mediciones y aprendizajes: [eficiencia-modelos-ia.md](eficiencia-modelo
 ## VRT-68 — Clasificación con escalamiento agéntico
 **Why:** la clasificación es una sola llamada; los casos dudosos o los PDF mezclados quedan "genéricos" o mal clasificados. **Scope:** se mantiene la llamada única para los casos claros; con confianza baja o mezcla, un agente revisa páginas (texto, imagen, descripciones de los tipos). Métrica: % de genéricos y de mal clasificados en las suites.
 - **Medido el 2026-10-10, sin construir:** de 188 documentos, 16 quedaron "genéricos", pero fue porque se clasificaron antes de existir su tipo. Reclasificados hoy con una sola llamada, 10 de 10 salen bien (el único genérico real sigue genérico). La confianza no sirve de señal de escalamiento: siempre ≥ 0,8. Se reabre si las suites muestran errores de clasificación.
+
+## VRT-122 — MCP fácil para otros agentes
+**Why:** un agente de otro equipo descubre y usa mejor las herramientas con una guía legible y errores que le dicen qué hacer (LandingAI, *agent-centered design*). **Scope:** `llms.txt` del servidor MCP y errores con la pista para recuperarse. Fuera: herramientas nuevas.
 
 ## F7 — Hardening y producción
 
@@ -594,3 +621,6 @@ Método, mediciones y aprendizajes: [eficiencia-modelos-ia.md](eficiencia-modelo
 
 ## VRT-111 — Inicio para decidir
 **Why:** con «últimos 7 días» el inicio salía en ceros, y sus cifras y dos gráficos no decían qué hacer: dónde se atasca el trabajo, qué documento falla más, ni cuánto lleva esperando la cola. **Scope:** «para decidir hoy»: hasta cuatro conclusiones sacadas de las cifras, cada una con su acción (datos que esperan más de un mes, cuántos se devuelven y por qué, el motivo que más frena, el documento que más revisión pide, cambios en los resueltos sin intervención, documentos sin leer); periodos de 7, 30 y 90 días, 30 por defecto; tendencia en líneas suaves (recibidos, pendientes, continuar; los tres primeros colores categóricos, validados entre sí en claro y oscuro) con cursor que dice cada día; cifras con su línea de tendencia; cómo terminan en un anillo, y por canal en anillos chicos; documentos con su porcentaje en un anillo; motivos como lista ordenada; la cola en cuatro cifras por antigüedad; atención en dos columnas. Decisiones con la paleta de estados, siempre con su etiqueta. API: el resumen trae por canal, por tipo de documento y la antigüedad de la cola.
+
+## VRT-121 — Expedientes sin intervención
+**Why:** es la cifra con la que se mide la automatización documental (todos los casos de LandingAI la reportan) y el ejecutivo no la ve. **Scope:** en el inicio, la parte de los expedientes decididos sin que una persona corrija o confirme un dato, por proceso y en el tiempo.
