@@ -20,7 +20,7 @@ _EXTRACTION = prompt("extract_agentic", """You are a data extraction agent for b
 The layout of this type of document can vary between different templates of the issuer over time, so you must \
 actively inspect the available regions instead of assuming a fixed position for each field.
 
-Regions detected in the document:
+Regions detected in the document (at=<left>,<top>: where the region starts on its page, in percent of the page's width and height; regions with about the same top are on the same line, read left to right, so the value of a label is usually the region on its right at the same top, or the one just below it):
 {regions}
 
 Available tools:
@@ -104,6 +104,12 @@ def _shown(text: str) -> str:
     return text if len(text) <= _SHOWN else text[:_SHOWN] + "…"
 
 
+def _at(bbox: list[float]) -> str:
+    """Where a region starts, in whole percent of its page (VRT-117): which value sits beside which
+    label, in a few tokens. The model given positions answered DocVQA 99.16 % against 95.36 % (LandingAI)."""
+    return f"{round(bbox[0] * 100)},{round(bbox[1] * 100)}"
+
+
 _MRZ = re.compile(r"[A-Z0-9<]{25,}")
 
 
@@ -140,7 +146,9 @@ def build_system_prompt(
     adds the step that reviews the draft before submitting (VRT-67)."""
     # A layout box without text tells the agent nothing; a table or figure does (it can be read visually).
     regions = "\n".join(
-        f"- region_id={b.region_id} type={b.block_type} page={b.page} ocr_text={_shown(b.text)!r}" for b in parsed.blocks if b.text or b.block_type != "text"
+        f"- region_id={b.region_id} type={b.block_type} page={b.page} at={_at(b.bbox)} ocr_text={_shown(b.text)!r}"
+        for b in parsed.blocks
+        if b.text or b.block_type != "text"
     ) + _linked_pages(parsed)
     meaning = ""
     if grounding:
