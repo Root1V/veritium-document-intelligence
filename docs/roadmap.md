@@ -362,7 +362,8 @@ Método, mediciones y aprendizajes: [eficiencia-modelos-ia.md](eficiencia-modelo
 - Fuera: los carnés de tres líneas (TD1), que ningún tipo del catálogo trae aún.
 
 ## VRT-117 — El agente ve dónde está cada zona
-**Why:** en DocVQA, darle al modelo la salida con posiciones subió de 95,36 % a 99,16 % (LandingAI). Hoy el agente solo ve el texto de cada zona y confunde valores vecinos («LIQ S/.» sin valor al lado). **Scope:** cada zona lleva su página y ubicación aproximada, en pocas palabras para no subir los tokens; se mide en el banco. Fuera: coordenadas exactas.
+**Why:** en DocVQA, darle al modelo la salida con posiciones subió de 95,36 % a 99,16 % (LandingAI). Hoy el agente solo ve el texto de cada zona y confunde valores vecinos («LIQ S/.» sin valor al lado). **Scope:** cada zona lleva dónde empieza en su página (`at=<izquierda>,<arriba>`, en porcentaje), y el agente sabe que el valor de una etiqueta suele estar a su derecha a la misma altura o justo debajo. Fuera: coordenadas exactas.
+- Medido el 2026-11-24 (2 corridas por variante, intercaladas, contando solo los documentos sin error de prometheus): 93 % con ubicaciones frente a 90 % sin ellas, con ~5 % más de tokens de entrada. Este banco ya está en 90–98 % y no muestra una ganancia clara: la referencia es DocVQA.
 
 ## VRT-118 — Firmas, sellos y casillas
 **Why:** en banca «la carta de autorización debe estar firmada» es un requisito habitual y hoy no se comprueba; LandingAI los trata como elementos propios. **Scope:** detectar firmado, sellado y casillas marcadas con su ubicación (el layout de Paddle ya trae sellos), y que un proceso pueda exigirlo. Fuera: verificar que la firma sea de quien dice.
