@@ -187,7 +187,7 @@ def _guarded(tool: ToolSpec, fn: Callable[..., Awaitable[Any]]) -> Callable[...,
     async def call(*args: Any, **kwargs: Any) -> Any:
         role = caller()["role"]
         if role not in tool.roles:
-            raise ToolError(f"tu rol ({role}) no permite usar {tool.title.lower()}; se requiere {' o '.join(tool.roles)}")
+            raise ToolError(f"tu rol ({role}) no permite usar {tool.title.lower()}; se requiere {' o '.join(tool.roles)}: pide ese rol a un administrador de la unidad")
         return await fn(*args, **kwargs)
 
     return call
@@ -198,13 +198,28 @@ def _progress(case: Case) -> Progress:
     return progress(case.status, run.status if run else None, [d.status for d in case.documents])
 
 
+# What the calling agent can do next, said with the error (VRT-122): an agent
+# that only reads "not found" retries the same call.
+_NEXT = (
+    ("perfil", "los procesos válidos, con su `key`, salen de list_processes"),
+    ("no existe el expediente", "búscalo con find_cases(external_ref=…), el código que ve la persona"),
+    ("datos del comando inválidos", "revisa los parámetros en la descripción de la herramienta"),
+)
+
+
+def _with_next(reason: str) -> str:
+    hint = next((h for key, h in _NEXT if key in reason), None)
+    return f"{reason}; {hint}" if hint else reason
+
+
 async def _case(session: AsyncSession, case_id: str) -> Case:
     try:
-        case = await CaseRepository(session).get(uuid.UUID(case_id))
+        key = uuid.UUID(case_id)
     except ValueError:
-        case = None
+        raise ToolError(f"case_id es el identificador (uuid) del expediente, no su código: busca '{case_id}' con find_cases(external_ref=…) y usa su case_id") from None
+    case = await CaseRepository(session).get(key)
     if case is None:
-        raise ToolError(f"no existe el expediente {case_id}")
+        raise ToolError(_with_next(f"no existe el expediente {case_id}"))
     return case
 
 
@@ -252,9 +267,12 @@ def build(settings: Settings) -> MCPServer:
     async def _command(type_: str, data: dict[str, Any], request_id: str | None) -> CaseOutcome:
         claims = caller()
         source = f"mcp/{claims.get('api_client_id') or claims['name']}"
-        answer = await inbound.handle(settings, {"specversion": "1.0", "id": request_id or uuid.uuid4().hex, "source": source, "type": type_, "data": data})
+        try:
+            answer = await inbound.handle(settings, {"specversion": "1.0", "id": request_id or uuid.uuid4().hex, "source": source, "type": type_, "data": data})
+        except HTTPException as exc:  # an unknown or unpublished process
+            raise ToolError(_with_next(str(exc.detail))) from exc
         if not answer.accepted or answer.case_id is None:
-            raise ToolError(answer.reason or "no se pudo")
+            raise ToolError(_with_next(answer.reason or "no se pudo abrir ni completar el expediente"))
         async with factory() as session:
             return await case_outcome(session, await _case(session, str(answer.case_id)))
 
@@ -386,7 +404,7 @@ def build(settings: Settings) -> MCPServer:
         except (ValueError, ValidationError) as exc:
             raise ToolError(f"datos inválidos: {exc}") from exc
         except HTTPException as exc:
-            raise ToolError(str(exc.detail)) from exc
+            raise ToolError(_with_next(str(exc.detail))) from exc
         return DocumentsLink(upload_url=created.upload_url, expires_at=created.expires_at.isoformat(), session_id=created.id)
 
     async def quick_check_document(url: str, expected_type: str | None = None) -> FileCheck:
@@ -460,6 +478,21 @@ def build(settings: Settings) -> MCPServer:
             return json.dumps((await case_masker(session, case)).json((await build_case_result(session, case)).model_dump(mode="json")), ensure_ascii=False)
 
     return mcp
+
+
+def llms_txt(settings: Settings) -> str:
+    """A guide an agent reads before connecting (llms.txt, VRT-122): what
+    Veritium does, where its MCP server is and each tool, from the catalog."""
+    base = settings.public_api_base_url.rstrip("/")
+    tools = "\n".join(f"- {s.name} ({s.title}{'' if s.read_only else ', escribe'}): {s.description}" for s in exposed())
+    return (
+        "# Veritium\n\n"
+        "> Decisión documental: revisa los documentos de un expediente y dice qué debe hacer el proceso, con evidencia.\n\n"
+        f"Servidor MCP: {base}/mcp (Streamable HTTP, OAuth 2.1; metadatos en {base}/.well-known/oauth-protected-resource/mcp). "
+        f"Agente A2A: {base}/.well-known/agent-card.json.\n\n"
+        f"## Cómo usarlo\n\n{INSTRUCTIONS}\n\n## Herramientas\n\n{tools}\n\n"
+        "Cada error dice qué hacer después; repetir la misma llamada sin cambiarla devuelve el mismo error.\n"
+    )
 
 
 def app(mcp: MCPServer, settings: Settings) -> Starlette:

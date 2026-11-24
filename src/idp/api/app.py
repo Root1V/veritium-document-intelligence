@@ -9,7 +9,7 @@ from contextlib import asynccontextmanager
 from a2a.server.routes import add_a2a_routes_to_fastapi
 import argus
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, PlainTextResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from opentelemetry import trace
@@ -132,6 +132,10 @@ def create_app() -> FastAPI:
     @app.get("/health")
     async def health() -> dict:
         return {"status": "ok"}
+
+    @app.get("/llms.txt", include_in_schema=False, response_class=PlainTextResponse)
+    async def llms() -> str:  # for agents that connect to Veritium (VRT-122)
+        return mcp_server.llms_txt(settings)
 
     app.state.mcp = mcp  # the tool catalog's MCP descriptors (VRT-53)
     # A2A (VRT-52): its Agent Card and signing key at the root, the protocol under /a2a.

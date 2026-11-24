@@ -134,6 +134,14 @@ async def test_an_agent_uses_veritium_through_mcp(live_settings, server, other_u
             denied = _result(await _rpc(client, reader, "tools/call", {"name": "submit_case", "arguments": {"profile": "convenios", "documents": [document]}}, name="submit_case"))
             assert denied["isError"] and "rol" in denied["content"][0]["text"]
 
+            # Each error says what to do next (VRT-122).
+            unknown = _result(await _rpc(client, writer, "tools/call", {"name": "submit_case", "arguments": {"profile": "no-existe", "documents": [document]}}, name="submit_case"))
+            assert unknown["isError"] and "list_processes" in unknown["content"][0]["text"], unknown
+            by_code = _result(await _rpc(client, reader, "tools/call", {"name": "get_case_status", "arguments": {"case_id": "EXP-123"}}, name="get_case_status"))
+            assert by_code["isError"] and "find_cases(external_ref=" in by_code["content"][0]["text"]
+            guide = await client.get("/llms.txt")
+            assert guide.status_code == 200 and all(f"- {s.name} (" in guide.text for s in exposed()) and "/mcp" in guide.text
+
             # With the Tasks extension: a task handle, then polling until the verdict.
             args = {"profile": "convenios", "external_ref": ref, "process_data": {"nacionalidad": "PE"}, "documents": [document], "request_id": f"{ref}-1"}
             created = _result(await _rpc(client, writer, "tools/call", {"name": "submit_case", "arguments": args}, name="submit_case", tasks=True))

@@ -451,7 +451,7 @@ Método, mediciones y aprendizajes: [eficiencia-modelos-ia.md](eficiencia-modelo
 - **Medido el 2026-10-10, sin construir:** de 188 documentos, 16 quedaron "genéricos", pero fue porque se clasificaron antes de existir su tipo. Reclasificados hoy con una sola llamada, 10 de 10 salen bien (el único genérico real sigue genérico). La confianza no sirve de señal de escalamiento: siempre ≥ 0,8. Se reabre si las suites muestran errores de clasificación.
 
 ## VRT-122 — MCP fácil para otros agentes
-**Why:** un agente de otro equipo descubre y usa mejor las herramientas con una guía legible y errores que le dicen qué hacer (LandingAI, *agent-centered design*). **Scope:** `llms.txt` del servidor MCP y errores con la pista para recuperarse. Fuera: herramientas nuevas.
+**Why:** un agente de otro equipo descubre y usa mejor las herramientas con una guía legible y errores que le dicen qué hacer (LandingAI, *agent-centered design*). **Scope:** `/llms.txt` con el flujo, la dirección del MCP y cada herramienta del catálogo; los errores dicen qué hacer después (expediente por su código → `find_cases`; proceso desconocido → `list_processes`, que antes salía como error interno). Fuera: herramientas nuevas.
 
 ## F7 — Hardening y producción
 
