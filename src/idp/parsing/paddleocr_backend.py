@@ -21,7 +21,7 @@ from paddleocr import LayoutDetection, PaddleOCR  # noqa: E402
 from idp.config import Settings
 from idp.parsing.normalize import ParsedBlock, ParsedDocument, load_pages, page_to_b64
 
-_LAYOUT_TYPES = {"table", "figure", "chart", "title"}
+_LAYOUT_TYPES = {"table", "figure", "chart", "title", "seal"}  # seal: VRT-118
 
 
 class PaddleOCRBackend:

@@ -25,6 +25,7 @@ from pydantic import BaseModel, Field, create_model, model_validator
 from pydantic.fields import FieldInfo
 from pydantic_core import PydanticUndefined
 
+from idp.domain.attestation import Attestations
 from idp.domain.envelope import Extracted, Read, Unreadable
 from idp.domain.machine_readable_zone import MachineReadableZone
 
@@ -150,6 +151,7 @@ def _compile(definition_json: str, for_agent: bool = False) -> type[BaseModel]:
     extra: dict[str, Any] = {"unreadable_fields": (list[Unreadable], Field(default_factory=list, description=_UNREADABLE))}
     if not for_agent:  # read by the platform from the OCR text, never written by the agent (VRT-116)
         extra["machine_readable_zones"] = (list[MachineReadableZone], Field(default_factory=list))
+        extra["attestations"] = (Attestations | None, Field(default=None))  # signed, sealed (VRT-118)
     return create_model(model.__name__, __base__=model, __doc__=model.__doc__, **extra)
 
 

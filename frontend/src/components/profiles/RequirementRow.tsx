@@ -84,7 +84,7 @@ export function RequirementRow({ index, item, library, onChange, onRemove }: {
                 aria-checked={byType === value}
                 onClick={() =>
                   byType !== value &&
-                  onChange(value ? { ...item, document_type: '', requires_attributes: [], accepted_document_types: null } : { ...item, document_type: null, requires_attributes: [''] })
+                  onChange(value ? { ...item, document_type: '', requires_attributes: [], accepted_document_types: null } : { ...item, document_type: null, requires_attributes: [''], must_be_signed: false, must_be_sealed: false })
                 }
                 className={cn(
                   'inline-flex items-center gap-1.5 rounded px-2.5 py-1 text-xs font-medium transition-colors',
@@ -117,6 +117,21 @@ export function RequirementRow({ index, item, library, onChange, onRemove }: {
             </>
           )}
         </div>
+
+        {byType && (
+          <div className="flex flex-wrap items-center gap-4 text-xs">
+            {/* VRT-118: what the document must carry besides being there. */}
+            <label className="inline-flex items-center gap-1.5">
+              <input type="checkbox" checked={item.must_be_signed ?? false} onChange={(e) => onChange({ ...item, must_be_signed: e.target.checked })} /> Debe estar firmado
+            </label>
+            <label className="inline-flex items-center gap-1.5">
+              <input type="checkbox" checked={item.must_be_sealed ?? false} onChange={(e) => onChange({ ...item, must_be_sealed: e.target.checked })} /> Debe estar sellado
+            </label>
+            {(item.must_be_signed || item.must_be_sealed) && (
+              <span className="text-muted-foreground">Si llega sin {item.must_be_signed && item.must_be_sealed ? 'firma o sello' : item.must_be_signed ? 'firma' : 'sello'}, se pide al cliente.</span>
+            )}
+          </div>
+        )}
 
         {!byType && attribute && (
           <p className={cn('text-xs', providers.length ? 'text-muted-foreground' : 'text-amber-700 dark:text-amber-400')}>

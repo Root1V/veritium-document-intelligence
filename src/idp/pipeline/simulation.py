@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from idp.config import Settings
 from idp.domain.calibration import Calibration, field_key
-from idp.domain.completeness import CaseDocument, evaluate_checklist
+from idp.domain.completeness import CaseDocument, attestations_of, evaluate_checklist
 from idp.domain.process_profile import ProcessProfileDefinition
 from idp.domain.request_payload import RequestInputPayload
 from idp.domain.simulation import difference
@@ -114,7 +114,7 @@ async def simulate_case(
     open_conditions = [
         OpenCondition(key=o.item.key, label=o.item.label, kind=o.condition_kind)
         for o in evaluate_checklist(
-            definition, [CaseDocument(document_id=d.id, document_type=d.document_type, status=d.status) for d in documents], view, case.request_input_payload or {}
+            definition, [CaseDocument(document_id=d.id, document_type=d.document_type, status=d.status, attestations=attestations_of(d.extraction.payload if d.extraction else None)) for d in documents], view, case.request_input_payload or {}
         )
         if o.applicable and not o.satisfied and o.item.key not in waived
     ]

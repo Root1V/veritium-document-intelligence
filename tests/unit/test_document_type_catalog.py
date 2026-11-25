@@ -37,6 +37,9 @@ def _without_unreadable(model) -> dict:
     # ... and the machine-readable lines the platform reads from the OCR text (VRT-116).
     assert schema["properties"].pop("machine_readable_zones")["items"] == {"$ref": "#/$defs/MachineReadableZone"}
     del schema["$defs"]["MachineReadableZone"]
+    # ... and whether it is signed or sealed (VRT-118).
+    schema["properties"].pop("attestations")
+    del schema["$defs"]["Attestations"]
     if not schema["$defs"]:
         del schema["$defs"]
     return schema

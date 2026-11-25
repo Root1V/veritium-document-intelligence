@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from idp.domain.completeness import CaseDocument, ChecklistOutcome, evaluate_checklist
+from idp.domain.completeness import CaseDocument, ChecklistOutcome, attestations_of, evaluate_checklist
 from idp.domain.process_profile import ProcessProfileDefinition
 from idp.domain.semantic_resolution import ConsolidatedView
 from idp.domain.verdict import CaseVerdict, FindingInput, OpenCondition, VerdictInputs, decide
@@ -66,7 +66,8 @@ async def refresh_conditions(
     if definition is None or not definition.checklist:
         return
     documents = [
-        CaseDocument(document_id=d.id, document_type=d.document_type, status=d.status) for d in await DocumentRepository(session).list_for_case(case.id)
+        CaseDocument(document_id=d.id, document_type=d.document_type, status=d.status, attestations=attestations_of(d.extraction.payload if d.extraction else None))
+        for d in await DocumentRepository(session).list_for_case(case.id)
     ]
     repo = CaseConditionRepository(session)
     latest = await repo.latest_by_key(case.id)

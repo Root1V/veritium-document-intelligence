@@ -531,7 +531,7 @@ class CaseCondition(TenantScoped, Base):
     case_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("cases.id", ondelete="CASCADE"), nullable=False)
     key: Mapped[str] = mapped_column(String(64), nullable=False)  # the checklist item key
     label: Mapped[str] = mapped_column(Text, nullable=False)
-    kind: Mapped[str] = mapped_column(String(32), nullable=False)  # missing_document | missing_evidence | unreadable_evidence (VRT-112)
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)  # missing_document | missing_evidence | unreadable_evidence (VRT-112) | unsigned_document | unsealed_document | unchecked_signature (VRT-118)
     document_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
     attributes: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     role: Mapped[str | None] = mapped_column(String(32), nullable=True)

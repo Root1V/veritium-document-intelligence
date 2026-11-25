@@ -366,7 +366,11 @@ Método, mediciones y aprendizajes: [eficiencia-modelos-ia.md](eficiencia-modelo
 - Medido el 2026-11-24 (2 corridas por variante, intercaladas, contando solo los documentos sin error de prometheus): 93 % con ubicaciones frente a 90 % sin ellas, con ~5 % más de tokens de entrada. Este banco ya está en 90–98 % y no muestra una ganancia clara: la referencia es DocVQA.
 
 ## VRT-118 — Firmas, sellos y casillas
-**Why:** en banca «la carta de autorización debe estar firmada» es un requisito habitual y hoy no se comprueba; LandingAI los trata como elementos propios. **Scope:** detectar firmado, sellado y casillas marcadas con su ubicación (el layout de Paddle ya trae sellos), y que un proceso pueda exigirlo. Fuera: verificar que la firma sea de quien dice.
+**Why:** en banca «la carta de autorización debe estar firmada» es un requisito habitual y hoy no se comprueba; LandingAI los trata como elementos propios. **Scope:**
+- Un requisito por tipo de documento puede exigir «Debe estar firmado» o «Debe estar sellado». Si llega sin firma o sin sello, se pide al cliente; una firma que no se pudo comprobar la mira una persona.
+- El sello sale del layout de Paddle sin costo (0,92–0,93 en los dos documentos sellados del banco). La firma la mira el modelo de visión solo en los tipos que un proceso exige firmados, en las páginas que mencionan una firma o en la última.
+- Medido el 2026-11-25: la carta de autorización real queda firmada y el proceso continúa; con la firma tapada queda «Sin firma» y se devuelve al cliente.
+- Fuera: casillas marcadas (el layout no las detecta) y verificar que la firma sea de quien dice.
 
 ## VRT-119 — Otros nombres y formato de cada dato
 **Why:** «N° de reclamo», «Ref.» y «EOB» son el mismo dato; cuando un emisor cambia su plantilla, la extracción falla en silencio (LandingAI, *schemas drift*). **Scope:** sinónimos y formato por dato del tipo, que llegan al agente; una acción para revisar el tipo con documentos nuevos, partiendo de una muestra variada. Fuera: crear tipos solos.

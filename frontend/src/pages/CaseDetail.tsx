@@ -57,12 +57,16 @@ function show(value: unknown): string {
   return typeof value === 'object' ? JSON.stringify(value) : String(value)
 }
 
+const CONDITION_SAID: Record<string, string> = { unreadable_evidence: 'No se lee', unsigned_document: 'Sin firma', unsealed_document: 'Sin sello', unchecked_signature: 'Comprobar la firma' }
+
 function ConditionRow({ caseId, condition, what }: { caseId: string; condition: CaseCondition; what: string }) {
   const waive = useWaiveCondition()
   const [reason, setReason] = useState('')
   const [open, setOpen] = useState(false)
   const missing = condition.status === 'open'
   const unreadable = condition.kind === 'unreadable_evidence'
+  // VRT-118: the document is there without the signature or seal the process asks for.
+  const said = CONDITION_SAID[condition.kind] ?? 'Falta'
   return (
     <div className="flex flex-col gap-2 px-4 py-2.5 text-sm">
       <div className="flex flex-wrap items-center gap-2">
@@ -74,7 +78,7 @@ function ConditionRow({ caseId, condition, what }: { caseId: string; condition: 
         <span className="flex min-w-0 flex-1 flex-col">
           <span className="font-medium">{condition.label}</span>
           <span className="text-xs text-muted-foreground">
-            {missing ? (unreadable ? 'No se lee' : 'Falta') : condition.status === 'waived' ? `Dispensado por ${condition.waived_by}: ${condition.waived_reason}` : 'Cumplido'} · {what}
+            {missing ? said : condition.status === 'waived' ? `Dispensado por ${condition.waived_by}: ${condition.waived_reason}` : 'Cumplido'} · {what}
           </span>
         </span>
         {missing && canExecute() && !open && (
@@ -481,8 +485,16 @@ export function CaseDetailPage() {
     findings.length && (findings.length === 1 ? '1 observación' : `${findings.length} observaciones`),
     toReview && (toReview === 1 ? '1 documento con datos por revisar' : `${toReview} documentos con datos por revisar`),
   ].filter(Boolean) as string[]
+  const conditionDoc = (c: CaseCondition) => typeName[c.document_type ?? ''] ?? c.document_type ?? 'el documento'
+  const attestation: Record<string, (c: CaseCondition) => string> = {
+    unsigned_document: (c) => `${conditionDoc(c)} llegó sin firma: pide al cliente que lo firme`,
+    unsealed_document: (c) => `${conditionDoc(c)} llegó sin sello: pide al cliente una copia sellada`,
+    unchecked_signature: (c) => `No se pudo comprobar si ${conditionDoc(c)} está firmado: míralo en el documento`,
+  }
   const conditionWhat = (c: CaseCondition) =>
-    c.kind === 'unreadable_evidence' && c.status === 'open'
+    c.status === 'open' && attestation[c.kind]
+      ? attestation[c.kind](c)
+      : c.kind === 'unreadable_evidence' && c.status === 'open'
       ? `Está en ${typeName[c.document_type ?? ''] ?? c.document_type ?? 'un documento'}${c.note ? ` (${c.note})` : ''}: pide al cliente una copia nítida de esa página`
       : c.kind === 'missing_evidence' || c.kind === 'unreadable_evidence' ? `Lo prueba cualquier documento con ${(c.attributes ?? []).join(', ').replace(/[a-z_]+\./g, '').replace(/_/g, ' ')}` : c.document_type ? (typeName[c.document_type] ?? c.document_type) : ''
   const investigationOf = Object.fromEntries((investigations ?? []).filter((i) => i.validation_issue_id).map((i) => [i.validation_issue_id!, i]))

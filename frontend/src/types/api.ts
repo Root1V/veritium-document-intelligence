@@ -516,6 +516,8 @@ export interface ChecklistItem {
   required: boolean
   required_when_cel?: string | null
   min_count: number
+  must_be_signed?: boolean // VRT-118
+  must_be_sealed?: boolean
 }
 
 export interface RuleBinding {

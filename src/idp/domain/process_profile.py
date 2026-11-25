@@ -48,6 +48,9 @@ class ChecklistItem(BaseModel):
         default=None, description="CEL sobre `request` (datos del proceso) y `case` (vista semántica). Si es falso, el requisito no aplica."
     )
     min_count: int = Field(default=1, ge=1)
+    # VRT-118: what the document must carry besides being there.
+    must_be_signed: bool = Field(default=False, description="El documento debe estar firmado (lo mira el modelo de visión).")
+    must_be_sealed: bool = Field(default=False, description="El documento debe estar sellado (lo detecta la lectura).")
 
     @model_validator(mode="after")
     def _one_kind(self) -> ChecklistItem:
@@ -56,6 +59,8 @@ class ChecklistItem(BaseModel):
             raise ValueError(f"requisito '{self.key}': debe ser por tipo de documento o por atributo, no ambos ni ninguno")
         if by_type and self.accepted_document_types is not None:
             raise ValueError(f"requisito '{self.key}': accepted_document_types solo aplica a requisitos por atributo")
+        if by_attribute and (self.must_be_signed or self.must_be_sealed):
+            raise ValueError(f"requisito '{self.key}': firma y sello se exigen a un tipo de documento, no a un dato")
         return self
 
 

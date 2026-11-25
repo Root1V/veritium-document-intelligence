@@ -27,6 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from idp.classification.classifier import needs_review as classification_needs_review
 from idp.config import Settings
+from idp.domain.attestation import attest
 from idp.domain.calibration import Calibration, field_key
 from idp.domain.document_type_catalog import GENERIC, DocumentTypeCatalog
 from idp.domain.envelope import Extracted
@@ -319,6 +320,12 @@ async def _classify_and_extract(
         await document_repo.mark_needs_review(document_id)
         await document_repo.set_status(document_id, "needs_review")
         return None
+
+    if "attestations" in type(outcome.schema_instance).model_fields:  # catalog types (VRT-118)
+        case = await CaseRepository(session).get(case_id)
+        definition = profile_definition(case) if case is not None else None
+        signed_types = {i.document_type for i in definition.checklist if i.must_be_signed} if definition is not None else set()
+        outcome.schema_instance.attestations = await attest(parsed, check_signature=classification.document_type in signed_types)  # type: ignore[attr-defined]
 
     await extraction_repo.save(
         document_id=document_id,
