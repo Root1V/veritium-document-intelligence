@@ -381,6 +381,7 @@ Método, mediciones y aprendizajes: [eficiencia-modelos-ia.md](eficiencia-modelo
 
 ## VRT-120 — Tablas con celdas combinadas
 **Why:** las tablas con celdas combinadas llegan como texto suelto y el agente desordena filas. **Scope:** la tabla como HTML con celdas combinadas y la ubicación de cada celda. Fuera: tablas que cruzan páginas.
+- Medido el 2026-11-25 con SLANet_plus (7,7 MB): en una cuadrícula limpia sale bien, una cuota por fila con sus columnas; en la boleta y en una página escaneada torcida junta varias filas en una celda y separa los montos de sus conceptos, que es lo que la tabla debía ordenar. No se usa así. Lo siguiente sería el modelo grande de Paddle (clasificador de tabla 7 MB + celdas 124 MB + estructura 349 MB).
 
 ## F5 — Canales
 
