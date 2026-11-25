@@ -83,8 +83,8 @@ Estados: `done` · `todo` · `blocked` (espera a otro equipo) · `superseded` (a
 | VRT-115 | Lectura dudosa de una zona | done | Un dato leído de una zona que el OCR leyó con poca seguridad va a revisión; el inicio avisa si un tipo empieza a leerse peor. |
 | VRT-116 | Dígitos de control de la zona de lectura automática | done | En carnés de extranjería y pasaportes, los dígitos de control de la línea con «<» confirman número, fechas y que se leyó bien. |
 | VRT-117 | El agente ve dónde está cada zona | done | La lista de zonas que recibe el agente dice su página y su ubicación, no solo su texto. |
-| VRT-118 | Firmas, sellos y casillas | todo | Se detecta si un documento está firmado o sellado y qué casillas están marcadas; el proceso puede exigirlo. |
-| VRT-119 | Otros nombres y formato de cada dato | todo | Cada dato del tipo dice con qué otros nombres aparece y su formato; un tipo se revisa con documentos nuevos. |
+| VRT-118 | Firmas, sellos y casillas | done | Se detecta si un documento está firmado o sellado y qué casillas están marcadas; el proceso puede exigirlo. |
+| VRT-119 | Otros nombres y formato de cada dato | done | Cada dato del tipo dice con qué otros nombres aparece y su formato; un tipo se revisa con documentos nuevos. |
 | VRT-120 | Tablas con celdas combinadas | todo | Las tablas llegan al agente con sus celdas combinadas y cada celda con su ubicación. |
 
 ## F5 — Canales
