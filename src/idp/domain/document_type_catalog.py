@@ -21,7 +21,7 @@ import typing
 from functools import lru_cache
 from typing import Any, Literal, Union
 
-from pydantic import BaseModel, Field, create_model, model_validator
+from pydantic import BaseModel, Field, create_model, field_validator, model_validator
 from pydantic.fields import FieldInfo
 from pydantic_core import PydanticUndefined
 
@@ -48,6 +48,11 @@ class FieldSpec(BaseModel):
     # How a person reads it, in Spanish ('DNI del socio'): shown, never sent to
     # the model nor part of the version — it changes without one (VRT-88).
     label: str | None = None
+    # VRT-119: how issuers print its label when it is not the usual one ('N° de
+    # reclamo', 'Ref.'), and the shape of its value ('8 dígitos'): when a
+    # template changes, the agent still finds it. Sent to the model.
+    aliases: list[str] = []
+    format: str | None = None
     enum_values: list[str] | None = None
     # False: a plain value (e.g. a label the model names), not an
     # Extracted[T] with page/bbox/confidence.
@@ -56,6 +61,11 @@ class FieldSpec(BaseModel):
     item_name: str | None = None
     item_description: str | None = None
     items: list[FieldSpec] | None = None
+
+    @field_validator("aliases")
+    @classmethod
+    def _clean_aliases(cls, value: list[str]) -> list[str]:
+        return list(dict.fromkeys(a.strip() for a in value if a.strip()))
 
     @model_validator(mode="after")
     def _shape(self) -> FieldSpec:
@@ -101,6 +111,7 @@ class DocumentTypeDefinition(BaseModel):
     def content_hash(self) -> str:
         # Labels are what people read, not what is extracted: renaming one is not a new version.
         dumped = self.model_dump(mode="json", exclude={"fields": {"__all__": {"label": True, "items": {"__all__": {"label"}}}}})
+        _without_unset_hints(dumped["fields"])  # a version published before VRT-119 keeps its hash
         canonical = json.dumps(dumped, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
         return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
@@ -124,6 +135,25 @@ def _unique(names: list[str], what: str) -> None:
 # --- compile: definition -> Pydantic model --------------------------------
 
 
+def _without_unset_hints(fields: list[dict]) -> None:
+    for f in fields:
+        if not f.get("aliases"):
+            f.pop("aliases", None)
+        if f.get("format") is None:
+            f.pop("format", None)
+        _without_unset_hints(f.get("items") or [])
+
+
+def described(spec: FieldSpec) -> str | None:
+    """What the model reads about a field: its meaning, the other ways its label is printed and its format (VRT-119)."""
+    parts = [spec.description] if spec.description else []
+    if spec.aliases:
+        parts.append("Also printed as: " + ", ".join(f"'{a}'" for a in spec.aliases) + ".")
+    if spec.format:
+        parts.append(f"Format: {spec.format}.")
+    return " ".join(parts) or None
+
+
 def _value_type(spec: FieldSpec) -> Any:
     return Literal[tuple(spec.enum_values or ())] if spec.type == "enum" else _PY_TYPES[spec.type]
 
@@ -137,9 +167,9 @@ def _model(name: str, doc: str | None, specs: list[FieldSpec], envelope: type[Ba
             continue
         value = envelope[_value_type(spec)] if spec.grounded else _value_type(spec)  # type: ignore[index]
         if spec.required:
-            fields[spec.name] = (value, Field(description=spec.description))
+            fields[spec.name] = (value, Field(description=described(spec)))
         else:
-            fields[spec.name] = (value | None, Field(default=None, description=spec.description))
+            fields[spec.name] = (value | None, Field(default=None, description=described(spec)))
     return create_model(name, __doc__=doc, **fields)
 
 

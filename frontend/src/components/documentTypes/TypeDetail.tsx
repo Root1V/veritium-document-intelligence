@@ -2,7 +2,7 @@
 // format and what it means in the data catalog; the platform team names the
 // fields here without publishing a new version.
 import { useState } from 'react'
-import { CornerDownRight, FileText, Loader2, Pencil } from 'lucide-react'
+import { CornerDownRight, FileText, Loader2, Pencil, ScanSearch } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input'
 import { errorDetail } from '@/lib/apiErrors'
 import { isPlatformAdmin } from '@/lib/auth'
 import { fieldName, flatten, formatOf, meaningOf } from '@/lib/documentTypes'
-import { useSetFieldLabels } from '@/lib/queries'
+import { useAddFieldAliases, useLabelSuggestions, useSetFieldLabels } from '@/lib/queries'
 import { cn } from '@/lib/utils'
 import type { DocumentTypeInfo, SemanticCatalog } from '@/types/api'
 
@@ -24,6 +24,27 @@ export function TypeDetail({ type, catalog, usedBy, onClose }: {
   const [editing, setEditing] = useState<Record<string, string> | null>(null)
   const save = useSetFieldLabels()
   const meaningful = rows.filter((r) => meaningOf(catalog, type.name, r.path)).length
+  // VRT-119: the names its fields go by in the unit's recent documents.
+  const [reviewing, setReviewing] = useState(false)
+  const suggestions = useLabelSuggestions(type.name, reviewing)
+  const [skipped, setSkipped] = useState<Set<string>>(new Set())
+  const addAliases = useAddFieldAliases()
+  const chosen = (suggestions.data ?? []).filter((s) => !skipped.has(`${s.field}|${s.label}`))
+
+  function handleAddAliases() {
+    const aliases: Record<string, string[]> = {}
+    for (const s of chosen) (aliases[s.field] ??= []).push(s.label)
+    addAliases.mutate(
+      { key: type.name, aliases },
+      {
+        onSuccess: (v) => {
+          toast.success(`Publicada la versión ${v.version}: Veritium ya busca esos datos también con esos nombres.`)
+          setReviewing(false)
+        },
+        onError: (e) => toast.error(errorDetail(e)),
+      },
+    )
+  }
 
   function handleSave() {
     if (!editing) return
@@ -63,6 +84,39 @@ export function TypeDetail({ type, catalog, usedBy, onClose }: {
           <span className="rounded-full bg-muted px-2.5 py-1">{usedBy.length ? `Lo piden: ${usedBy.join(', ')}` : 'Ningún proceso lo pide'}</span>
         </div>
 
+        {reviewing && (
+          <div className="flex flex-col gap-2 rounded-lg border bg-muted/30 p-3 text-sm">
+            {suggestions.isLoading ? (
+              <span className="flex items-center gap-2 text-muted-foreground"><Loader2 className="size-3.5 animate-spin" /> Revisando los documentos recientes…</span>
+            ) : !suggestions.data?.length ? (
+              <span className="text-muted-foreground">En los documentos recientes sus datos aparecen con los nombres que ya conoce.</span>
+            ) : (
+              <>
+                <span className="text-muted-foreground">En los documentos recientes, estos datos aparecen con otros nombres. Agregarlos ayuda cuando un emisor cambia su formato.</span>
+                {suggestions.data.map((s) => {
+                  const id = `${s.field}|${s.label}`
+                  const field = rows.find((r) => r.path === s.field)?.field
+                  return (
+                    <label key={id} className="flex items-center gap-2">
+                      <input type="checkbox" checked={!skipped.has(id)} onChange={() => setSkipped((prev) => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next })} />
+                      <span>
+                        <strong>{field ? fieldName(field) : s.field}</strong> aparece como «{s.label}»
+                        <span className="text-xs text-muted-foreground"> · en {s.documents} documentos</span>
+                      </span>
+                    </label>
+                  )
+                })}
+                <div className="flex gap-2">
+                  <Button size="sm" onClick={handleAddAliases} disabled={!chosen.length || addAliases.isPending}>
+                    {addAliases.isPending && <Loader2 className="size-3.5 animate-spin" />} Agregar {chosen.length === 1 ? '1 nombre' : `${chosen.length} nombres`} y publicar la versión {type.version + 1}
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => setReviewing(false)}>Cancelar</Button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
         <div className="flex items-center justify-between gap-2">
           <h3 className="text-sm font-semibold">Datos que lee</h3>
           {isPlatformAdmin() &&
@@ -76,9 +130,14 @@ export function TypeDetail({ type, catalog, usedBy, onClose }: {
                 </Button>
               </div>
             ) : (
-              <Button size="sm" variant="outline" onClick={() => setEditing(Object.fromEntries(rows.map((r) => [r.path, fieldName(r.field)])))}>
-                <Pencil className="size-3.5" /> Editar nombres
-              </Button>
+              <div className="flex gap-2">
+                <Button size="sm" variant="outline" onClick={() => setReviewing(true)} disabled={reviewing}>
+                  <ScanSearch className="size-3.5" /> Revisar con documentos recientes
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => setEditing(Object.fromEntries(rows.map((r) => [r.path, fieldName(r.field)])))}>
+                  <Pencil className="size-3.5" /> Editar nombres
+                </Button>
+              </div>
             ))}
         </div>
 
@@ -114,6 +173,11 @@ export function TypeDetail({ type, catalog, usedBy, onClose }: {
                             </span>
                           )}
                           {field.description && <span className="text-xs text-muted-foreground">{field.description}</span>}
+                          {(field.aliases?.length || field.format) && (
+                            <span className="text-xs text-muted-foreground">
+                              {field.aliases?.length ? `También aparece como: ${field.aliases.map((a) => `«${a}»`).join(', ')}.` : ''} {field.format ? `Formato: ${field.format}.` : ''}
+                            </span>
+                          )}
                         </div>
                       </div>
                     </td>

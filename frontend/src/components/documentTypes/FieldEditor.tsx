@@ -94,6 +94,26 @@ export function FieldEditor({ field, meanings, onChange, onRemove, onToggleMeani
             placeholder="Qué es y dónde aparece en el documento. Es lo que lee Veritium para encontrarlo."
             className="min-h-16 text-xs"
           />
+          {field.type !== 'list' && (
+            <div className="grid gap-2 sm:grid-cols-2">
+              {/* VRT-119: when an issuer changes its template, Veritium still finds the data. */}
+              <Input
+                value={(field.aliases ?? []).join(', ')}
+                onChange={(e) => onChange({ ...field, aliases: e.target.value.split(',').map((v) => v.trimStart()).filter((v, i, all) => v || i === all.length - 1) })}
+                onBlur={() => onChange({ ...field, aliases: (field.aliases ?? []).map((v) => v.trim()).filter(Boolean) })}
+                placeholder="Otros nombres con que aparece, p. ej. N° de reclamo, Ref."
+                aria-label="Otros nombres con que aparece"
+                className="h-8 text-xs"
+              />
+              <Input
+                value={field.format ?? ''}
+                onChange={(e) => onChange({ ...field, format: e.target.value || null })}
+                placeholder="Formato, p. ej. 8 dígitos o DD/MM/AAAA"
+                aria-label="Formato"
+                className="h-8 text-xs"
+              />
+            </div>
+          )}
           {field.type === 'enum' && (
             <Input
               value={(field.enum_values ?? []).join(', ')}

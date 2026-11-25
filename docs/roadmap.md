@@ -373,7 +373,11 @@ Método, mediciones y aprendizajes: [eficiencia-modelos-ia.md](eficiencia-modelo
 - Fuera: casillas marcadas (el layout no las detecta) y verificar que la firma sea de quien dice.
 
 ## VRT-119 — Otros nombres y formato de cada dato
-**Why:** «N° de reclamo», «Ref.» y «EOB» son el mismo dato; cuando un emisor cambia su plantilla, la extracción falla en silencio (LandingAI, *schemas drift*). **Scope:** sinónimos y formato por dato del tipo, que llegan al agente; una acción para revisar el tipo con documentos nuevos, partiendo de una muestra variada. Fuera: crear tipos solos.
+**Why:** «N° de reclamo», «Ref.» y «EOB» son el mismo dato; cuando un emisor cambia su plantilla, la extracción falla en silencio (LandingAI, *schemas drift*). **Scope:**
+- Cada dato del tipo puede tener otros nombres y un formato; el agente los lee junto a su descripción. Una versión sin ellos conserva su huella.
+- «Revisar con documentos recientes» busca, sin modelo, la etiqueta impresa junto a cada valor en los últimos documentos de la unidad, y sugiere las que aparecen en al menos dos y el dato no conoce. Aceptarlas publica la versión siguiente.
+- Medido el 2026-11-25 con las boletas de la unidad: sugiere «LIQ S/», «TOTAL INGRESOS», «ING», «TOTAL DESCUENTOS», «FP». No mira las columnas de las listas: junto a cada fila está su nombre, no el de la columna.
+- Fuera: crear tipos solos y validar el formato con reglas.
 
 ## VRT-120 — Tablas con celdas combinadas
 **Why:** las tablas con celdas combinadas llegan como texto suelto y el agente desordena filas. **Scope:** la tabla como HTML con celdas combinadas y la ubicación de cada celda. Fuera: tablas que cruzan páginas.

@@ -169,6 +169,8 @@ export interface DocumentTypeFieldInfo {
   field_type: string
   description: string | null
   required: boolean
+  aliases?: string[] // VRT-119
+  format?: string | null
   items?: DocumentTypeFieldInfo[] | null
 }
 
@@ -398,6 +400,8 @@ export interface FieldSpec {
   type: FieldSpecType
   required: boolean
   description: string | null
+  aliases?: string[] // VRT-119: other ways its label is printed
+  format?: string | null
   enum_values?: string[] | null
   grounded?: boolean
   item_name?: string | null

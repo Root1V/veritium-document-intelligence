@@ -40,8 +40,10 @@ from idp.config import Settings
 from idp.domain.document_type_catalog import DocumentTypeDefinition, FieldSpec, compile_schema
 from idp.domain.semantic import FieldMapping, SemanticCatalog
 from idp.persistence import tenancy
-from idp.persistence.models import Document, DocumentTypeRecord, DocumentTypeVersion, ProcessProfileVersion, SemanticCatalogVersion, User
+from idp.persistence.models import Document, DocumentTypeRecord, Extraction, DocumentTypeVersion, ProcessProfileVersion, SemanticCatalogVersion, User
 from idp.persistence.repositories import DocumentRepository, DocumentTypeRepository, SemanticCatalogRepository, TypeSuggestionRepository
+from idp.extraction.label_suggestions import LabelSuggestion, suggest_labels
+from idp.parsing.store import load_parsed
 from idp.pipeline.orchestrator import parse_example
 from idp.storage.object_store import S3ObjectStore
 
@@ -58,6 +60,8 @@ class FieldInfo(BaseModel):
     field_type: str
     description: str | None
     required: bool
+    aliases: list[str] = []  # VRT-119
+    format: str | None = None
     items: list[FieldInfo] | None = None
 
 
@@ -96,6 +100,8 @@ def _field_info(spec: FieldSpec) -> FieldInfo:
         field_type=kind,
         description=spec.description,
         required=spec.required,
+        aliases=spec.aliases,
+        format=spec.format,
         items=[_field_info(i) for i in spec.items] if spec.items else None,
     )
 
@@ -460,3 +466,61 @@ async def register_document_type(
     await session.commit()  # the suggestion's resolution is only flushed
     return _detail(await _type_or_404(repo, definition.key), row)
 
+
+
+_QUOTED = re.compile(r"'([^']{2,60})'")
+
+
+@admin_router.get("/{key}/label-suggestions", response_model=list[LabelSuggestion], dependencies=[Depends(require_platform("admin"))])
+async def label_suggestions(
+    key: str,
+    documents: int = 30,
+    session: AsyncSession = Depends(get_db_session),
+    object_store: S3ObjectStore = Depends(get_object_store),
+) -> list[LabelSuggestion]:
+    """Other names the type's fields are printed under in its recent documents
+    of this unit (VRT-119): what to add so a changed template is still read."""
+    current = (await DocumentTypeRepository(session).load_catalog()).current(key)
+    if current is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"no existe el tipo '{key}'")
+    known = {f.name: [*f.aliases, *(_QUOTED.findall(f.description or "")), f.label or ""] for f in current[1].fields}
+    rows = (await session.execute(
+        select(Document.storage_key, Extraction.payload)
+        .join(Extraction, Extraction.document_id == Document.id)
+        .where(Document.document_type == key)
+        .order_by(Document.created_at.desc())
+        .limit(max(1, min(documents, 100)))
+    )).all()
+    readings = []
+    for storage_key, payload in rows:
+        if (parsed := await asyncio.to_thread(load_parsed, object_store, storage_key)) is not None:
+            readings.append((payload, parsed))
+    return suggest_labels(readings, known)
+
+
+class AliasesRequest(BaseModel):
+    aliases: dict[str, list[str]] = Field(description="Por campo de primer nivel, los nombres que se agregan a los que ya tiene.")
+
+
+@admin_router.post("/{key}/aliases", response_model=TypeVersionDetail, dependencies=[Depends(require_platform("admin"))])
+async def add_field_aliases(
+    key: str, body: AliasesRequest, session: AsyncSession = Depends(get_db_session), user: User = Depends(require_platform("admin"))
+) -> TypeVersionDetail:
+    """Adds other names to fields and publishes it as the type's next version
+    (VRT-119): unlike a label, the model reads them, so it is a new version."""
+    repo = DocumentTypeRepository(session)
+    record = await _type_or_404(repo, key)
+    published = [v for v in record.versions if v.status == "published"]
+    if not published:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="el tipo no tiene una versión publicada")
+    definition = DocumentTypeDefinition.model_validate(max(published, key=lambda v: v.version).definition)
+    unknown = sorted(set(body.aliases) - {f.name for f in definition.fields})
+    if unknown:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=[f"el tipo no tiene el campo '{p}'" for p in unknown])
+    fields = [f.model_copy(update={"aliases": FieldSpec.model_validate({**f.model_dump(), "aliases": [*f.aliases, *body.aliases.get(f.name, [])]}).aliases}) for f in definition.fields]
+    changed = definition.model_copy(update={"fields": fields})
+    if changed.content_hash() == definition.content_hash():
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="esos nombres ya estaban")
+    _compiles(changed)
+    row = await repo.create_draft(record, changed, created_by=user.email)
+    return _detail(await _type_or_404(repo, key), await repo.set_status(row, status="published", actor=user.email))

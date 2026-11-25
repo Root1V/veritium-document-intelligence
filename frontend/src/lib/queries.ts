@@ -348,6 +348,25 @@ export function useProposeDocumentType() {
   })
 }
 
+/** Other names its fields are printed under in the unit's recent documents (VRT-119). */
+export function useLabelSuggestions(key: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ['document-types', key, 'label-suggestions'],
+    queryFn: async () => (await apiClient.get<{ field: string; label: string; documents: number }[]>(`/v1/document-types/${key}/label-suggestions`)).data,
+    enabled,
+  })
+}
+
+/** Adds them to the fields: the model reads them, so it publishes the type's next version (VRT-119). */
+export function useAddFieldAliases() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ key, aliases }: { key: string; aliases: Record<string, string[]> }) =>
+      (await apiClient.post<{ version: number }>(`/v1/document-types/${key}/aliases`, { aliases })).data,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['document-types'] }),
+  })
+}
+
 /** How people read the fields of a published type; no new version (VRT-88). */
 export function useSetFieldLabels() {
   const queryClient = useQueryClient()

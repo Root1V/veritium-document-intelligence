@@ -60,6 +60,15 @@ async def test_register_publishes_the_type_and_its_mappings_and_a_rejection_leav
             again = await client.post("/v1/document-types/registrations", headers=headers, json={"definition": _definition(key), "mappings": []})
             assert again.status_code == 409
 
+            # Other names a field is printed under (VRT-119): the model reads them, so they publish v2.
+            named = await client.post(f"/v1/document-types/{key}/aliases", headers=headers, json={"aliases": {"holder_dni": ["N° de documento"]}})
+            assert named.status_code == 200, named.text
+            assert named.json()["version"] == 2 and named.json()["status"] == "published"
+            listed = next(t for t in (await client.get("/document-types", headers=headers)).json()["registered"] if t["name"] == key)
+            assert (listed["version"], listed["fields"][0]["aliases"]) == (2, ["N° de documento"])
+            assert (await client.post(f"/v1/document-types/{key}/aliases", headers=headers, json={"aliases": {"holder_dni": ["N° de documento"]}})).status_code == 409
+            assert (await client.get(f"/v1/document-types/{key}/label-suggestions", headers=headers)).json() == [], "no documents of it yet"
+
         async with factory() as session:
             assert await session.scalar(select(DocumentTypeRecord).where(DocumentTypeRecord.key == rejected_key)) is None
             latest = await session.scalar(select(SemanticCatalogVersion).order_by(SemanticCatalogVersion.version.desc()).limit(1))
