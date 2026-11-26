@@ -86,7 +86,7 @@ Estados: `done` · `todo` · `blocked` (espera a otro equipo) · `superseded` (a
 | VRT-118 | Firmas, sellos y casillas | done | Se detecta si un documento está firmado o sellado y qué casillas están marcadas; el proceso puede exigirlo. |
 | VRT-119 | Otros nombres y formato de cada dato | done | Cada dato del tipo dice con qué otros nombres aparece y su formato; un tipo se revisa con documentos nuevos. |
 | VRT-120 | Tablas con celdas combinadas | done | Las tablas llegan al agente con sus celdas combinadas y cada celda con su ubicación. |
-| VRT-123 | Leer formularios | todo | En un formulario escaneado, cada etiqueta con su recuadro y las casillas marcadas, aunque el layout lo vea como imagen. |
+| VRT-123 | Leer formularios | superseded | Ya lo cubre VRT-113: lo que el OCR no alcanza (casillas, letra a mano) lo mira el agente con visión; un dato nuevo se agrega al tipo. |
 
 ## F5 — Canales
 
