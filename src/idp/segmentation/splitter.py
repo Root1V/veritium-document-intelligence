@@ -70,7 +70,7 @@ treat both as part of ONE single segment. Write each reasoning in Spanish.""")
 def _page_excerpts(parsed: ParsedDocument, max_chars_per_page: int = 6000) -> str:
     lines = []
     for page in range(parsed.page_count):
-        page_text = " | ".join(b.text for b in parsed.blocks if b.page == page and b.text.strip())
+        page_text = " | ".join(b.text for b in parsed.blocks if b.page == page and b.read and b.text.strip())
         lines.append(f"--- Page {page} ---\n{page_text[:max_chars_per_page]}")
     return "\n\n".join(lines)
 

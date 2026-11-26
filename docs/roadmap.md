@@ -381,7 +381,14 @@ Método, mediciones y aprendizajes: [eficiencia-modelos-ia.md](eficiencia-modelo
 
 ## VRT-120 — Tablas con celdas combinadas
 **Why:** las tablas con celdas combinadas llegan como texto suelto y el agente desordena filas. **Scope:** la tabla como HTML con celdas combinadas y la ubicación de cada celda. Fuera: tablas que cruzan páginas.
-- Medido el 2026-11-25 con SLANet_plus (7,7 MB): en una cuadrícula limpia sale bien, una cuota por fila con sus columnas; en la boleta y en una página escaneada torcida junta varias filas en una celda y separa los montos de sus conceptos, que es lo que la tabla debía ordenar. No se usa así. Lo siguiente sería el modelo grande de Paddle (clasificador de tabla 7 MB + celdas 124 MB + estructura 349 MB).
+- Medido el 2026-11-25 en los 11 documentos (28 páginas, 34 tablas detectadas) con SLANet_plus (7,7 MB): las tablas con líneas salen perfectas y las impresas sin líneas casi todas bien; fallan la boleta densa (20 de 56 celdas mezclan filas) y una foto del cronograma con marcas a mano (una cuota por celda). Se usa con un control: una tabla que mezcla filas o queda en una columna se descarta y el agente lee como antes.
+- Con el control pasan 22 de 31 tablas (todas las del calcufast y de las cartas; se descartan la boleta y las dudosas del cronograma), a ~0,1 s por tabla. En el calcufast (2026-11-25): con tablas, 25 de 26 en 289 s; sin ellas, el primer turno del agente pasó los 180 s en las dos corridas y no entregó. El error que queda es del agente: repite filas cuyo concepto ocupa dos líneas, aunque la tabla las trae juntas.
+- Siguiente, si hace falta: el modelo grande sin líneas (clasificador 7 MB + celdas 124 MB + estructura 349 MB), probado solo sobre las tablas descartadas.
+
+## VRT-123 — Leer formularios
+**Why:** la solicitud de convenio, el documento con más datos, es un formulario escaneado de recuadros, casillas con X y letra a mano; el layout ve cada página como una imagen, así que ningún modelo de tablas la alcanza (medido el 2026-11-25). Sus errores en el banco son de emparejamiento (provincia y departamento cruzados). **Scope:**
+- Emparejar cada etiqueta con su recuadro por posición, y detectar qué casillas están marcadas, en documentos que el layout no separa en regiones.
+- Se mide en el banco con la solicitud. Fuera: reconocer letra a mano mejor que el OCR actual.
 
 ## F5 — Canales
 

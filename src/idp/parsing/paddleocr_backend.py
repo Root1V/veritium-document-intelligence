@@ -16,10 +16,11 @@ import numpy as np
 # network environments.
 os.environ.setdefault("PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK", "True")
 
-from paddleocr import LayoutDetection, PaddleOCR  # noqa: E402
+from paddleocr import LayoutDetection, PaddleOCR, TableStructureRecognition  # noqa: E402
 
 from idp.config import Settings
 from idp.parsing.normalize import ParsedBlock, ParsedDocument, load_pages, page_to_b64
+from idp.parsing.tables import Line, cell_boxes, to_html
 
 _LAYOUT_TYPES = {"table", "figure", "chart", "title", "seal"}  # seal: VRT-118
 
@@ -35,6 +36,7 @@ class PaddleOCRBackend:
         self._lang = settings.ocr_language
         self._ocr: PaddleOCR | None = None
         self._layout: LayoutDetection | None = None
+        self._tables: TableStructureRecognition | None = None
 
     def _ocr_engine(self) -> PaddleOCR:
         if self._ocr is None:
@@ -49,6 +51,21 @@ class PaddleOCRBackend:
         if self._layout is None:
             self._layout = LayoutDetection()
         return self._layout
+
+    def _table_engine(self) -> TableStructureRecognition:
+        if self._tables is None:
+            self._tables = TableStructureRecognition(model_name="SLANet_plus")
+        return self._tables
+
+    def _table_html(self, image_array: np.ndarray, box: tuple[int, int, int, int], lines: list[Line]) -> str:
+        """The table as HTML, or "" when it was built wrong (VRT-120, parsing/tables.py)."""
+        x1, y1, x2, y2 = box
+        inside = [line for line in lines if x1 <= line.centre[0] <= x2 and y1 <= line.centre[1] <= y2]
+        if len(inside) < 2:
+            return ""
+        out = next(iter(self._table_engine().predict(image_array[y1:y2, x1:x2])))
+        heights = sorted(line.box[3] - line.box[1] for line in inside)
+        return to_html(list(out["structure"]), cell_boxes(out["bbox"], (x1, y1)), inside, heights[len(heights) // 2]) or ""
 
     def _read_lines(self, image_array: np.ndarray) -> list[tuple[str, float, Any]]:
         """Each text line on the page: its text, confidence and polygon (pixels of this image)."""
@@ -65,9 +82,11 @@ class PaddleOCRBackend:
             page_images_b64[page_index] = page_to_b64(image)
             image_array = np.array(image)
 
+            lines: list[Line] = []
             for text, score, poly in self._read_lines(image_array):
                 xs = [float(p[0]) for p in poly]
                 ys = [float(p[1]) for p in poly]
+                lines.append(Line(region_id, text, (min(xs), min(ys), max(xs), max(ys))))
                 bbox = [min(xs) / width, min(ys) / height, max(xs) / width, max(ys) / height]
                 blocks.append(
                     ParsedBlock(
@@ -88,10 +107,11 @@ class PaddleOCRBackend:
                     x1, y1, x2, y2 = box.get("coordinate", [0.0, 0.0, 0.0, 0.0])
                     bbox = [x1 / width, y1 / height, x2 / width, y2 / height]
                     block_type = label if label in _LAYOUT_TYPES else "text"
+                    text = self._table_html(image_array, (int(x1), int(y1), int(x2), int(y2)), lines) if block_type == "table" else ""
                     blocks.append(
                         ParsedBlock(
                             region_id=region_id,
-                            text="",
+                            text=text,
                             page=page_index,
                             bbox=bbox,
                             confidence=score,

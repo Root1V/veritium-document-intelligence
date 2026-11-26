@@ -83,7 +83,7 @@ def text_chunks(parsed: ParsedDocument | None, pages: tuple[int, int] | None = N
         return []
     by_page: dict[int, list[str]] = {}
     for block in parsed.blocks:
-        if block.block_type == "figure" or (pages is not None and not pages[0] <= block.page <= pages[1]):
+        if not block.read or (pages is not None and not pages[0] <= block.page <= pages[1]):
             continue
         by_page.setdefault(block.page, []).append(block.text)
     return [

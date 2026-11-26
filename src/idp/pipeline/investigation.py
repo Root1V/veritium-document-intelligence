@@ -115,9 +115,9 @@ def _ref(i: int) -> str:
 
 def _blocks(doc: LensDocument) -> list[Any]:
     if doc.page_start is None:
-        return list(doc.parsed.blocks)
+        return [b for b in doc.parsed.blocks if b.read]
     end = doc.page_end if doc.page_end is not None else doc.page_start
-    return [b for b in doc.parsed.blocks if doc.page_start <= b.page <= end]
+    return [b for b in doc.parsed.blocks if b.read and doc.page_start <= b.page <= end]
 
 
 def _line(block: Any) -> str:

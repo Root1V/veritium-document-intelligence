@@ -59,6 +59,8 @@ def find_source_block(source_text: str, parsed: ParsedDocument) -> ParsedBlock |
     best: ParsedBlock | None = None
     best_overlap = 0
     for block in parsed.blocks:
+        if not block.read:  # a table's HTML holds every value of it: ground to the line, not the table
+            continue
         normalized_block = _normalize(block.text)
         if not normalized_block:
             continue
@@ -86,7 +88,7 @@ def _resolve_by_region_id(field: Extracted, parsed: ParsedDocument) -> ParsedBlo
     if field.region_id is None:
         return None
     block = parsed.block(field.region_id)
-    if block is None:
+    if block is None or not block.read:
         return None
     if not _plausible_match(block.text, field.source_text or ""):
         return None

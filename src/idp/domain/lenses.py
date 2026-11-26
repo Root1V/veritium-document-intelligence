@@ -122,7 +122,7 @@ def _budgets(sizes: list[int], total: int) -> list[int]:
 def _lines(doc: LensDocument, n: int) -> list[tuple[str, Evidence]]:
     out = []
     for block in doc.parsed.blocks:
-        if block.block_type == "figure" or not block.text.strip():
+        if not block.read or not block.text.strip():
             continue
         if doc.page_start is not None and not (doc.page_start <= block.page <= (doc.page_end if doc.page_end is not None else doc.page_start)):
             continue

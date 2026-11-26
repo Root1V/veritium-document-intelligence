@@ -43,7 +43,7 @@ def label_of(value: ParsedBlock, parsed: ParsedDocument) -> str | None:
             return own
     x1, y1, x2, y2 = value.bbox
     height = max(y2 - y1, 1e-6)
-    same_page = [b for b in parsed.blocks if b.page == value.page and b.text.strip() and b.region_id != value.region_id]
+    same_page = [b for b in parsed.blocks if b.page == value.page and b.read and b.text.strip() and b.region_id != value.region_id]
     left = [b for b in same_page if b.bbox[2] <= x1 + 0.01 and min(y2, b.bbox[3]) - max(y1, b.bbox[1]) >= height / 2 and x1 - b.bbox[2] < 0.4]
     above = [b for b in same_page if b.bbox[3] <= y1 + 0.005 and y1 - b.bbox[3] < 0.04 and min(x2, b.bbox[2]) - max(x1, b.bbox[0]) > 0]
     for candidates, distance in ((left, lambda b: x1 - b.bbox[2]), (above, lambda b: y1 - b.bbox[3])):

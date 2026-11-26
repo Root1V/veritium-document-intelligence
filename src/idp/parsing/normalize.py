@@ -25,6 +25,11 @@ class ParsedBlock(BaseModel):
     confidence: float
     block_type: BlockType = "text"
 
+    @property
+    def read(self) -> bool:
+        """Text the OCR read on the page. A table's text is its HTML built from those same lines (VRT-120): counted once."""
+        return self.block_type not in ("figure", "table")
+
 
 class ParsedDocument(BaseModel):
     backend: str
@@ -36,7 +41,7 @@ class ParsedDocument(BaseModel):
 
     @property
     def full_text(self) -> str:
-        return "\n".join(b.text for b in self.blocks if b.block_type != "figure")
+        return "\n".join(b.text for b in self.blocks if b.read)
 
     def block(self, region_id: int) -> ParsedBlock | None:
         return next((b for b in self.blocks if b.region_id == region_id), None)

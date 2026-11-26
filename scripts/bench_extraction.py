@@ -89,20 +89,25 @@ def _measured(model):
     return call
 
 
-async def _read(settings: Settings, path: Path) -> ParsedDocument:
-    cache = BENCH / "ocr-cache" / (hashlib.md5(f"{path}|{settings.parser_backend}".encode()).hexdigest() + ".pkl")
+async def _read(settings: Settings, path: Path, *, tables: bool) -> ParsedDocument:
+    # "tables": readings since VRT-120 carry each built table; older caches do not.
+    cache = BENCH / "ocr-cache" / (hashlib.md5(f"{path}|{settings.parser_backend}|tables".encode()).hexdigest() + ".pkl")
     if cache.exists():
-        return pickle.loads(cache.read_bytes())
+        parsed = pickle.loads(cache.read_bytes())
+        if not tables:  # as before VRT-120: the table is a region without text
+            parsed.blocks = [b.model_copy(update={"text": ""}) if b.block_type == "table" else b for b in parsed.blocks]
+        return parsed
     started = time.perf_counter()
     parsed = await asyncio.to_thread(parse_example, settings, path.read_bytes(), path.name)
     print(f"   lectura {settings.parser_backend}: {time.perf_counter() - started:.1f}s, {parsed.page_count} págs", flush=True)
     cache.parent.mkdir(parents=True, exist_ok=True)
     cache.write_bytes(pickle.dumps(parsed))
-    return parsed
+    return await _read(settings, path, tables=tables)
 
 
-async def main(label: str, temperature: float | None, effort: str | None) -> None:
+async def main(label: str, temperature: float | None, effort: str | None, only: str | None, tables: bool) -> None:
     docs = [line.strip().rsplit(":", 1) for line in (BENCH / "docs.txt").read_text().splitlines() if line.strip()]
+    docs = [(raw, dtype) for raw, dtype in docs if only is None or dtype == only]
     settings = Settings()
     logging.getLogger("idp.llm.port").addHandler(_Retries())
     logging.getLogger("idp.llm.port").setLevel(logging.INFO)
@@ -120,7 +125,7 @@ async def main(label: str, temperature: float | None, effort: str | None) -> Non
         out = {}
         for raw, dtype in docs:
             path = Path(raw) if Path(raw).is_absolute() else REPO / raw
-            parsed = await _read(settings, path)
+            parsed = await _read(settings, path, tables=tables)
             TURNS.clear()
             ERRORS.clear()
             _Retries.count = 0
@@ -145,5 +150,7 @@ if __name__ == "__main__":
     parser.add_argument("label", help="nombre de la corrida (runs/<label>.json)")
     parser.add_argument("--temperature", type=float, help="temperatura para toda llamada (experimento)")
     parser.add_argument("--reasoning-effort", choices=["low", "medium", "high"], help="esfuerzo de razonamiento de gpt-oss (experimento)")
+    parser.add_argument("--only", help="solo los documentos de este tipo")
+    parser.add_argument("--no-tables", action="store_true", help="las tablas sin armar, como antes de VRT-120 (experimento)")
     args = parser.parse_args()
-    asyncio.run(main(args.label, args.temperature, args.reasoning_effort))
+    asyncio.run(main(args.label, args.temperature, args.reasoning_effort, args.only, not args.no_tables))

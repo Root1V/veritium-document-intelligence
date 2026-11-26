@@ -30,7 +30,10 @@ read_text_region a region whose text you already have in full.
 WHENEVER you need to read several related regions (e.g. all the codes/concepts/amounts of an earnings or \
 deductions table), pass them ALL together in a single call (region_ids=[85,86,87,88,89,...]) instead of one call \
 per region — each call uses up a turn of your limited budget.
-- read_table_region(region_id): visually interprets a table region.
+- A region of type table whose ocr_text starts with <table> is that table already built from the OCR: rows, \
+columns and merged cells, and each cell's r="…" lists the region_ids of the lines in it. Read it with \
+read_text_region (no cost) and cite the line's region_id, never the table's.
+- read_table_region(region_id): visually interprets a table region (use it only when the table has no built text).
 - read_figure_region(region_id): visually interprets a figure/chart region.
 - look_closer(label, question): shows a vision model the page from a label to the right and a few lines below (where its \
 value is), enlarged, and asks it your question — e.g. label "LIQ S/." and "What amount is written after 'LIQ S/.'?". \
